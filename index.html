@@ -408,11 +408,11 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // 常量与数据表
 // =====================================================================
 const TILE = 2, MAP = 160, WORLD = TILE * MAP, TICK = 0.05, TPS = 20;
-const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4;
+const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5;   // T_VOID：小地图以外的区域
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.2';
+const GAME_VERSION = 'iron-2.3';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -494,7 +494,7 @@ const UNITS = {
 };
 
 const BUILDINGS = {
-  hq:       { name: '指挥部', w: 3, h: 3, hp: 2600, power: 20, cost: 0, time: 0, sight: 10, desc: '基地核心，负责建造所有建筑。' },
+  hq:       { name: '总部', w: 3, h: 3, hp: 4000, power: 20, cost: 0, time: 0, sight: 10, desc: '基地核心，负责建造所有建筑。总部被摧毁就立即战败！战略导弹对总部无效，必须派部队攻下来。' },
   power:    { name: '发电站', cat: 'building', w: 2, h: 2, hp: 750, power: 100, cost: 300, time: 6, sight: 5, req: [], desc: '提供 100 电力。' },
   refinery: { name: '精炼厂', cat: 'building', w: 3, h: 3, hp: 1200, power: -30, cost: 2000, time: 18, sight: 6, req: ['power'], desc: '处理矿石，附送一辆采矿车。' },
   barracks: { name: '兵营', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 500, time: 8, sight: 5, req: ['power'], desc: '训练步兵。' },
@@ -560,8 +560,14 @@ const prodOf = d => d.producer || PRODUCER[d.cat];
 const PROD_TYPES = ['barracks', 'airBarracks', 'factory', 'helipad', 'shipyard', 'airfield'];
 const PADS = [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]];   // 机场停机位（相对机场中心）
 const rankOf = u => (u && u.rank) || 0;
-const SUPER_CHARGE = 8 * 60 * TPS;
-const START_CREDITS = 5000;
+// 对局节奏：快速模式开局资金更多，建造、采矿、充能都更快
+const PACES = {
+  normal: { name: "标准", credits: 5000, build: 1, income: 1, superMul: 1, abil: 1, ai: 1 },
+  fast:   { name: "快速", credits: 10000, build: 1.7, income: 1.5, superMul: 0.6, abil: 0.7, ai: 1.7 },
+};
+const superMax = () => 8 * 60 * TPS * G.pace.superMul;
+const abCd = ab => ab.cd * G.pace.abil;
+
 const HARV_CAP = 700;
 
 const DIFFS = {
@@ -729,15 +735,25 @@ let derrickSites = [];
 // 地图按 90° 旋转对称：rot 把左下象限依次转到左上、右上、右下
 const rotP = (x, z) => [MAP - 1 - z, x];
 const rotK = (x, z, k) => { for (let i = 0; i < k; i++) [x, z] = rotP(x, z); return [x, z]; };
+// 出生点和可玩区域由 generateMap 按地图大小设置（小地图是居中的一块正方形）
 const BASES = [0, 1, 2, 3].map(k => { const [tx, tz] = rotK(20, MAP - 21, k); return { tx, tz }; });
+const PLAY = { lo: 0, hi: MAP };
+const SIZE_K = { large: 1, small: 0.65 };
+const inPlay = (x, z) => x >= PLAY.lo * TILE + 1 && z >= PLAY.lo * TILE + 1 && x <= PLAY.hi * TILE - 1 && z <= PLAY.hi * TILE - 1;
+const clampPlay = v => clamp(v, PLAY.lo * TILE + 1, PLAY.hi * TILE - 1);
 // 不同人数时使用的出生角（2 人对角）
 const CORNERS_BY_COUNT = { 2: [0, 2], 3: [0, 1, 2], 4: [0, 1, 2, 3] };
 
 // nav = true 时判断舰船能否通行（水面），否则判断陆地
 const walkable = (tx, tz, nav = false) => tx >= 0 && tz >= 0 && tx < MAP && tz < MAP && (nav ? navigable : passable)[tz * MAP + tx] === 1 && bldGrid[tz * MAP + tx] === 0;
 
-function generateMap(seed, mapType = 'land') {
+function generateMap(seed, mapType = 'land', size = 'large') {
   const sea = mapType === 'sea';
+  // 小地图：所有布局坐标向地图中心缩放 k 倍；基地、海湾等区域半径按 kr 缩放（缩得少一些，留够建造空间）
+  const k = SIZE_K[size] || 1, kr = k < 1 ? 0.75 : 1, MC = (MAP - 1) / 2;
+  const P = v => MC + (v - MC) * k;
+  PLAY.lo = k < 1 ? Math.round(MC - MAP * k / 2) : 0; PLAY.hi = MAP - PLAY.lo;
+  { const bx = Math.round(P(20)); BASES.forEach((b, i) => { const [tx, tz] = rotK(bx, MAP - 1 - bx, i); b.tx = tx; b.tz = tz; }); }
   const rng = mulberry32(seed);
   const nRock = makeNoise(rng), nTree = makeNoise(rng), nWater = makeNoise(rng), nDirt = makeNoise(rng);
   for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
@@ -778,11 +794,12 @@ function generateMap(seed, mapType = 'land') {
     }
   };
   const B0 = BASES[0], H = MAP / 2;
-  carve([[B0.tx, B0.tz], [45, 112], [H - 2, H + 1]], 2.6);
-  carve([[B0.tx, B0.tz], [52, MAP - 16], [H - 1, MAP - 20]], 2.4);
-  carve([[B0.tx, B0.tz], [16, 112], [19, H]], 2.4);
-  carve([[16, 108], [45, 112]], 1.6);
-  clearDisc(B0.tx, B0.tz, 14);
+  const pp = (x, z) => [P(x), P(z)];
+  carve([[B0.tx, B0.tz], pp(45, 112), pp(H - 2, H + 1)], 2.6);
+  carve([[B0.tx, B0.tz], pp(52, MAP - 16), pp(H - 1, MAP - 20)], 2.4);
+  carve([[B0.tx, B0.tz], pp(16, 112), pp(19, H)], 2.4);
+  carve([pp(16, 108), pp(45, 112)], 1.6);
+  clearDisc(B0.tx, B0.tz, 14 * kr);
 
   // 矿区（左下象限）；内海地图中央是水，宝石矿改放在两个基地之间的地图边缘
   const fieldDefs = sea ? [
@@ -799,12 +816,18 @@ function generateMap(seed, mapType = 'land') {
     { x: 68, z: 92, r: 3.0, amt: 900, gem: true },
   ];
   derrickSites = [{ tx: 5, tz: 122 }, { tx: 34, tz: 92 }];
+  if (k < 1) {
+    // 小地图：矿区和油井位置向中心收缩，矿区也小一些
+    fieldDefs.splice(2, 1);   // 去掉每个象限最远的一片矿
+    for (const f of fieldDefs) { f.x = P(f.x); f.z = P(f.z); f.r *= 0.75; }
+    derrickSites = derrickSites.map(d => ({ tx: Math.round(P(d.tx + 1)) - 1, tz: Math.round(P(d.tz + 1)) - 1 }));
+  }
   for (const f of fieldDefs) clearDisc(f.x, f.z, f.r + 1.5);
   for (const d of derrickSites) clearDisc(d.tx + 1, d.tz + 1, 2.6);
 
-  // 内海：中央圆形海面 + 一条水道通到基地旁的海湾（基地 14 格内保持陆地）
+  // 内海：中央圆形海面 + 一条水道通到基地旁的海湾（基地附近保持陆地）
   if (sea) {
-    const cx = (MAP - 1) / 2, cz = (MAP - 1) / 2, bx = B0.tx + 13.4, bz = B0.tz - 13.4;
+    const cx = (MAP - 1) / 2, cz = (MAP - 1) / 2, bx = B0.tx + 13.4 * kr, bz = B0.tz - 13.4 * kr;
     const nShore = makeNoise(rng);
     const segDist = (x, z) => {
       const vx = bx - cx, vz = bz - cz, t = clamp(((x - cx) * vx + (z - cz) * vz) / (vx * vx + vz * vz), 0, 1);
@@ -813,10 +836,10 @@ function generateMap(seed, mapType = 'land') {
     for (let z = H; z < MAP; z++) for (let x = 0; x < H; x++) {
       const i = z * MAP + x, db = Math.hypot(x - bx, z - bz);
       // 海湾周围和基地到海湾之间保持空地，保证能在岸边造船厂
-      if ((db < 12 || Math.hypot(x - lerp(B0.tx, bx, 0.6), z - lerp(B0.tz, bz, 0.6)) < 7) && (terrain[i] === T_TREE || terrain[i] === T_ROCK || terrain[i] === T_WATER)) terrain[i] = T_GRASS;
-      if (Math.hypot(x - B0.tx, z - B0.tz) < 14.5) continue;
-      const wob = (nShore(x / 7, z / 7) - 0.5) * 7;
-      if (Math.hypot(x - cx, z - cz) < 23 + wob || segDist(x, z) < 3.6 + wob * 0.35 || db < 5.5 + wob * 0.5) terrain[i] = T_WATER;
+      if ((db < 12 * kr || Math.hypot(x - lerp(B0.tx, bx, 0.6), z - lerp(B0.tz, bz, 0.6)) < 7 * kr) && (terrain[i] === T_TREE || terrain[i] === T_ROCK || terrain[i] === T_WATER)) terrain[i] = T_GRASS;
+      if (Math.hypot(x - B0.tx, z - B0.tz) < 14.5 * kr) continue;
+      const wob = (nShore(x / 7, z / 7) - 0.5) * 7 * kr;
+      if (Math.hypot(x - cx, z - cz) < 23 * k + wob || segDist(x, z) < 3.6 * kr + wob * 0.35 || db < 5.5 * kr + wob * 0.5) terrain[i] = T_WATER;
     }
   }
 
@@ -829,6 +852,10 @@ function generateMap(seed, mapType = 'land') {
     for (let k = 0; k < 3 && !inQ(px, pz); k++) [px, pz] = unrot(px, pz);
     terrain[z * MAP + x] = terrain[pz * MAP + px];
   }
+  // 小地图：可玩区域以外标记为不可通行的虚空
+  if (PLAY.lo > 0) for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
+    if (x < PLAY.lo || z < PLAY.lo || x >= PLAY.hi || z >= PLAY.hi) terrain[z * MAP + x] = T_VOID;
+  }
 
   // 放置矿石（四角对称）
   ore.fill(0); oreMax.fill(0); gem.fill(0);
@@ -840,7 +867,7 @@ function generateMap(seed, mapType = 'land') {
       const d = Math.hypot(x - cx, z - cz) + (rng() - 0.5) * 1.4;
       if (d > r) continue;
       const i = z * MAP + x;
-      if (terrain[i] === T_ROCK || terrain[i] === T_WATER || terrain[i] === T_TREE) continue;
+      if (terrain[i] === T_ROCK || terrain[i] === T_WATER || terrain[i] === T_TREE || terrain[i] === T_VOID) continue;
       const a = Math.round(amt * (0.7 + 0.3 * (1 - d / r)));
       ore[i] = a; oreMax[i] = a; gem[i] = isGem ? 1 : 0;
       fld.tiles.push(i);
@@ -903,7 +930,7 @@ function paintGround() {
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const c = cv.getContext('2d');
   const pal = {
-    [T_GRASS]: [88, 102, 58], [T_DIRT]: [122, 104, 74], [T_ROCK]: [104, 97, 84], [T_WATER]: [40, 66, 70], [T_TREE]: [66, 80, 44],
+    [T_GRASS]: [88, 102, 58], [T_DIRT]: [122, 104, 74], [T_ROCK]: [104, 97, 84], [T_WATER]: [40, 66, 70], [T_TREE]: [66, 80, 44], [T_VOID]: [10, 11, 9],
   };
   for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
     const i = z * MAP + x;
@@ -2035,7 +2062,9 @@ const Sound = {
 // =====================================================================
 // 游戏状态
 // =====================================================================
-const G = { tick: 0, time: 0, speed: 1, paused: false, state: 'menu', difficulty: 'normal', seed: 1, mapType: 'land', over: false };
+const G = { tick: 0, time: 0, speed: 1, paused: false, state: 'menu', difficulty: 'normal', seed: 1, mapType: 'land', size: 'large', pace: PACES.normal, over: false };
+const MAP_SIZES = [['small', '小（1v1 推荐）'], ['large', '大']];
+const PACE_OPTS = [['fast', '快速（约 30 分钟）'], ['normal', '标准']];
 const MAP_TYPES = [['land', '大陆'], ['sea', '内海（海战）']];
 let teams = [];
 let units = [], buildings = [];
@@ -2049,7 +2078,7 @@ const oreClaim = new Int32Array(MAP * MAP);
 function makeTeam(id, isAI, nation, slot = id, corner = id, name = '') {
   return {
     id, isAI, nation, slot, corner, name: name || (isAI ? '电脑' : '玩家'), ai: null, defeated: false, human: !isAI,
-    abilityCharge: 0, abilityReady: false, credits: START_CREDITS, powerProd: 0, powerUse: 0, lowPower: false,
+    abilityCharge: 0, abilityReady: false, credits: G.pace.credits, powerProd: 0, powerUse: 0, lowPower: false,
     queues: { building: [], defense: [], infantry: [], vehicle: [], air: [], naval: [] },
     superCharge: 0, superReady: false, rally: {}, counts: {}, primary: {},
     stats: { kills: 0, losses: 0, bKills: 0, bLosses: 0, harvested: 0, unitsBuilt: 0, bBuilt: 0 },
@@ -2351,7 +2380,7 @@ function losClear(x0, z0, x1, z1, nav = false) {
 }
 const pathQueue = [];
 function requestPath(u, x, z) {
-  x = clamp(x, 1, WORLD - 1); z = clamp(z, 1, WORLD - 1);
+  x = clampPlay(x); z = clampPlay(z);
   u.dest = { x, z }; u.stuckT = 0; u.bestD = 1e9;
   if (u.def.air) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
   const nav = !!u.def.naval;
@@ -2691,6 +2720,7 @@ function splashDamage(x, z, r, dmg, wh, team, src) {
 }
 function damage(t, amount, wh, src) {
   if (!t.alive || Net.isClient) return;
+  if (wh === 'nuke' && t.type === 'hq') return;   // 战略导弹对总部无效
   const mult = WARHEAD[wh][ARMOR_IDX[t.def.armor]];
   if (mult <= 0) return;
   t.hp -= amount * mult;
@@ -2822,8 +2852,8 @@ function planeSteer(u, tx, tz, spMul = 1) {
   const mt = u.def.turn * TICK;
   u.angle += clamp(angDiff(u.angle, want), -mt, mt);
   const sp = u.speed * TICK * spMul;
-  u.x = clamp(u.x + Math.sin(u.angle) * sp, 1, WORLD - 1);
-  u.z = clamp(u.z + Math.cos(u.angle) * sp, 1, WORLD - 1);
+  u.x = clampPlay(u.x + Math.sin(u.angle) * sp);
+  u.z = clampPlay(u.z + Math.cos(u.angle) * sp);
   if (u.y < PLANE_Y) u.y = Math.min(PLANE_Y, u.y + 3.5 * TICK);   // 起飞爬升
   u.moving = true;
 }
@@ -2896,7 +2926,7 @@ function planeAttack(u, t) {
   }
   if (d < 5 || (u.ammo <= 0)) {
     u.pst = 'strafe'; u.strafeUntil = G.tick + 2 * TPS;
-    u.sx = clamp(u.x + Math.sin(u.angle) * 22, 4, WORLD - 4); u.sz = clamp(u.z + Math.cos(u.angle) * 22, 4, WORLD - 4);
+    u.sx = clampPlay(u.x + Math.sin(u.angle) * 22); u.sz = clampPlay(u.z + Math.cos(u.angle) * 22);
     if (u.ammo <= 0) { u.order = { type: 'idle' }; u.pst = 'fly'; }
   }
 }
@@ -2985,7 +3015,7 @@ function harvesterTick(h) {
       h.angle += clamp(angDiff(h.angle, Math.PI), -0.15, 0.15);
       const amt = Math.min(h.cargo, 25);
       h.cargo -= amt;
-      const inc = amt * natOf(h.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1);
+      const inc = amt * natOf(h.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
       T.credits += inc; T.stats.harvested += inc;
       if (h.cargo <= 0) { h.cargo = 0; h.hstate = 'seek'; }
       break;
@@ -3043,7 +3073,7 @@ function buildingTick(b) {
       if (T.credits >= cost) { T.credits -= cost; b.hp = Math.min(b.maxHp, b.hp + heal); }
     }
   }
-  if (b.def.derrick && G.tick % TPS === 0) { T.credits += b.def.income; T.stats.harvested += b.def.income; }
+  if (b.def.derrick && G.tick % TPS === 0) { const inc = b.def.income * G.pace.income; T.credits += inc; T.stats.harvested += inc; }
   if (b.type === 'repairDepot' && !T.lowPower && b.buildAnim >= 1 && (G.tick + b.id) % 10 === 0) {
     // 维修站：修理附近 5 格内的己方载具和直升机
     queryHash(b.x, b.z, 10 + 2, (u) => {
@@ -3064,7 +3094,7 @@ function buildingTick(b) {
     if (best >= 0) {
       const take = Math.min(gem[best] ? 30 : 15, ore[best]);
       ore[best] -= take; updateOreTile(best);
-      const inc = take * natOf(b.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1);
+      const inc = take * natOf(b.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
       T.credits += inc; T.stats.harvested += inc;
       if (visibleAt(b.x, b.z)) fxDust(tc(best % MAP), tc((best / MAP) | 0), 0.9);
     }
@@ -3200,6 +3230,7 @@ function productionTick(T) {
     if (!nProd) continue;
     let rate = 1 / (d.time * TPS) * (1 + 0.5 * (nProd - 1)) * (T.lowPower ? 0.5 : 1);
     if (T.isAI) rate *= DIFFS[G.difficulty].build;
+    rate *= G.pace.build;
     const step = Math.min(rate, 1 - it.progress), cost = costOf(T.id, it.type) * step;
     if (T.credits < cost) {
       if (T.human && G.tick - T.lastMoney > 15 * TPS) { T.lastMoney = G.tick; tnotify(T.id, '资金不足', 'bad', 'error'); }
@@ -3327,7 +3358,7 @@ function superTick(T) {
   if (!(T.counts.silo > 0)) { T.superReady = false; return; }
   if (T.superReady) return;
   if (!T.lowPower) T.superCharge++;
-  if (T.superCharge >= SUPER_CHARGE) {
+  if (T.superCharge >= superMax()) {
     T.superReady = true;
     for (const o of teams) tnotify(o.id, o === T ? '战略导弹已就绪' : '警告：' + T.name + '的战略导弹已就绪', o === T ? 'good' : 'bad', o === T ? 'ready' : null);
   }
@@ -3379,7 +3410,7 @@ function abilityTick(T) {
   if (T.defeated || T.abilityReady) return;
   const ab = ABILITIES[NATIONS[T.nation].ability];
   T.abilityCharge++;
-  if (T.abilityCharge >= ab.cd * TPS) {
+  if (T.abilityCharge >= abCd(ab) * TPS) {
     T.abilityReady = true;
     if (T.human) tnotify(T.id, `国家技能「${ab.name}」已就绪`, 'good', 'ready');
   }
@@ -3389,7 +3420,7 @@ function useAbility(T, x, z) {
   const key = NATIONS[T.nation].ability, ab = ABILITIES[key];
   if (key === 'airdrop' && !exploredBy(T.id, x, z)) { tnotify(T.id, '只能空投到已探索的区域', 'bad', 'error'); return; }
   T.abilityReady = false; T.abilityCharge = 0;
-  x = clamp(x, 4, WORLD - 4); z = clamp(z, 4, WORLD - 4);
+  x = clampPlay(x); z = clampPlay(z);
   abilityEffect(T.id, key, x, z);
   if (Net.isHost) Net.event({ k: 'ab', team: T.id, ab: key, x, z });
   if (key === 'grant') tnotify(T.id, '紧急拨款到账：+$3000', 'good', 'ready');
@@ -3515,21 +3546,19 @@ function gameTick() {
 }
 function checkVictory() {
   if (G.over) return;
-  for (const T of teams) {
-    if (T.defeated) continue;
-    const hasB = buildings.some(b => b.alive && b.team === T.id && !b.def.derrick);
-    const hasU = units.some(u => u.alive && u.team === T.id && !u.def.harvester);
-    if (!hasB && !hasU) teamDefeated(T);
-  }
+  // 总部被摧毁就判负
+  for (const T of teams) if (!T.defeated && !buildings.some(b => b.alive && b.team === T.id && b.type === 'hq')) teamDefeated(T, true);
   const alive = teams.filter(T => !T.defeated);
   if (alive.length <= 1) endGame(alive.length ? alive[0].id : -1);
 }
-function teamDefeated(T) {
+function teamDefeated(T, hqLost) {
   T.defeated = true;
   for (const u of units) if (u.alive && u.team === T.id) kill(u, null);
   for (const b of buildings) if (b.alive && b.team === T.id && b.def.derrick) { b.team = NEUTRAL; buildBuildingMesh(b); }
+  // 失去总部：剩下的建筑陆续自毁
+  buildings.filter(b => b.alive && b.team === T.id && !b.def.derrick).forEach((b, i) => delayed.push({ t: 0.3 + i * 0.25, fn: () => { if (b.alive) kill(b, null); } }));
   for (const q of Object.values(T.queues)) q.length = 0;
-  tnotify('all', `${T.name}（${NATIONS[T.nation].short}）已被淘汰`, T.id === PLAYER ? 'bad' : 'good', 'alert');
+  tnotify('all', `${T.name}（${NATIONS[T.nation].short}）${hqLost ? '的总部被攻陷，' : ''}已被淘汰`, T.id === PLAYER ? 'bad' : 'good', 'alert');
   if (T.id === PLAYER && teams.filter(o => !o.defeated).length > 1) { revealAll = true; tnotify(T.id, '你已被淘汰，进入观战模式（全图可见）', 'bad'); }
 }
 // 发给指定队伍（或 'all'）的提示；联机时房主会转发给对应玩家
@@ -3649,7 +3678,13 @@ class AIController {
       for (const u of units) if (u.alive && this.isEnemy(u.team)) { const d = (u.x - fromX) ** 2 + (u.z - fromZ) ** 2; if (d < bd) { bd = d; best = u; } }
       return best;
     }
-    if (Math.random() < 0.3) {
+    const r = Math.random();
+    if (r < 0.35) {
+      // 直取总部（攻陷就赢）
+      let hq = null, hd = 1e18;
+      for (const b of ebs) if (b.type === 'hq') { const d = (b.x - fromX) ** 2 + (b.z - fromZ) ** 2; if (d < hd) { hd = d; hq = b; } }
+      if (hq) return hq;
+    } else if (r < 0.6) {
       const near = ebs.filter(b => (b.type === 'refinery' || b.def.derrick) && Math.hypot(b.x - fromX, b.z - fromZ) < 160);
       if (near.length) return near[(Math.random() * near.length) | 0];
     }
@@ -3670,7 +3705,7 @@ class AIController {
   }
   update() {
     if (G.over || this.T.defeated) return;
-    const T = this.T, time = G.time, dif = this.dif;
+    const T = this.T, time = G.time * G.pace.ai, dif = this.dif;
     const siloAt = dif.siloAt;
     // --- 放置已完成的建筑 ---
     for (const cat of ['building', 'defense']) {
@@ -3874,7 +3909,7 @@ function updateCamera(dt) {
     if (ex <= 3) dx -= 1; if (ex >= W - 4) dx += 1; if (ey <= 3) dz -= 1; if (ey >= H - 4) dz += 1;
   }
   cam.x += dx * sp; cam.z += dz * sp;
-  cam.x = clamp(cam.x, 8, WORLD - 8); cam.z = clamp(cam.z, 6, WORLD - 2);
+  cam.x = clamp(cam.x, PLAY.lo * TILE + 8, PLAY.hi * TILE - 8); cam.z = clamp(cam.z, PLAY.lo * TILE + 6, PLAY.hi * TILE - 2);
   let sx = 0, sz = 0;
   if (shake > 0) { sx = rnd(-1, 1) * shake; sz = rnd(-1, 1) * shake; shake = Math.max(0, shake - dt * 1.5); }
   camera.position.set(cam.x + sx, cam.h, cam.z + cam.h * 0.78 + sz);
@@ -4042,7 +4077,7 @@ gameEl.addEventListener('mousedown', (e) => {
   if (mode === 'repair' || mode === 'sell') {
     const t = pickAt(sx, sy);
     if (t && t.kind === 'b' && t.team === PLAYER) {
-      if (mode === 'sell') { if (t.type === 'hq') { notify('无法出售指挥部', 'bad'); Sound.play('error'); } else issueCommand({ c: 'sell', bid: t.id }); }
+      if (mode === 'sell') { if (t.type === 'hq') { notify('无法出售总部', 'bad'); Sound.play('error'); } else issueCommand({ c: 'sell', bid: t.id }); }
       else if (t.hp < t.maxHp) { issueCommand({ c: 'repair', bid: t.id, on: !t.repairing }); Sound.play('click'); } else Sound.play('error');
     }
     return;
@@ -4407,7 +4442,7 @@ const mmFog = document.createElement('canvas'); mmFog.width = mmFog.height = MAP
 const mmFogData = mmFog.getContext('2d').createImageData(MAP, MAP);
 function paintMinimapBase() {
   const c = mmBase.getContext('2d'), img = c.createImageData(MAP, MAP);
-  const pal = { [T_GRASS]: [76, 92, 50], [T_DIRT]: [118, 100, 70], [T_ROCK]: [118, 110, 98], [T_WATER]: [38, 70, 82], [T_TREE]: [40, 58, 32] };
+  const pal = { [T_GRASS]: [76, 92, 50], [T_DIRT]: [118, 100, 70], [T_ROCK]: [118, 110, 98], [T_WATER]: [38, 70, 82], [T_TREE]: [40, 58, 32], [T_VOID]: [8, 9, 7] };
   for (let i = 0; i < MAP * MAP; i++) {
     let c3 = pal[terrain[i]];
     if (ore[i] > 0) c3 = gem[i] ? [80, 200, 210] : [210, 170, 60];
@@ -4420,39 +4455,44 @@ function drawMinimap() {
   const online = (T.counts.radar > 0 && !T.lowPower) || revealAll;
   document.getElementById('radarOff').style.display = online ? 'none' : 'flex';
   if (!online) return;
-  const S = 240 / MAP;
+  // 小地图只显示可玩区域
+  const L = PLAY.lo, N = PLAY.hi - PLAY.lo, S = 240 / N;
+  const mx = wx => (wx / TILE - L) * S;
   mctx.imageSmoothingEnabled = false;
-  mctx.drawImage(mmBase, 0, 0, 240, 240);
+  mctx.drawImage(mmBase, L, L, N, N, 0, 0, 240, 240);
   for (let i = 0; i < MAP * MAP; i++) mmFogData.data[i * 4 + 3] = revealAll || vis[i] ? 0 : explored[i] ? 120 : 255;
   mmFog.getContext('2d').putImageData(mmFogData, 0, 0);
   mctx.imageSmoothingEnabled = true;
-  mctx.drawImage(mmFog, 0, 0, 240, 240);
+  mctx.drawImage(mmFog, L, L, N, N, 0, 0, 240, 240);
   for (const b of buildings) {
     if (!b.alive || !canSeeEntity(b)) continue;
     mctx.fillStyle = teamColor(b.team);
-    mctx.fillRect(b.tx * S, b.tz * S, b.w * S, b.h * S);
+    mctx.fillRect((b.tx - L) * S, (b.tz - L) * S, b.w * S, b.h * S);
   }
   for (const u of units) {
     if (!u.alive || !canSeeEntity(u)) continue;
     mctx.fillStyle = selection.includes(u) ? '#ffffff' : teamColor(u.team);
     const s = u.def.inf ? 2 : 3;
-    mctx.fillRect(u.x / TILE * S - s / 2, u.z / TILE * S - s / 2, s, s);
+    mctx.fillRect(mx(u.x) - s / 2, mx(u.z) - s / 2, s, s);
   }
   // 视野框
   const pts = [[0, 0], [vw, 0], [vw, vh], [0, vh]].map(([x, y]) => screenToPlane(x, y, 0) || { x: cam.x, z: cam.z - 120 });
   mctx.strokeStyle = 'rgba(255,255,255,0.85)'; mctx.lineWidth = 1;
   mctx.beginPath();
-  pts.forEach((p, i) => { const x = p.x / TILE * S, y = p.z / TILE * S; if (i === 0) mctx.moveTo(x, y); else mctx.lineTo(x, y); });
+  pts.forEach((p, i) => { const x = mx(p.x), y = mx(p.z); if (i === 0) mctx.moveTo(x, y); else mctx.lineTo(x, y); });
   mctx.closePath(); mctx.stroke();
   for (let i = pings.length - 1; i >= 0; i--) {
     const p = pings[i]; p.t += 0.1;
     if (p.t > 3) { pings.splice(i, 1); continue; }
     mctx.strokeStyle = `rgba(255,80,60,${1 - p.t / 3})`; mctx.lineWidth = 2;
-    mctx.beginPath(); mctx.arc(p.x / TILE * S, p.z / TILE * S, 4 + (p.t % 1) * 14, 0, Math.PI * 2); mctx.stroke();
+    mctx.beginPath(); mctx.arc(mx(p.x), mx(p.z), 4 + (p.t % 1) * 14, 0, Math.PI * 2); mctx.stroke();
   }
 }
 let mmDrag = false;
-function minimapWorld(e) { const r = mm.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * WORLD, z: (e.clientY - r.top) / r.height * WORLD }; }
+function minimapWorld(e) {
+  const r = mm.getBoundingClientRect(), N = PLAY.hi - PLAY.lo;
+  return { x: (PLAY.lo + (e.clientX - r.left) / r.width * N) * TILE, z: (PLAY.lo + (e.clientY - r.top) / r.height * N) * TILE };
+}
 function minimapOnline() { const T = teams[PLAYER]; return T && ((T.counts.radar > 0 && !T.lowPower) || revealAll); }
 mm.addEventListener('contextmenu', e => e.preventDefault());
 mm.addEventListener('mousedown', (e) => {
@@ -4687,7 +4727,7 @@ function updateSelPanel() {
   if (e.def.harvester) s += `　载货 ${Math.round(e.cargo)} / ${HARV_CAP}`;
   if (e.kind === 'b' && e.def.power) s += `　电力 ${e.def.power > 0 ? '+' : ''}${e.def.power}`;
   if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
-  if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / SUPER_CHARGE * 100)}%`; }
+  if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.weapon) s += `　射程 ${e.weapon.range} 格`;
   if (e.def.plane) s += `　弹药 ${e.ammo}/${e.def.ammo}${e.parked ? '（停机）' : ''}`;
   if (e.kind === 'u' && e.team === PLAYER && e.weapon && !Net.isClient && e.rank < 2) s += `　经验 ${Math.floor(e.xp)}/${e.rank ? Math.max(900, e.def.cost * 3) : Math.max(300, e.def.cost)}`;
@@ -4724,12 +4764,12 @@ function uiFrame() {
     if (T.counts.silo > 0) {
       sb.disabled = !T.superReady;
       sb.classList.toggle('ready', T.superReady);
-      sb.textContent = T.superReady ? '发射导弹' : '导弹 ' + fmtTime((SUPER_CHARGE - T.superCharge) / TPS);
+      sb.textContent = T.superReady ? '发射导弹' : '导弹 ' + fmtTime((superMax() - T.superCharge) / TPS);
     } else { sb.disabled = true; sb.classList.remove('ready'); sb.textContent = '导弹井'; }
     const ab = ABILITIES[NATIONS[T.nation].ability], abb = $('btnAbility');
     abb.disabled = !T.abilityReady || T.defeated;
     abb.classList.toggle('ready', T.abilityReady && !T.defeated);
-    abb.textContent = T.abilityReady ? '★ ' + ab.name + '（就绪）' : ab.name + ' ' + fmtTime(Math.max(0, ab.cd * TPS - T.abilityCharge) / TPS);
+    abb.textContent = T.abilityReady ? '★ ' + ab.name + '（就绪）' : ab.name + ' ' + fmtTime(Math.max(0, abCd(ab) * TPS - T.abilityCharge) / TPS);
     abb.title = ab.desc;
   }
   if (uiFrameN % 10 === 0) updateSelPanel();
@@ -4759,7 +4799,8 @@ const GUIDE = [
   {
     id: 'start', title: '快速上手', html: () => `
       <h3>胜利目标</h3>
-      <p>摧毁敌方（红色标识）的<b>全部建筑和作战部队</b>。你的部队全灭、建筑全毁就会战败。</p>
+      <p><b>攻陷敌方的总部</b>就能获胜；你的总部被摧毁就立即战败，剩下的建筑会全部自毁。</p>
+      <p>总部生命很厚（${BUILDINGS.hq.hp}），而且<b>战略导弹对总部无效</b>，只能派部队攻下来。记得在总部周围布置防御。</p>
       <p>开局前在菜单里选择你的国家（电脑的国家可以指定或随机）。四个国家各有数值特性和一个专属单位/建筑，详见“国家特性”页。</p>
       <h3>推荐开局顺序</h3>
       <ol>
@@ -4772,6 +4813,7 @@ const GUIDE = [
         <li>之后造<b>雷达站</b>（开启小地图）、<b>科技中心</b>（解锁本国专属单位或建筑），最后是<b>战略导弹井</b>。</li>
       </ol>
       <div class="gtip">电脑的第一波进攻大约在：简单 ${fmtTime(DIFFS.easy.firstWave)}、普通 ${fmtTime(DIFFS.normal.firstWave)}、困难 ${fmtTime(DIFFS.hard.firstWave)}。之后每隔几分钟来一波，而且越来越强。</div>
+      <div class="gtip">想快点打完一局：开局选<b>小地图</b>（两边基地更近、矿更少）和<b>快速节奏</b>（开局 $10000，建造和生产快 70%，采矿收入 +50%，导弹和技能充能更快），1v1 大约 30 分钟。</div>
       <h3>怎么造东西</h3>
       <ul>
         <li>右侧建造栏分五个标签：建筑、防御、步兵、载具、空军。灰色的项目表示前置建筑还没造，鼠标悬停可以看到需要什么。</li>
@@ -4839,7 +4881,7 @@ const GUIDE = [
       let h = '<p>点击建造栏造建筑；新建筑只能放在已有建筑附近（4 格以内）。</p><div class="gcards">';
       for (const k in BUILDINGS) {
         const d = BUILDINGS[k];
-        const req = k === 'hq' ? '开局自带' : k === 'derrick' ? '地图上的中立建筑' : (d.req.length ? d.req.map(r => BUILDINGS[r].name).join('、') : '指挥部');
+        const req = k === 'hq' ? '开局自带' : k === 'derrick' ? '地图上的中立建筑' : (d.req.length ? d.req.map(r => BUILDINGS[r].name).join('、') : '总部');
         const extra = d.weapon ? `　射程 ${WEAPONS[d.weapon].range} 格` : '';
         const only = d.nation ? `<span style="font-weight:normal;font-size:12px;color:var(--ui-accent)">（${NATIONS[d.nation].short}专属）</span>` : '';
         h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}${only}</div>
@@ -4986,7 +5028,7 @@ const GUIDE = [
       <h3>镜头</h3>
       <ul>
         <li><kbd>方向键</kbd>、鼠标移到屏幕边缘、或按住<kbd>中键</kbd>拖动：平移镜头</li>
-        <li><kbd>滚轮</kbd>：缩放　<kbd>H</kbd>：回到指挥部　点击小地图：跳转</li>
+        <li><kbd>滚轮</kbd>：缩放　<kbd>H</kbd>：回到总部　点击小地图：跳转</li>
       </ul>
       <h3>选择与指令</h3>
       <ul>
@@ -5054,7 +5096,7 @@ $('btnAgain').addEventListener('click', () => location.reload());
 // =====================================================================
 // 菜单：主菜单 / 联机 / 国家选择
 // =====================================================================
-const SEL = { myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', env: 1, seed: randSeed() };
+const SEL = { myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', size: 'small', pace: 'fast', env: 1, seed: randSeed() };
 const ENV_OPTS = [[1, '开'], [0, '关（永远晴天白天）']];
 function randSeed() { return Math.floor(Math.random() * 99999) + 1; }
 const hexCss = h => '#' + h.toString(16).padStart(6, '0');
@@ -5118,6 +5160,8 @@ function renderSelect() {
     h += opt('电脑难度', seg('diff', diffs, SEL.difficulty));
     h += opt('地图', seg('map', MAP_TYPES, SEL.mapType));
     h += opt('天气与昼夜', seg('env', ENV_OPTS, SEL.env));
+    h += opt('地图大小', seg('size', MAP_SIZES, SEL.size));
+    h += opt('节奏', seg('pace', PACE_OPTS, SEL.pace));
     h += opt('地图种子', `<input id="seedInput" maxlength="9" value="${SEL.seed}"><button class="tbtn" data-act="seed">随机</button>`);
     h += opt('', `<button class="tbtn" data-act="randpick" style="padding:6px 14px">随机选一个国家</button>`);
     $('btnStart').textContent = '开始游戏';
@@ -5135,6 +5179,8 @@ function renderSelect() {
     h += opt('电脑难度', seg('diff', diffs, L.difficulty, Net.isHost));
     h += opt('地图', seg('map', MAP_TYPES, L.mapType || 'land', Net.isHost));
     h += opt('天气与昼夜', seg('env', ENV_OPTS, L.env ?? 1, Net.isHost));
+    h += opt('地图大小', seg('size', MAP_SIZES, L.size || 'small', Net.isHost));
+    h += opt('节奏', seg('pace', PACE_OPTS, L.pace || 'fast', Net.isHost));
     h += opt('', `<button class="tbtn" data-act="randpick" style="padding:6px 14px">我选随机</button>` +
       (Net.isHost ? ` <button class="tbtn" data-act="assign" style="padding:6px 14px">随机分配国家（所有人）</button>` : ''));
     const n = L.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length;
@@ -5159,6 +5205,11 @@ $('selOpts').addEventListener('click', (e) => {
   else if (sg === 'map') {
     if (Net.mode === 'off') SEL.mapType = b.dataset.v;
     else if (Net.isHost) { Net.lobby.mapType = b.dataset.v; Net.pushLobby(); }
+    renderSelect();
+  }
+  else if (sg === 'size' || sg === 'pace') {
+    if (Net.mode === 'off') SEL[sg] = b.dataset.v;
+    else if (Net.isHost) { Net.lobby[sg] = b.dataset.v; Net.pushLobby(); }
     renderSelect();
   }
   else if (sg === 'env') {
@@ -5194,7 +5245,7 @@ function startSingle() {
   if (si) SEL.seed = parseInt(si.value, 10) || randSeed();
   const nats = resolveNations([SEL.myPick, ...Array(SEL.aiCount).fill('random')]);
   beginGame({
-    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, env: !!SEL.env, local: 0,
+    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, env: !!SEL.env, size: SEL.size, pace: SEL.pace, local: 0,
     players: nats.map((n, i) => ({ name: i === 0 ? '你' : '电脑 ' + i, nation: n, ai: i > 0, slot: i, netSlot: -1 })),
   });
 }
@@ -5207,9 +5258,10 @@ function beginGame(cfg) {
 function startGame(cfg) {
   Sound.init();
   G.seed = cfg.seed; G.difficulty = cfg.difficulty; G.mapType = cfg.mapType === 'sea' ? 'sea' : 'land';
+  G.size = cfg.size === 'small' ? 'small' : 'large'; G.pace = PACES[cfg.pace] || PACES.normal;
   envSchedule(G.seed, cfg.env !== false);
   SIGHT = sightMul();
-  generateMap(G.seed, G.mapType);
+  generateMap(G.seed, G.mapType, G.size);
   buildWorld();
   $('tabNaval').style.display = G.mapType === 'sea' ? '' : 'none';
   if (curTab === 'naval' && G.mapType !== 'sea') curTab = 'building';
@@ -5267,7 +5319,7 @@ function endGame(winner) {
   setTimeout(() => {
     $('endTitle').textContent = win ? '胜 利' : '战 败';
     $('endTitle').style.color = win ? 'var(--ui-accent)' : 'var(--red)';
-    $('endSub').textContent = `作战时间 ${fmtTime(G.time)} · 难度 ${DIFFS[G.difficulty].name} · ${G.mapType === 'sea' ? '内海' : '大陆'}地图 #${G.seed}` + (wt && !win ? ` · 胜者：${wt.name}` : '');
+    $('endSub').textContent = `作战时间 ${fmtTime(G.time)} · 难度 ${DIFFS[G.difficulty].name} · ${G.mapType === 'sea' ? '内海' : '大陆'}地图（${G.size === 'small' ? '小' : '大'}）#${G.seed} · ${G.pace.name}节奏` + (wt && !win ? ` · 胜者：${wt.name}` : '');
     const row = (label, f) => `<tr><td>${label}</td>${teams.map(T => `<td>${f(T.stats)}</td>`).join('')}</tr>`;
     $('endStats').innerHTML = `<tr><th></th>${teams.map(T => `<th style="color:${SLOT_COLORS[T.slot].css}">${esc(T.name)}${T.id === PLAYER ? '（你）' : ''}<br><small>${NATIONS[T.nation].short}${T.id === winner ? ' · 胜' : ''}</small></th>`).join('')}</tr>` +
       row('击毁单位', s => s.kills) + row('摧毁建筑', s => s.bKills) + row('损失单位', s => s.losses) +
@@ -5365,7 +5417,7 @@ const Net = {
     peer.on('open', () => {
       if (this.peer !== peer) return;
       this.mode = 'host'; this.code = code; this.mySlot = 0;
-      this.lobby = { slots: [{ kind: 'human', name: this.myName(), pick: 'random' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1 };
+      this.lobby = { slots: [{ kind: 'human', name: this.myName(), pick: 'random' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1, size: 'small', pace: 'fast' };
       this.status('');
       openSelect();
     });
@@ -5405,7 +5457,7 @@ const Net = {
     }
   },
   pushLobby() {
-    const L = { slots: this.lobby.slots.map(s => ({ kind: s.kind, name: s.name, pick: s.pick })), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType, env: this.lobby.env };
+    const L = { slots: this.lobby.slots.map(s => ({ kind: s.kind, name: s.name, pick: s.pick })), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType, env: this.lobby.env, size: this.lobby.size, pace: this.lobby.pace };
     this.broadcast({ t: 'lobby', lobby: L });
     renderSelect();
   },
@@ -5429,7 +5481,7 @@ const Net = {
     const nats = resolveNations(parts.map(p => p.s.pick || 'random'));
     let aiN = 0;
     const cfg = {
-      seed: randSeed(), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType || 'land', env: this.lobby.env !== 0,
+      seed: randSeed(), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType || 'land', env: this.lobby.env !== 0, size: this.lobby.size || 'small', pace: this.lobby.pace || 'fast',
       players: parts.map((p, k) => ({ name: p.s.kind === 'ai' ? '电脑 ' + (++aiN) : p.s.name, nation: nats[k], ai: p.s.kind === 'ai', slot: p.i, netSlot: p.s.kind === 'human' ? p.i : -1 })),
     };
     for (const c of this.conns) if (c.open) c.send({ t: 'start', cfg: { ...cfg, local: cfg.players.findIndex(p => p.netSlot === c.slot) } });
@@ -5464,7 +5516,7 @@ const Net = {
       case 'welcome':
         clearTimeout(this.joinTimer);
         this.mode = 'client'; this.mySlot = m.slot; this.code = m.code;
-        this.lobby = { slots: [{ kind: 'open' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1 };
+        this.lobby = { slots: [{ kind: 'open' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1, size: 'small', pace: 'fast' };
         this.lobby.slots[m.slot] = { kind: 'human', name: this.myName(), pick: 'random' };
         this.status('');
         openSelect();
@@ -5678,7 +5730,7 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { G, cam, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { G, cam, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 resize();
 try {
   makeIcons('north');
