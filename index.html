@@ -412,7 +412,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5; 
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.3';
+const GAME_VERSION = 'iron-2.4';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -430,7 +430,7 @@ const SLOT_COLORS = [
 // 护甲：步兵/轻甲/重甲/建筑/空中/舰船
 const ARMOR_IDX = { inf: 0, light: 1, heavy: 2, bld: 3, air: 4, naval: 5 };
 const WARHEAD = {
-  small:   [1.0, 0.45, 0.18, 0.22, 0.5, 0.15],
+  small:   [1.0, 0.45, 0.18, 0.22, 0.3, 0.15],
   ap:      [0.3, 0.9, 1.0, 0.75, 0, 0.9],
   he:      [1.0, 0.75, 0.5, 1.0, 0, 0.6],
   rocket:  [0.35, 1.0, 0.9, 0.8, 1.0, 0.75],
@@ -443,21 +443,22 @@ const WARHEAD = {
 
 // 射程单位：格
 const WEAPONS = {
-  rifle:      { dmg: 13, range: 5, cd: 0.8, wh: 'small', proj: 'bullet', ground: true, sfx: 'rifle' },
-  scoutMg:    { dmg: 11, range: 5.5, cd: 0.3, wh: 'small', proj: 'bullet', ground: true, sfx: 'mg' },
+  rifle:      { dmg: 13, range: 5, cd: 0.8, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'rifle' },
+  scoutMg:    { dmg: 11, range: 5.5, cd: 0.3, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
   atRocket:   { dmg: 62, range: 6.5, cd: 2.4, wh: 'rocket', proj: 'rocket', speed: 20, ground: true, air: true, sfx: 'rocket' },
   tankGun:    { dmg: 52, range: 6.5, cd: 1.8, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannon' },
   heavyGun:   { dmg: 58, range: 7, cd: 2.2, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannonBig', barrels: 2 },
   artillery:  { dmg: 105, range: 14, minRange: 3, cd: 4.5, wh: 'he', proj: 'arty', speed: 18, splash: 1.7, ground: true, sfx: 'arty' },
   salvo:      { dmg: 36, range: 13, minRange: 3, cd: 7, wh: 'he', proj: 'salvo', count: 6, splash: 1.2, ground: true, sfx: 'salvo' },
-  flak:       { dmg: 26, range: 8, cd: 0.5, wh: 'flak', proj: 'flak', ground: true, air: true, sfx: 'flak' },
-  heliRocket: { dmg: 40, range: 6, cd: 1.1, wh: 'rocket', proj: 'rocket', speed: 24, ground: true, sfx: 'rocket' },
-  turretMg:   { dmg: 15, range: 6.5, cd: 0.35, wh: 'small', proj: 'bullet', ground: true, sfx: 'mg' },
+  flak:       { dmg: 26, range: 9, cd: 0.5, wh: 'flak', proj: 'flak', ground: true, air: true, sfx: 'flak' },
+  heliRocket: { dmg: 32, range: 6, cd: 1.1, wh: 'rocket', proj: 'rocket', speed: 24, ground: true, sfx: 'rocket' },
+  turretMg:   { dmg: 15, range: 6.5, cd: 0.35, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
   atGun:      { dmg: 68, range: 7.5, cd: 2.0, wh: 'ap', proj: 'shell', speed: 50, ground: true, sfx: 'cannon' },
-  aaGun:      { dmg: 40, range: 10, cd: 0.45, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
-  raptorMissile: { dmg: 62, range: 7.5, cd: 1.6, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket', barrels: 2 },
+  aaGun:      { dmg: 40, range: 11, cd: 0.45, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
+  raptorMissile: { dmg: 52, range: 7.5, cd: 1.6, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket', barrels: 2 },
   fortGun:    { dmg: 95, range: 10, cd: 2.6, wh: 'ap', proj: 'shell', speed: 55, splash: 0.9, ground: true, sfx: 'cannonBig' },
-  motoMg:     { dmg: 12, range: 5, cd: 0.3, wh: 'small', proj: 'bullet', ground: true, sfx: 'mg' },
+  motoMg:     { dmg: 12, range: 5, cd: 0.3, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  hqFlak:     { dmg: 22, range: 9, cd: 0.6, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
   boatGun:    { dmg: 20, range: 7, cd: 0.4, wh: 'flak', proj: 'flak', ground: true, air: true, sfx: 'flak' },
   navalGun:   { dmg: 62, range: 8, cd: 2.0, wh: 'ap', proj: 'shell', speed: 50, ground: true, sfx: 'cannonBig' },
   torpedo:    { dmg: 150, range: 6.5, cd: 3.2, wh: 'torpedo', proj: 'torpedo', speed: 15, ground: true, navalOnly: true, sfx: 'rocket' },
@@ -476,12 +477,12 @@ const UNITS = {
   harvester: { name: '采矿车', cat: 'vehicle', cost: 1400, time: 18, hp: 1000, armor: 'heavy', speed: 3.0, sight: 5, radius: 1.3, harvester: true, turn: 3, req: ['factory', 'refinery'], desc: '采集矿石运回精炼厂换取资金。' },
   scout:     { name: '侦察车', cat: 'vehicle', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 10, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
   tank:      { name: '主战坦克', cat: 'vehicle', cost: 900, time: 13, hp: 520, armor: 'heavy', speed: 4.2, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '主力装甲单位，攻守均衡。' },
-  aa:        { name: '防空车', cat: 'vehicle', cost: 700, time: 10, hp: 300, armor: 'light', speed: 5.0, sight: 9, weapon: 'flak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联高射炮，专门克制空中单位。' },
+  aa:        { name: '防空车', cat: 'vehicle', cost: 600, time: 10, hp: 300, armor: 'light', speed: 5.0, sight: 9, weapon: 'flak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联高射炮，专门克制空中单位。' },
   artillery: { name: '自行火炮', cat: 'vehicle', cost: 1000, time: 15, hp: 230, armor: 'light', speed: 3.4, sight: 7, weapon: 'artillery', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '超远射程范围杀伤，无法攻击近处目标。' },
   heavy:     { name: '“堡垒”重坦', cat: 'vehicle', cost: 1700, time: 22, hp: 1150, armor: 'heavy', speed: 3.0, sight: 8, weapon: 'heavyGun', radius: 1.5, turret: true, turn: 1.8, nation: 'north', req: ['factory', 'tech'], desc: '北岭专属。双管重炮，装甲极厚。' },
   salvo:     { name: '“沙暴”火箭车', cat: 'vehicle', cost: 1500, time: 20, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, nation: 'south', req: ['factory', 'tech'], desc: '赤砂专属。远程火箭齐射。' },
-  heli:      { name: '武装直升机', cat: 'air', cost: 1200, time: 16, hp: 320, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，只能被防空武器和火箭攻击。' },
-  raptor:    { name: '“雷枭”攻击直升机', cat: 'air', cost: 1800, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, nation: 'hawk', req: ['helipad', 'tech'], desc: '灰鹰专属。重装甲攻击直升机，双联反装甲导弹。' },
+  heli:      { name: '武装直升机', cat: 'air', cost: 1400, time: 16, hp: 320, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭，机枪也能造成少量伤害。' },
+  raptor:    { name: '“雷枭”攻击直升机', cat: 'air', cost: 2000, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, nation: 'hawk', req: ['helipad', 'tech'], desc: '灰鹰专属。重装甲攻击直升机，双联反装甲导弹。' },
   // 海军（只在内海地图出现）
   pboat:     { name: '巡逻艇', cat: 'naval', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '快速小艇，速射炮能同时打地面和空中，克制步兵和直升机。' },
   destroyer: { name: '驱逐舰', cat: 'naval', cost: 1300, time: 18, hp: 950, armor: 'naval', speed: 4.6, sight: 9, weapon: 'navalGun', radius: 2.0, turret: true, turn: 1.6, naval: true, req: ['shipyard', 'radar'], desc: '主力战舰，穿甲主炮克制舰船和岸边装甲。' },
@@ -494,7 +495,7 @@ const UNITS = {
 };
 
 const BUILDINGS = {
-  hq:       { name: '总部', w: 3, h: 3, hp: 4000, power: 20, cost: 0, time: 0, sight: 10, desc: '基地核心，负责建造所有建筑。总部被摧毁就立即战败！战略导弹对总部无效，必须派部队攻下来。' },
+  hq:       { name: '总部', w: 3, h: 3, hp: 4000, power: 20, cost: 0, time: 0, sight: 10, weapon: 'hqFlak', desc: '基地核心，负责建造所有建筑，自带一门防空炮。总部被摧毁就立即战败！战略导弹对总部无效，必须派部队攻下来。' },
   power:    { name: '发电站', cat: 'building', w: 2, h: 2, hp: 750, power: 100, cost: 300, time: 6, sight: 5, req: [], desc: '提供 100 电力。' },
   refinery: { name: '精炼厂', cat: 'building', w: 3, h: 3, hp: 1200, power: -30, cost: 2000, time: 18, sight: 6, req: ['power'], desc: '处理矿石，附送一辆采矿车。' },
   barracks: { name: '兵营', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 500, time: 8, sight: 5, req: ['power'], desc: '训练步兵。' },
@@ -502,10 +503,10 @@ const BUILDINGS = {
   radar:    { name: '雷达站', cat: 'building', w: 2, h: 2, hp: 1000, power: -40, cost: 1000, time: 12, sight: 10, req: ['factory'], desc: '启用小地图，解锁高级单位。' },
   helipad:  { name: '直升机坪', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1200, time: 12, sight: 5, req: ['radar'], desc: '生产武装直升机。' },
   tech:     { name: '科技中心', cat: 'building', w: 2, h: 2, hp: 900, power: -60, cost: 1500, time: 18, sight: 5, req: ['radar'], desc: '解锁专属单位和战略导弹井。' },
-  silo:     { name: '战略导弹井', cat: 'building', w: 2, h: 2, hp: 1300, power: -100, cost: 3000, time: 30, sight: 5, max: 1, req: ['tech'], desc: '每 8 分钟可发射一枚战略导弹。' },
+  silo:     { name: '战略导弹井', cat: 'building', w: 2, h: 2, hp: 1300, power: -100, cost: 4000, time: 30, sight: 5, max: 1, req: ['tech'], desc: '定期发射一枚战略导弹（标准节奏 11 分钟，快速节奏约 6.6 分钟），对总部无效。' },
   mgTurret: { name: '机枪塔', cat: 'defense', w: 1, h: 1, hp: 500, power: -10, cost: 400, time: 6, sight: 7, weapon: 'turretMg', defense: true, req: ['barracks'], desc: '克制步兵。' },
   atTurret: { name: '反装甲炮塔', cat: 'defense', w: 1, h: 1, hp: 750, power: -25, cost: 800, time: 10, sight: 8, weapon: 'atGun', defense: true, req: ['factory'], desc: '克制装甲。' },
-  aaGun:    { name: '防空炮', cat: 'defense', w: 1, h: 1, hp: 550, power: -25, cost: 700, time: 9, sight: 10, weapon: 'aaGun', defense: true, req: ['radar'], desc: '只能攻击空中单位。' },
+  aaGun:    { name: '防空炮', cat: 'defense', w: 1, h: 1, hp: 550, power: -25, cost: 550, time: 9, sight: 10, weapon: 'aaGun', defense: true, req: ['radar'], desc: '只能攻击空中单位。' },
   fortress: { name: '“长城”要塞炮', cat: 'defense', w: 2, h: 2, hp: 1600, power: -40, cost: 1800, time: 20, sight: 11, weapon: 'fortGun', defense: true, nation: 'gold', req: ['tech'], desc: '金穗专属。重型要塞炮，射程远、威力大。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
@@ -529,9 +530,9 @@ const NATIONS = {
   gold: { name: '金穗联合体', short: '金穗', tag: '经济与防御', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1.2, bldCostMul: 0.85, airCostMul: 1, airHpMul: 1,
     unique: 'fortress', uniques: ['fortress', 'minePlatform'], ability: 'grant',
     traits: ['采矿收入 +20%', '建筑造价 -15%'], camo: { base: 0x63676a, dark: 0x45484a, uni: 0x5c6062 } },
-  hawk: { name: '灰鹰自治区', short: '灰鹰', tag: '空中优势', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 0.75, airHpMul: 1.2,
+  hawk: { name: '灰鹰自治区', short: '灰鹰', tag: '空中优势', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 0.85, airHpMul: 1.1,
     unique: 'raptor', uniques: ['raptor', 'airBarracks'], ability: 'airdrop',
-    traits: ['直升机造价 -25%', '直升机生命 +20%'], camo: { base: 0x9a9c94, dark: 0x6c6e68, uni: 0x8c8e86 } },
+    traits: ['飞行器造价 -15%', '飞行器生命 +10%'], camo: { base: 0x9a9c94, dark: 0x6c6e68, uni: 0x8c8e86 } },
 };
 // 国家技能（冷却单位：秒；开局先冷却一轮）
 const ABILITIES = {
@@ -565,7 +566,8 @@ const PACES = {
   normal: { name: "标准", credits: 5000, build: 1, income: 1, superMul: 1, abil: 1, ai: 1 },
   fast:   { name: "快速", credits: 10000, build: 1.7, income: 1.5, superMul: 0.6, abil: 0.7, ai: 1.7 },
 };
-const superMax = () => 8 * 60 * TPS * G.pace.superMul;
+const NUKE_R = 4.5;   // 战略导弹爆炸半径（格）
+const superMax = () => 11 * 60 * TPS * G.pace.superMul;
 const abCd = ab => ab.cd * G.pace.abil;
 
 const HARV_CAP = 700;
@@ -1402,6 +1404,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(0.7, 0.5, 0.5, C.steel, 2.3, 0.5, -2.3), B(0.7, 0.5, 0.5, C.steel, 1.5, 0.5, -2.3));
       const dish = new THREE.CylinderGeometry(0.75, 0.15, 0.35, 14, 1, true); dish.rotateX(-1.0);
       m.parts.dish = { geo: MG([colorGeo(dish, C.white), CY(0.03, 0.03, 0.7, C.steel, 0, 0.1, 0.2, 4, -1.0)]), x: -1.6, y: 3.95, z: -1.5, spin: 0.6 };
+      m.muzzle = { y: 3.4, z: 0 };   // 总部防空炮从屋顶开火
       break;
     }
     case 'power': {
@@ -3376,13 +3379,13 @@ function launchMissile(T, x, z) {
 }
 function missileVisual(silo, x, z) {
   silo.doorOpen = 6;
-  const w = { dmg: 950, wh: 'nuke', speed: 1, splash: 6 };
+  const w = { dmg: 800, wh: 'nuke', speed: 1, splash: NUKE_R };
   spawnBallistic('missile', silo.x, 0.8, silo.z, x, z, w, silo, 1, 0, 0, 7);
   projectiles[projectiles.length - 1].arc = 90;
   Sound.play('launch');
 }
 function nukeImpact(p) {
-  splashDamage(p.x, p.z, 6 * TILE, p.dmg, 'nuke', p.team, p.src);
+  splashDamage(p.x, p.z, NUKE_R * TILE, p.dmg, 'nuke', p.team, p.src);
   reveals.push({ x: p.x, z: p.z, r: 9, until: G.time + 6 });
   const was = revealAll;
   revealAll = true;
@@ -4403,7 +4406,7 @@ function drawOverlay() {
     m.t += 1 / 60;
     if (m.t > m.life) { markers.splice(i, 1); continue; }
     const f = m.t / m.life;
-    const r = m.color ? (1.6 * (1 - f) + 0.3) : 12 * (0.6 + 0.4 * Math.sin(m.t * 8));
+    const r = m.color ? (1.6 * (1 - f) + 0.3) : NUKE_R * TILE * (0.6 + 0.4 * Math.sin(m.t * 8));
     octx.strokeStyle = m.color || 'rgba(255,60,40,0.9)';
     octx.globalAlpha = m.color ? 1 - f : 0.9;
     octx.lineWidth = m.color ? 2 : 3;
@@ -4935,7 +4938,7 @@ const GUIDE = [
         <ul>
           <li>敌人步兵多：用<b>步枪兵</b>、<b>侦察车</b>、<b>机枪塔</b>、<b>自行火炮</b>。</li>
           <li>敌人坦克多：用<b>主战坦克</b>、<b>反坦克兵</b>、<b>反装甲炮塔</b>。</li>
-          <li>敌人直升机来了：用<b>防空车</b>、<b>防空炮</b>、<b>反坦克兵</b>（火箭可以打飞机）。</li>
+          <li>敌人直升机来了：用<b>防空车</b>、<b>防空炮</b>、<b>反坦克兵</b>（火箭可以打飞机）。步枪兵、机枪塔也能对直升机造成少量伤害，总部自带一门防空炮。</li>
           <li><b>自行火炮</b>和<b>沙暴火箭车</b>射程很远但很脆，躲在坦克后面用；它们打不到太近的目标。</li>
           <li>拆基地：坦克、火炮、反坦克兵对建筑伤害都不错，机枪基本打不动建筑。</li>
           <li>敌人舰队靠岸：<b>反装甲炮塔</b>、坦克、<b>攻击机</b>都能打舰船；潜艇只能用<b>驱逐舰</b>、<b>潜艇</b>对付。</li>
