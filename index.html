@@ -36,7 +36,7 @@ button { font-family: inherit; }
 }
 #topbar, #topbar * { white-space: nowrap; }
 #topbar { overflow: hidden; }
-@media (max-width: 960px) { #topbar .logo, #topbar .tb-label { display: none; } #topbar { gap: 10px; } #powerBar { width: 90px; } }
+@media (max-width: 1180px) { #topbar .logo, #topbar .tb-label { display: none; } #topbar { gap: 12px; } #powerBar { width: 90px; } }
 #topbar .logo { font-weight: bold; letter-spacing: 3px; color: var(--ui-accent); }
 #topbar .faction { color: var(--blue); font-size: 13px; }
 .tb-item { display: flex; align-items: center; gap: 6px; }
@@ -298,6 +298,7 @@ button { font-family: inherit; }
   <div class="tb-item"><span class="tb-label">资金</span><span id="credits">$0</span></div>
   <div class="tb-item"><span class="tb-label">电力</span><div id="powerBar"><div id="powerFill"></div><div id="powerUseMark"></div></div><span id="powerText">0/0</span></div>
   <div class="spacer"></div>
+  <div class="tb-item" id="envItem" title="战场时间与天气：夜晚和恶劣天气会缩短视野"><span id="envInfo" style="font-size:12px;white-space:nowrap"></span></div>
   <div class="tb-item"><span class="tb-label">时间</span><span id="timer">00:00</span></div>
   <div class="tb-item" id="speedBtns">
     <button class="tbtn active" data-speed="1">1x</button><button class="tbtn" data-speed="2">2x</button><button class="tbtn" data-speed="3">3x</button>
@@ -411,7 +412,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4;
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.1';
+const GAME_VERSION = 'iron-2.2';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -636,7 +637,49 @@ sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
-const SUN_OFFSET = new THREE.Vector3(-45, 85, 35);
+const SUN_OFFSET = new THREE.Vector3(-45, 85, 35);   // 太阳相对镜头的位置，由 updateEnvironment 每帧更新
+// 远景雾：常驻一个 Fog 对象（关闭时推到很远），避免中途加减雾导致所有材质重新编译
+scene.fog = new THREE.Fog(0x8a9096, 1e4, 2e4);
+
+// =====================================================================
+// 天气与昼夜：只由 G.time 和地图种子决定，联机时各方自动一致
+// =====================================================================
+const DAY_LEN = 20 * 60, START_HOUR = 7;
+const ENV = { on: false, sched: [], light: 1, rain: 0, fogW: 0, hour: 12, flash: 0, boltT: 8, thunderT: -1, phase: '', kind: 'clear' };
+let SIGHT = 1;   // 当前视野倍率（每 tick 更新）
+function envSchedule(seed, on) {
+  ENV.on = on; ENV.sched = []; ENV.phase = ''; ENV.kind = 'clear';
+  if (!on) return;
+  const rng = mulberry32((seed * 7919) ^ 0x5eed);
+  let t = 150 + rng() * 150;   // 开局先晴一会儿
+  ENV.sched.push({ t0: 0, t1: t, kind: 'clear' });
+  while (t < 5 * 3600) {
+    const len = 240 + rng() * 180, r = rng(), kind = r < 0.55 ? 'clear' : r < 0.8 ? 'rain' : 'fog';
+    const last = ENV.sched[ENV.sched.length - 1];
+    // 连续相同的天气合并成一段，避免中途渐弱又渐强
+    if (last.kind === kind) last.t1 = t + len; else ENV.sched.push({ t0: t, t1: t + len, kind });
+    t += len;
+  }
+}
+// 游戏内时钟（0–24 小时）
+const timeOfDay = (t = G.time) => ENV.on ? (START_HOUR + t / DAY_LEN * 24) % 24 : 12;
+// 天气种类和强度 w（0–1，转换时 30 秒渐变）
+function weatherAt(t = G.time) {
+  if (!ENV.on || !ENV.sched.length) return { kind: 'clear', w: 0 };
+  let s = ENV.sched[ENV.sched.length - 1];
+  for (const x of ENV.sched) if (t >= x.t0 && t < x.t1) { s = x; break; }
+  if (s.kind === 'clear') return { kind: 'clear', w: 0 };
+  return { kind: s.kind, w: clamp(Math.min((t - s.t0) / 30, (s.t1 - t) / 30), 0, 1) };
+}
+// 天亮程度：0 深夜 / 1 白天
+const daylight = h => clamp((Math.sin((h - 6) / 12 * Math.PI) + 0.15) / 0.45, 0, 1);
+function sightMul() {
+  if (!ENV.on) return 1;
+  const wt = weatherAt();
+  let m = 0.65 + 0.35 * daylight(timeOfDay());
+  if (wt.kind === 'rain') m *= 1 - 0.15 * wt.w; else if (wt.kind === 'fog') m *= 1 - 0.35 * wt.w;
+  return Math.max(0.5, m);
+}
 
 // =====================================================================
 // 战争迷雾（着色器注入）
@@ -1675,6 +1718,166 @@ function addScorch(x, z, s) {
   scorchIdx = (scorchIdx + 1) % SCORCH_MAX;
 }
 
+// ---------------------------------------------------------------------
+// 天气与昼夜的画面：光照、远景雾、雨丝、闪电、夜间灯光、爆炸照明
+// ---------------------------------------------------------------------
+const RAIN_N = 1800;
+const rainPos = new Float32Array(RAIN_N * 6), rainSeed = Float32Array.from({ length: RAIN_N * 3 }, () => Math.random());
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3).setUsage(THREE.DynamicDrawUsage));
+const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xb4c2d0, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+rainLines.frustumCulled = false; rainLines.visible = false; rainLines.renderOrder = 5;
+scene.add(rainLines);
+// 夜间灯光点（建筑灯、车灯、航行灯），每帧重建
+const GLOW_N = 1600;
+const glowPos = new Float32Array(GLOW_N * 3), glowCol = new Float32Array(GLOW_N * 4), glowSize = new Float32Array(GLOW_N);
+const glowGeo = new THREE.BufferGeometry();
+glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3).setUsage(THREE.DynamicDrawUsage));
+glowGeo.setAttribute('aColor', new THREE.BufferAttribute(glowCol, 4).setUsage(THREE.DynamicDrawUsage));
+glowGeo.setAttribute('aSize', new THREE.BufferAttribute(glowSize, 1).setUsage(THREE.DynamicDrawUsage));
+const glowPts = new THREE.Points(glowGeo, new THREE.ShaderMaterial({
+  uniforms: { uScale: { value: 500 } },
+  vertexShader: `attribute float aSize; attribute vec4 aColor; varying vec4 vColor; uniform float uScale;
+    void main(){ vColor = aColor; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `varying vec4 vColor; void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard;
+    float a = pow(smoothstep(0.5, 0.0, d), 1.6); gl_FragColor = vec4(vColor.rgb, vColor.a * a); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+}));
+glowPts.frustumCulled = false; glowPts.renderOrder = 3;
+scene.add(glowPts);
+// 爆炸照明：固定 4 盏点光源轮流使用（数量不变，不会触发着色器重编译）
+const flashLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xffa050, 0, 26, 1.6); scene.add(l); return l; });
+function flashLight(x, z, scale) {
+  if (G.state !== 'playing' || Math.hypot(x - cam.x, z - cam.z) > cam.h * 1.8) return;
+  let l = flashLights[0];
+  for (const o of flashLights) if (o.intensity < l.intensity) l = o;
+  l.position.set(x, 2.5 + scale, z);
+  l.intensity = 90 * scale * (0.5 + 1.2 * (1 - ENV.light));
+}
+const _ca = new THREE.Color(), _cb = new THREE.Color();
+const mixHex = (a, b, t, out) => out.set(a).lerp(_cb.set(b), clamp(t, 0, 1));
+function envPhase(h, l) { return l >= 0.95 ? 'day' : l <= 0.05 ? 'night' : h < 12 ? 'dawn' : 'dusk'; }
+// 时段和天气变化时提示
+function envNotify() {
+  if (!ENV.on || G.state !== 'playing') return;
+  const ph = envPhase(ENV.hour, ENV.light);
+  if (ph !== ENV.phase) {
+    if (ENV.phase) notify({ dusk: '天色渐暗，视野开始缩短', night: '夜幕降临：视野降低，注意夜袭', dawn: '东方发白，天快亮了', day: '天亮了，视野恢复正常' }[ph], ph === 'night' ? 'bad' : '');
+    ENV.phase = ph;
+  }
+  const wt = weatherAt(), kind = wt.w > 0.5 ? wt.kind : wt.w > 0 ? ENV.kind : 'clear';
+  if (kind !== ENV.kind) {
+    notify(kind === 'rain' ? '开始下雨：视野略微降低' : kind === 'fog' ? '大雾来袭：能见度大幅降低' : ENV.kind === 'rain' ? '雨停了' : '雾散了', kind === 'clear' ? 'good' : 'bad');
+    ENV.kind = kind;
+  }
+}
+let envFrame = 0;
+function updateEnvironment(rdt) {
+  envFrame++;
+  const h = timeOfDay(), l = daylight(h), wt = weatherAt();
+  const rain = wt.kind === 'rain' ? wt.w : 0, fogW = wt.kind === 'fog' ? wt.w : 0;
+  ENV.hour = h; ENV.light = l; ENV.rain = rain; ENV.fogW = fogW;
+  if (!Net.isClient && G.state === 'playing') SIGHT = sightMul();
+  if (envFrame % 30 === 0) envNotify();
+  // 太阳（白天）与月亮（夜晚）的方向平滑过渡
+  if (ENV.on) {
+    const a = clamp((h - 6) / 12, -0.1, 1.1) * Math.PI;
+    const sx = Math.cos(a) * 85, sy = Math.max(18, Math.sin(a) * 95);
+    SUN_OFFSET.set(lerp(-40, sx, l), lerp(80, sy, l), 35);
+  } else SUN_OFFSET.set(-45, 85, 35);
+  const e = Math.sin((h - 6) / 12 * Math.PI), dusk = ENV.on ? clamp(1 - Math.abs(e - 0.08) / 0.3, 0, 1) : 0;
+  const murk = rain * 0.5 + fogW * 0.6;
+  mixHex(0x9db4e8, 0xfff0d6, l, sun.color).lerp(_cb.set(0xff9a50), dusk * 0.75).lerp(_cb.set(0xb8c0c8), murk);
+  sun.intensity = lerp(1.3, 2.7, l) * (1 - 0.4 * rain - 0.35 * fogW);
+  // 闪电
+  if (rain > 0.6) {
+    ENV.boltT -= rdt;
+    if (ENV.boltT <= 0) { ENV.boltT = rnd(7, 20); ENV.flash = 1; ENV.thunderT = rnd(0.7, 2.2); }
+  }
+  if (ENV.thunderT > 0 && (ENV.thunderT -= rdt) <= 0) Sound.play('thunder');
+  const fl = ENV.flash > 0 ? ENV.flash * (0.6 + 0.4 * Math.sin(ENV.flash * 40)) : 0;
+  ENV.flash = Math.max(0, ENV.flash - rdt * 3.5);
+  mixHex(0x6a7cb0, 0xc8d2dc, l, hemi.color).lerp(_cb.set(0x8a929a), murk);
+  mixHex(0x2a2e3a, 0x4a4030, l, hemi.groundColor);
+  hemi.intensity = lerp(1.05, 1.15, l) * (1 - 0.2 * rain) + fl * 2.2;
+  renderer.toneMappingExposure = lerp(1.2, 1.12, l);
+  // 远景雾：雾天浓、雨天淡
+  const f = Math.max(fogW, rain * 0.45);
+  mixHex(0x161a22, 0x8c949a, l, scene.fog.color).multiplyScalar(1 - rain * 0.3);
+  if (f < 0.01) { scene.fog.near = 1e4; scene.fog.far = 2e4; }
+  else { scene.fog.near = cam.h * lerp(4.5, 0.7, f); scene.fog.far = cam.h * lerp(9, 2.3, f); }
+  // 雨丝：跟随镜头的斜线
+  const nRain = Math.floor(RAIN_N * rain);
+  rainLines.visible = nRain > 0;
+  if (nRain > 0) {
+    ENV.rt = (ENV.rt || 0) + (G.paused ? 0 : rdt);
+    const HX = cam.h * 1.5, z0 = -cam.h * 1.1, z1 = cam.h * 0.9, H = 34;
+    for (let i = 0; i < nRain; i++) {
+      const s0 = rainSeed[i * 3], s1 = rainSeed[i * 3 + 1], s2 = rainSeed[i * 3 + 2];
+      const y = H - ((ENV.rt * (30 + s2 * 10) + s1 * H) % H);
+      const x = cam.x + (s0 * 2 - 1) * HX + y * 0.25, z = cam.z + lerp(z0, z1, s2);
+      rainPos.set([x, y, z, x - 0.35, y - 1.5, z], i * 6);
+    }
+    rainGeo.attributes.position.needsUpdate = true;
+    rainGeo.setDrawRange(0, nRain * 2);
+    rainLines.material.opacity = 0.18 + 0.3 * rain * (0.6 + 0.4 * l);
+  }
+  if (envFrame % 10 === 0) Sound.rainLoop(G.state === 'playing' && !G.over ? rain : 0);
+  // 爆炸照明衰减
+  for (const o of flashLights) if (o.intensity > 0) o.intensity = o.intensity < 0.5 ? 0 : o.intensity * Math.exp(-rdt * 9);
+  updateGlows(1 - l);
+}
+// 夜间灯光：天越黑越亮，只画玩家看得见的对象
+function updateGlows(dark) {
+  let n = 0;
+  const add = (x, y, z, r, g, b, a, s) => {
+    if (n >= GLOW_N) return;
+    glowPos[n * 3] = x; glowPos[n * 3 + 1] = y; glowPos[n * 3 + 2] = z;
+    glowCol[n * 4] = r; glowCol[n * 4 + 1] = g; glowCol[n * 4 + 2] = b; glowCol[n * 4 + 3] = a * dark;
+    glowSize[n] = s; n++;
+  };
+  if (dark > 0.03 && G.state === 'playing') {
+    const vx0 = cam.x - cam.h * 1.8, vx1 = cam.x + cam.h * 1.8, vz0 = cam.z - cam.h * 1.6, vz1 = cam.z + cam.h * 1.2;
+    const blink = (G.time * 1.5) % 1 < 0.5;
+    for (const b of buildings) {
+      if (!b.alive || b.x < vx0 || b.x > vx1 || b.z < vz0 || b.z > vz1 || !canSeeEntity(b) || b.buildAnim < 1) continue;
+      const lit = b.team < 0 || !teams[b.team].lowPower;
+      const D = b.h * TILE / 2, W = b.w * TILE;
+      if (b.def.defense) { add(b.x, 1.6, b.z, 1, 0.3, 0.2, lit && blink ? 0.9 : 0.25, 0.5); continue; }
+      const k = lit ? 1 : 0.25;
+      add(b.x - W * 0.28, 1.1, b.z + D + 0.05, 1, 0.78, 0.45, 0.95 * k, 0.55);
+      add(b.x + W * 0.28, 1.1, b.z + D + 0.05, 1, 0.78, 0.45, 0.95 * k, 0.55);
+      add(b.x, 0.15, b.z + D + 1.2, 1, 0.7, 0.4, 0.22 * k, W * 0.9);
+    }
+    for (const u of units) {
+      if (!u.alive || u.def.inf || !u.mesh.visible) continue;
+      const p = u.mesh.position;
+      if (p.x < vx0 || p.x > vx1 || p.z < vz0 || p.z > vz1) continue;
+      const a = u.mesh.rotation.y, sn = Math.sin(a), cs = Math.cos(a);
+      if (u.def.air) {
+        // 航行灯：左红右绿，机腹频闪
+        const r = u.radius;
+        add(p.x - cs * r, p.y, p.z + sn * r, 1, 0.15, 0.1, 0.9, 0.45);
+        add(p.x + cs * r, p.y, p.z - sn * r, 0.2, 1, 0.3, 0.9, 0.45);
+        if (blink) add(p.x, p.y - 0.4, p.z, 1, 1, 1, 0.8, 0.5);
+        continue;
+      }
+      const fr = u.radius * 0.95;
+      if (u.def.naval) {
+        add(p.x, p.y + 2.0, p.z, 1, 0.9, 0.7, 0.8, 0.5);
+        add(p.x + sn * (fr + 2.5), 0.1, p.z + cs * (fr + 2.5), 0.9, 0.95, 1, 0.16, 4.5);
+        continue;
+      }
+      // 车灯：车头两个亮点 + 前方地面的光斑
+      for (const s of [-1, 1]) add(p.x + sn * fr + cs * 0.32 * s, 0.75, p.z + cs * fr - sn * 0.32 * s, 1, 0.95, 0.8, 1, 0.4);
+      add(p.x + sn * (fr + 2.6), 0.12, p.z + cs * (fr + 2.6), 1, 0.92, 0.75, 0.2, 4.2);
+    }
+  }
+  glowGeo.setDrawRange(0, n);
+  glowPts.visible = n > 0;
+  if (n) { glowGeo.attributes.position.needsUpdate = true; glowGeo.attributes.aColor.needsUpdate = true; glowGeo.attributes.aSize.needsUpdate = true; }
+}
+
 // 特效函数
 let shake = 0;
 function fxMuzzle(x, y, z, ang, big) {
@@ -1700,7 +1903,7 @@ function fxExplosion(x, y, z, scale = 1) {
     const a = Math.random() * 6.28, sp = rnd(3, 9) * scale;
     pFire.spawn(x, y + 0.3, z, Math.cos(a) * sp, rnd(3, 8), Math.sin(a) * sp, rnd(0.5, 1.0), 0.3, 0.15, 1, 0.75, 0.3, 1, 14, 0.5);
   }
-  if (scale >= 0.9) addScorch(x, z, 2.2 * scale);
+  if (scale >= 0.9) { addScorch(x, z, 2.2 * scale); flashLight(x, z, scale); }
 }
 function fxHit(x, y, z) {
   if (!visibleAt(x, z)) return;
@@ -1812,7 +2015,20 @@ const Sound = {
       case 'error': this.tone(0.15, 0.2, 'square', 220, 160); break;
       case 'ack': this.tone(0.08, 0.06, 'triangle', 520, 0); this.tone(0.08, 0.06, 'triangle', 780, 0, 0.06); break;
       case 'launch': this.burst(0.8, 3, 'bandpass', 300, 1500, 0.5); this.tone(0.3, 3, 'sawtooth', 80, 200); break;
+      case 'thunder': this.burst(0.9, 3.2, 'lowpass', 420, 35, 0.4); this.burst(0.5, 1.6, 'lowpass', 900, 60, 0.5, 0.15); this.tone(0.35, 2.5, 'sine', 45, 22); break;
     }
+  },
+  // 持续的雨声：循环噪声 → 低通 → 音量随雨势变化
+  rainLoop(level) {
+    if (!this.ctx) return;
+    if (!this.rain) {
+      const c = this.ctx, src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800; f.Q.value = 0.3;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(this.master); src.start();
+      this.rain = g;
+    }
+    this.rain.gain.setTargetAtTime(this.enabled ? level * 0.16 : 0, this.ctx.currentTime, 0.4);
   },
 };
 
@@ -2291,7 +2507,8 @@ function updateTarget(u) {
     }
   }
   if (!u.target && (G.tick + u.id) % 6 === 0) {
-    const r = o.type === 'move' ? (u.hasTurret || u.def.air ? w.range * TILE : 0) : u.def.sight * TILE;
+    // 夜晚和恶劣天气下视野缩短，自动索敌的距离也随之缩短（但不小于武器射程的 70%）
+    const r = o.type === 'move' ? (u.hasTurret || u.def.air ? w.range * TILE : 0) : Math.max(u.def.sight * SIGHT, Math.min(u.def.sight, w.range * 0.7)) * TILE;
     if (r > 0) { const nt = findTarget(u, r); if (nt) u.target = nt; }
   }
 }
@@ -3260,8 +3477,9 @@ function updateFog() {
       if (nx >= 0 && nz >= 0 && nx < MAP && nz < MAP) vis[nz * MAP + nx] = 1;
     }
   };
-  for (const u of units) if (u.alive && u.team === PLAYER) stamp(u.x, u.z, u.def.sight);
-  for (const b of buildings) if (b.alive && b.team === PLAYER) stamp(b.x, b.z, b.def.sight + Math.max(b.w, b.h) / 2);
+  SIGHT = sightMul();
+  for (const u of units) if (u.alive && u.team === PLAYER) stamp(u.x, u.z, u.def.sight * SIGHT);
+  for (const b of buildings) if (b.alive && b.team === PLAYER) stamp(b.x, b.z, b.def.sight * SIGHT + Math.max(b.w, b.h) / 2);
   for (const r of reveals) if (r.until > G.time) stamp(r.x, r.z, r.r);
   for (let i = 0; i < MAP * MAP; i++) {
     if (vis[i]) explored[i] = 1;
@@ -3276,6 +3494,7 @@ function updateFog() {
 // =====================================================================
 function gameTick() {
   G.tick++; G.time = G.tick / TPS;
+  if (G.tick % 20 === 0) SIGHT = sightMul();
   for (const u of units) { u.px = u.x; u.pz = u.z; u.py = u.y; u.pangle = u.angle; u.pturret = u.turretAngle; }
   rebuildHash();
   processPathQueue();
@@ -3643,7 +3862,7 @@ function resize() {
   camera.aspect = vw / vh; camera.updateProjectionMatrix();
   overlay.width = vw; overlay.height = vh;
   const s = vh * renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-  pFire.mat.uniforms.uScale.value = s; pSmoke.mat.uniforms.uScale.value = s;
+  pFire.mat.uniforms.uScale.value = s; pSmoke.mat.uniforms.uScale.value = s; glowPts.material.uniforms.uScale.value = s;
 }
 window.addEventListener('resize', resize);
 function updateCamera(dt) {
@@ -4483,6 +4702,16 @@ function uiFrame() {
   if (Math.abs(T.credits - shownCredits) < 1) shownCredits = T.credits;
   $('credits').textContent = '$' + Math.floor(shownCredits);
   $('timer').textContent = fmtTime(G.time);
+  if (uiFrameN % 15 === 0) {
+    $('envItem').style.display = ENV.on ? '' : 'none';
+    if (ENV.on) {
+      const h = ENV.hour, ph = envPhase(h, ENV.light), wt = weatherAt();
+      const icon = { day: '☀', dusk: '🌇', night: '🌙', dawn: '🌅' }[ph];
+      const wn = wt.w > 0.3 ? (wt.kind === 'rain' ? '雨' : '雾') : '晴';
+      $('envInfo').textContent = `${icon}${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor(h % 1 * 60)).padStart(2, '0')} ${wn}${SIGHT < 0.995 ? ' 视野' + Math.round(SIGHT * 100) + '%' : ''}`;
+      $('envInfo').style.color = SIGHT < 0.8 ? '#ffb070' : '';
+    }
+  }
   if (uiFrameN % 5 === 0) {
     const max = Math.max(T.powerProd, T.powerUse, 1) * 1.15;
     $('powerFill').style.width = (T.powerProd / max * 100) + '%';
@@ -4690,6 +4919,29 @@ const GUIDE = [
       <div class="gtip">军衔显示在单位头顶左侧（金色 V 形），敌人的老兵也能看到。选中单位后，下方面板会显示当前经验。</div>`,
   },
   {
+    id: 'env', title: '天气与昼夜', html: () => `
+      <p>战场有昼夜交替和天气变化（开局选项“天气与昼夜”可以关闭）。顶栏会显示当前时间、天气和<b>视野倍率</b>。</p>
+      <h3>昼夜</h3>
+      <ul>
+        <li>游戏里一天等于实际 <b>20 分钟</b>，从早上 7 点开始。大约 13 分钟后入夜，夜晚持续约 6 分钟。</li>
+        <li>夜里所有单位和建筑的视野降到 <b>65%</b>，单位也要靠得更近才会自动开火（武器射程不变）。</li>
+        <li>夜里建筑亮灯、车辆开车灯、飞机闪航行灯，炮火和爆炸会照亮周围。</li>
+      </ul>
+      <h3>天气</h3>
+      <table class="gtable"><tr><th>天气</th><th>出现概率</th><th>视野</th><th>效果</th></tr>
+        <tr><td>晴</td><td>约 55%</td><td>不变</td><td>—</td></tr>
+        <tr><td>雨</td><td>约 25%</td><td>−15%</td><td>天色变暗，大雨时有闪电雷声</td></tr>
+        <tr><td>雾</td><td>约 20%</td><td>−35%</td><td>远处朦胧一片</td></tr>
+      </table>
+      <p>夜晚和天气的效果会叠加，视野最低降到 50%（例如雾夜）。每段天气持续 4–7 分钟。</p>
+      <h3>战术建议</h3>
+      <ul>
+        <li>夜里和雾天适合偷袭：敌人看不远，基地防御塔会更晚发现你。</li>
+        <li>反过来，入夜前多造防御塔、派侦察车在外围放哨，避免被摸进基地。</li>
+        <li>远程单位（自行火炮、巡洋舰）在夜里需要侦察车或其他单位帮忙照亮目标。</li>
+      </ul>`,
+  },
+  {
     id: 'navy', title: '海战', html: () => {
       let h = `<p>开局时“地图”选<b>内海（海战）</b>：地图中央是一片大海，每个基地旁边都有一条通到海里的水道和海湾。</p>
       <h3>怎么造船</h3>
@@ -4802,7 +5054,8 @@ $('btnAgain').addEventListener('click', () => location.reload());
 // =====================================================================
 // 菜单：主菜单 / 联机 / 国家选择
 // =====================================================================
-const SEL = { myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', seed: randSeed() };
+const SEL = { myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', env: 1, seed: randSeed() };
+const ENV_OPTS = [[1, '开'], [0, '关（永远晴天白天）']];
 function randSeed() { return Math.floor(Math.random() * 99999) + 1; }
 const hexCss = h => '#' + h.toString(16).padStart(6, '0');
 function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -4864,6 +5117,7 @@ function renderSelect() {
     h += opt('电脑对手', seg('ai', [[1, '1 个'], [2, '2 个'], [3, '3 个']], SEL.aiCount));
     h += opt('电脑难度', seg('diff', diffs, SEL.difficulty));
     h += opt('地图', seg('map', MAP_TYPES, SEL.mapType));
+    h += opt('天气与昼夜', seg('env', ENV_OPTS, SEL.env));
     h += opt('地图种子', `<input id="seedInput" maxlength="9" value="${SEL.seed}"><button class="tbtn" data-act="seed">随机</button>`);
     h += opt('', `<button class="tbtn" data-act="randpick" style="padding:6px 14px">随机选一个国家</button>`);
     $('btnStart').textContent = '开始游戏';
@@ -4880,6 +5134,7 @@ function renderSelect() {
     }).join('') + '</div>';
     h += opt('电脑难度', seg('diff', diffs, L.difficulty, Net.isHost));
     h += opt('地图', seg('map', MAP_TYPES, L.mapType || 'land', Net.isHost));
+    h += opt('天气与昼夜', seg('env', ENV_OPTS, L.env ?? 1, Net.isHost));
     h += opt('', `<button class="tbtn" data-act="randpick" style="padding:6px 14px">我选随机</button>` +
       (Net.isHost ? ` <button class="tbtn" data-act="assign" style="padding:6px 14px">随机分配国家（所有人）</button>` : ''));
     const n = L.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length;
@@ -4904,6 +5159,11 @@ $('selOpts').addEventListener('click', (e) => {
   else if (sg === 'map') {
     if (Net.mode === 'off') SEL.mapType = b.dataset.v;
     else if (Net.isHost) { Net.lobby.mapType = b.dataset.v; Net.pushLobby(); }
+    renderSelect();
+  }
+  else if (sg === 'env') {
+    if (Net.mode === 'off') SEL.env = +b.dataset.v;
+    else if (Net.isHost) { Net.lobby.env = +b.dataset.v; Net.pushLobby(); }
     renderSelect();
   }
   else if (b.dataset.act === 'seed') { SEL.seed = randSeed(); renderSelect(); }
@@ -4934,7 +5194,7 @@ function startSingle() {
   if (si) SEL.seed = parseInt(si.value, 10) || randSeed();
   const nats = resolveNations([SEL.myPick, ...Array(SEL.aiCount).fill('random')]);
   beginGame({
-    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, local: 0,
+    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, env: !!SEL.env, local: 0,
     players: nats.map((n, i) => ({ name: i === 0 ? '你' : '电脑 ' + i, nation: n, ai: i > 0, slot: i, netSlot: -1 })),
   });
 }
@@ -4947,6 +5207,8 @@ function beginGame(cfg) {
 function startGame(cfg) {
   Sound.init();
   G.seed = cfg.seed; G.difficulty = cfg.difficulty; G.mapType = cfg.mapType === 'sea' ? 'sea' : 'land';
+  envSchedule(G.seed, cfg.env !== false);
+  SIGHT = sightMul();
   generateMap(G.seed, G.mapType);
   buildWorld();
   $('tabNaval').style.display = G.mapType === 'sea' ? '' : 'none';
@@ -5103,7 +5365,7 @@ const Net = {
     peer.on('open', () => {
       if (this.peer !== peer) return;
       this.mode = 'host'; this.code = code; this.mySlot = 0;
-      this.lobby = { slots: [{ kind: 'human', name: this.myName(), pick: 'random' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land' };
+      this.lobby = { slots: [{ kind: 'human', name: this.myName(), pick: 'random' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1 };
       this.status('');
       openSelect();
     });
@@ -5143,7 +5405,7 @@ const Net = {
     }
   },
   pushLobby() {
-    const L = { slots: this.lobby.slots.map(s => ({ kind: s.kind, name: s.name, pick: s.pick })), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType };
+    const L = { slots: this.lobby.slots.map(s => ({ kind: s.kind, name: s.name, pick: s.pick })), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType, env: this.lobby.env };
     this.broadcast({ t: 'lobby', lobby: L });
     renderSelect();
   },
@@ -5167,7 +5429,7 @@ const Net = {
     const nats = resolveNations(parts.map(p => p.s.pick || 'random'));
     let aiN = 0;
     const cfg = {
-      seed: randSeed(), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType || 'land',
+      seed: randSeed(), difficulty: this.lobby.difficulty, mapType: this.lobby.mapType || 'land', env: this.lobby.env !== 0,
       players: parts.map((p, k) => ({ name: p.s.kind === 'ai' ? '电脑 ' + (++aiN) : p.s.name, nation: nats[k], ai: p.s.kind === 'ai', slot: p.i, netSlot: p.s.kind === 'human' ? p.i : -1 })),
     };
     for (const c of this.conns) if (c.open) c.send({ t: 'start', cfg: { ...cfg, local: cfg.players.findIndex(p => p.netSlot === c.slot) } });
@@ -5202,7 +5464,7 @@ const Net = {
       case 'welcome':
         clearTimeout(this.joinTimer);
         this.mode = 'client'; this.mySlot = m.slot; this.code = m.code;
-        this.lobby = { slots: [{ kind: 'open' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land' };
+        this.lobby = { slots: [{ kind: 'open' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1 };
         this.lobby.slots[m.slot] = { kind: 'human', name: this.myName(), pick: 'random' };
         this.status('');
         openSelect();
@@ -5405,6 +5667,7 @@ function frame(now) {
   } else if (Net.isHost && now - Net.lastPauseSnap > 500) { Net.lastPauseSnap = now; Net.sendSnapshot(); }
   if (alpha === undefined) alpha = G.paused ? 1 : acc / TICK;
   updateCamera(rdt);
+  updateEnvironment(rdt);
   syncMeshes(alpha, rdt, gdt);
   if (oreDirty) { oreMesh.instanceMatrix.needsUpdate = true; oreDirty = false; }
   hovered = mouse.inGame && !mouse.down ? pickAt(mouse.x, mouse.y) : null;
@@ -5415,7 +5678,7 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { G, cam, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { G, cam, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 resize();
 try {
   makeIcons('north');
