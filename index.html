@@ -412,7 +412,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5; 
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.4';
+const GAME_VERSION = 'iron-2.5';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -507,6 +507,7 @@ const BUILDINGS = {
   mgTurret: { name: '机枪塔', cat: 'defense', w: 1, h: 1, hp: 500, power: -10, cost: 400, time: 6, sight: 7, weapon: 'turretMg', defense: true, req: ['barracks'], desc: '克制步兵。' },
   atTurret: { name: '反装甲炮塔', cat: 'defense', w: 1, h: 1, hp: 750, power: -25, cost: 800, time: 10, sight: 8, weapon: 'atGun', defense: true, req: ['factory'], desc: '克制装甲。' },
   aaGun:    { name: '防空炮', cat: 'defense', w: 1, h: 1, hp: 550, power: -25, cost: 550, time: 9, sight: 10, weapon: 'aaGun', defense: true, req: ['radar'], desc: '只能攻击空中单位。' },
+  abm:      { name: '反导系统', cat: 'defense', w: 2, h: 2, hp: 900, power: -60, cost: 2000, time: 20, sight: 8, req: ['radar'], desc: '自动拦截落在 13 格内的敌方战略导弹，必定命中。拦截一次后要装填（标准节奏 5 分钟，快速节奏约 3 分钟），停电时无法装填和拦截。可以多建几座叠加防护。' },
   fortress: { name: '“长城”要塞炮', cat: 'defense', w: 2, h: 2, hp: 1600, power: -40, cost: 1800, time: 20, sight: 11, weapon: 'fortGun', defense: true, nation: 'gold', req: ['tech'], desc: '金穗专属。重型要塞炮，射程远、威力大。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
@@ -568,6 +569,8 @@ const PACES = {
 };
 const NUKE_R = 4.5;   // 战略导弹爆炸半径（格）
 const superMax = () => 11 * 60 * TPS * G.pace.superMul;
+const ABM_R = 13;     // 反导系统保护半径（格）
+const abmMax = () => 5 * 60 * TPS * G.pace.superMul;
 const abCd = ab => ab.cd * G.pace.abil;
 
 const HARV_CAP = 700;
@@ -1491,6 +1494,25 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       m.parts.doorR = { geo: MG([B(1.1, 0.14, 2.2, C.concreteLt, 0, 0, 0), B(0.2, 0.02, 2.2, C.yellow, -0.4, 0.08, 0)]), x: 0.55, y: 0.86, z: -0.2 };
       break;
     }
+    case 'abm': {
+      plinth();
+      L.push(B(3.2, 0.3, 3.2, C.concrete, 0, 0.39, 0), B(1.9, 0.03, 1.9, C.dark, 0.2, 0.55, 0.3));
+      for (let i = 0; i < 6; i++) L.push(B(0.3, 0.02, 0.14, i % 2 ? C.yellow : C.dark, -0.55 + i * 0.3, 0.56, 1.35));
+      L.push(B(0.5, 0.12, 0.5, p.accent, -1.05, 1.36, -1.1));
+      // 雷达板 + 控制方舱
+      L.push(B(1.0, 0.7, 0.8, p.base, -1.05, 0.9, -1.1), B(1.04, 0.06, 0.84, p.dark, -1.05, 1.27, -1.1));
+      L.push(CY(0.05, 0.05, 0.9, C.steel, 1.15, 1.0, -1.15, 6), B(0.9, 0.7, 0.08, C.concreteLt, 1.15, 1.6, -1.15, 0.6, -0.35));
+      L.push(B(0.3, 0.12, 0.3, C.dark, -1.2, 0.62, 1.2));
+      m.parts.lamp = { geo: B(0.22, 0.14, 0.22, 0x50ff70), x: -1.2, y: 0.74, z: 1.2 };
+      // 四联装发射箱（转塔，起竖约 60°）
+      m.turret = MG([
+        CY(0.45, 0.55, 0.35, C.steel, 0, 0.75, 0, 10),
+        B(1.2, 0.9, 1.7, p.base, 0, 1.55, 0.1, 0, -1.05), B(1.24, 0.94, 0.08, p.dark, 0, 1.15, -0.65, 0, -1.05),
+        ...[[-0.28, -0.22], [0.28, -0.22], [-0.28, 0.22], [0.28, 0.22]].map(([x, y]) => CY(0.2, 0.2, 0.06, C.dark, x, 1.95 + y * 0.5, 0.86 + y * 0.87, 10, -0.52)),
+      ]);
+      m.muzzle = { y: 2.1, z: 0.9 };
+      break;
+    }
     case 'mgTurret': {
       L.push(CY(0.9, 0.95, 0.2, C.concreteDk, 0, 0.1, 0, 10));
       sandbagRing(L, 0.78, 0.33, 9); sandbagRing(L, 0.76, 0.55, 9, true);
@@ -2148,7 +2170,7 @@ function createBuilding(type, team, tx, tz, opts = {}) {
     hp: def.hp * hpMul, maxHp: def.hp * hpMul, alive: true, weapon: def.weapon ? WEAPONS[def.weapon] : null,
     cd: 0, turretAngle: Math.atan2(WORLD / 2 - tx * TILE, WORLD / 2 - tz * TILE), target: null, repairing: false,
     buildAnim: opts.instant ? 1 : 0, lastHit: -999, seen: team === PLAYER, radius: Math.max(def.w, def.h) * TILE / 2,
-    smokeT: 0, doorOpen: 0, angle: 0,
+    smokeT: 0, doorOpen: 0, angle: 0, abmReady: type === 'abm', abmCharge: 0,
   };
   b.hasTurret = !!def.weapon;
   for (let z = tz; z < tz + def.h; z++) for (let x = tx; x < tx + def.w; x++) bldGrid[z * MAP + x] = b.id;
@@ -2671,6 +2693,11 @@ function updateProjectiles(dt) {
       p.x = lerp(p.sx, p.tx, s); p.z = lerp(p.sz, p.tz, s);
       p.y = lerp(p.sy, p.ty, s) + p.arc * 4 * s * (1 - s);
       if (s >= 1) done = true;
+      if (p.abm) {
+        // 反导在拦截弹发射前被摧毁，导弹照常命中
+        if (!p.icptOut && p.t >= ICPT_T - 1) { if (p.abm.alive) { p.icptOut = true; launchInterceptor(p); } else p.abm = null; }
+        if (p.icptOut && p.t >= ICPT_T) { p.intercepted = true; done = true; }
+      }
     }
     const m = p.mesh;
     m.position.set(p.x, p.y, p.z);
@@ -2696,7 +2723,8 @@ function updateProjectiles(dt) {
   }
 }
 function impact(p) {
-  if (p.kind === 'missile') { nukeImpact(p); return; }
+  if (p.kind === 'missile') { if (p.intercepted) interceptFx(p); else nukeImpact(p); return; }
+  if (p.noHit) return;   // 拦截弹：爆炸效果由 interceptFx 负责
   if (p.homing && p.target.alive) damage(p.target, p.dmg, p.wh, p.src);
   if (p.splash) splashDamage(p.x, p.z, p.splash * TILE, p.dmg, p.wh, p.team, p.src);
   const seen = visibleAt(p.x, p.z);
@@ -3085,6 +3113,11 @@ function buildingTick(b) {
       if (visibleAt(u.x, u.z) && Math.random() < 0.5) pFire.spawn(u.x + rnd(-0.6, 0.6), u.y + 1.2, u.z + rnd(-0.6, 0.6), 0, 1, 0, 0.4, 0.5, 0.1, 0.5, 1, 0.5, 1);
     });
   }
+  // 反导系统：拦截后重新装填
+  if (b.type === 'abm' && !b.abmReady && !T.lowPower && b.buildAnim >= 1 && ++b.abmCharge >= abmMax()) {
+    b.abmReady = true;
+    if (T.human) tnotify(b.team, '反导系统装填完毕', 'good');
+  }
   if (b.type === 'minePlatform' && !T.lowPower && b.buildAnim >= 1 && (G.tick + b.id) % TPS === 0) {
     // 自动采矿平台：开采半径 5 格内最近的矿石
     let best = -1, bd = 1e9;
@@ -3370,19 +3403,69 @@ function launchMissile(T, x, z) {
   const silo = buildings.find(b => b.alive && b.team === T.id && b.type === 'silo');
   if (!silo || !T.superReady) return;
   T.superReady = false; T.superCharge = 0;
-  missileVisual(silo, x, z);
-  if (Net.isHost) Net.event({ k: 'nuke', sid: silo.id, x, z });
+  const abm = findInterceptor(T.id, x, z);
+  if (abm) { abm.abmReady = false; abm.abmCharge = 0; }
+  missileVisual(silo, x, z, abm ? abm.id : 0);
+  if (Net.isHost) Net.event({ k: 'nuke', sid: silo.id, x, z, ab: abm ? abm.id : 0 });
   for (const o of teams) {
     if (o === T) tnotify(o.id, '战略导弹已发射');
     else tnotify(o.id, '警告：侦测到敌方导弹发射！', 'bad', 'alert', { x, z, marker: 7 });
   }
+  if (abm) tnotify(abm.team, '反导系统已锁定来袭导弹', 'good');
 }
-function missileVisual(silo, x, z) {
+// 找一座能拦截这枚导弹的敌方反导系统（已就绪、有电、落点在保护半径内，取最近的）
+function findInterceptor(team, x, z) {
+  let best = null, bd = ABM_R * TILE;
+  for (const b of buildings) {
+    if (!b.alive || b.type !== 'abm' || b.team === team || b.team < 0 || !b.abmReady || b.buildAnim < 1 || teams[b.team].lowPower) continue;
+    const d = Math.hypot(b.x - x, b.z - z);
+    if (d <= bd) { bd = d; best = b; }
+  }
+  return best;
+}
+const ICPT_T = 6.85;  // 导弹飞行 7 秒，末段（约 7 高度）被拦下，镜头里看得到
+function missileVisual(silo, x, z, abmId = 0) {
   silo.doorOpen = 6;
   const w = { dmg: 800, wh: 'nuke', speed: 1, splash: NUKE_R };
   spawnBallistic('missile', silo.x, 0.8, silo.z, x, z, w, silo, 1, 0, 0, 7);
-  projectiles[projectiles.length - 1].arc = 90;
+  const p = projectiles[projectiles.length - 1];
+  p.arc = 90;
+  if (abmId) p.abm = entById.get(abmId) || null;
   Sound.play('launch');
+}
+// 反导拦截弹：在导弹飞到第 ICPT_T 秒时与它相遇
+function launchInterceptor(p) {
+  const b = p.abm;
+  const s = ICPT_T / p.dur;
+  const mx = lerp(p.sx, p.tx, s), mz = lerp(p.sz, p.tz, s), my = lerp(p.sy, p.ty, s) + p.arc * 4 * s * (1 - s);
+  b.turretAngle = Math.atan2(mx - b.x, mz - b.z);
+  const dur = ICPT_T - p.t;
+  spawnBallistic('rocket', b.x, b.muzzle.y, b.z, mx, mz, { dmg: 0, wh: 'nuke', speed: 1 }, b, 0, 0, 0, dur);
+  const r = projectiles[projectiles.length - 1];
+  r.ty = my; r.arc = 3; r.noHit = true; r.launched = true;
+  fxMuzzle(b.x, b.muzzle.y, b.z, 0, false);
+  for (let i = 0; i < 14; i++) pSmoke.spawn(b.x + rnd(-1, 1), 0.6, b.z + rnd(-1, 1), rnd(-2, 2), rnd(0.5, 2), rnd(-2, 2), rnd(1.5, 2.5), 1.5, 3, 0.8, 0.78, 0.75, 0.6);
+  Sound.play('launch', b.x, b.z);
+}
+function interceptFx(p) {
+  const was = revealAll;
+  revealAll = true;
+  fxExplosion(p.x, p.y, p.z, 2.6);
+  for (let i = 0; i < 8; i++) {
+    const x = p.x + rnd(-3, 3), y = p.y + rnd(-3, 2), z = p.z + rnd(-3, 3);
+    delayed.push({ t: rnd(0, 0.6), fn: () => { const w2 = revealAll; revealAll = true; fxExplosion(x, y, z, rnd(0.8, 1.5)); revealAll = w2; } });
+  }
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * 6.28, sp = rnd(2, 7);
+    pSmoke.spawn(p.x, p.y, p.z, Math.cos(a) * sp, rnd(-1, 1.5), Math.sin(a) * sp, rnd(2.5, 4), 3, 6, 0.55, 0.52, 0.5, 0.55, 0, 0.3);
+  }
+  revealAll = was;
+  Sound.play('explosion');
+  shake = Math.max(shake, 0.5);
+  if (!Net.isClient) {   // 客户端由主机转发提示
+    tnotify(p.team, '我方战略导弹被敌方反导系统拦截', 'bad', 'alert');
+    tnotify(p.abm.team, '成功拦截敌方战略导弹！', 'good', 'ready');
+  }
 }
 function nukeImpact(p) {
   splashDamage(p.x, p.z, NUKE_R * TILE, p.dmg, 'nuke', p.team, p.src);
@@ -3696,10 +3779,15 @@ class AIController {
     return best;
   }
   // 敌方建筑最密集的位置（用于导弹和覆盖轰炸）
-  bestStrikePoint() {
+  // 战略导弹：优先打没有反导保护的地方；全被罩住就照打，消耗对方的拦截弹
+  bestNukePoint() {
+    return this.bestStrikePoint(true) || this.bestStrikePoint();
+  }
+  bestStrikePoint(avoidAbm = false) {
     let best = null, bs = 0;
     for (const b of buildings) {
       if (!b.alive || !this.isEnemy(b.team)) continue;
+      if (avoidAbm && findInterceptor(this.team, b.x, b.z)) continue;
       let s = 0;
       for (const o of buildings) if (o.alive && o.team === b.team && Math.hypot(o.x - b.x, o.z - b.z) < 12) s += (o.def.cost || 1500) + (o.weapon ? 500 : 0);
       if (s > bs) { bs = s; best = b; }
@@ -3738,7 +3826,11 @@ class AIController {
       if (want) enqueue(T, want);
     }
     if (!T.queues.defense.length && T.counts.hq && time > 120) {
-      for (const [type, n, at] of AI_DEF_PLAN) {
+      // 敌人有导弹井就优先造反导
+      const abmNeed = G.difficulty === 'hard' ? 2 : 1;
+      if (this.count('abm') < abmNeed && isUnlocked(T, 'abm') && (this.skip.abm || 0) <= time &&
+          teams.some(o => this.isEnemy(o.id) && o.counts.silo > 0)) { if (T.credits > 800) enqueue(T, 'abm'); }
+      else for (const [type, n, at] of AI_DEF_PLAN) {
         if (time < at || (this.skip[type] || 0) > time) continue;
         const need = Math.max(1, Math.round(n * dif.defMul * (T.nation === 'gold' ? 1.3 : 1)));
         if (this.count(type) < need && isUnlocked(T, type)) { if (T.credits > 600 + reserve) enqueue(T, type); break; }
@@ -3866,7 +3958,7 @@ class AIController {
     }
     // --- 战略导弹 ---
     if (T.superReady) {
-      const best = this.bestStrikePoint();
+      const best = this.bestNukePoint();
       if (best) launchMissile(T, best.x + rnd(-2, 2), best.z + rnd(-2, 2));
     }
     // --- 国家技能 ---
@@ -4213,6 +4305,23 @@ function setGhost(type) {
   footMesh = new THREE.Mesh(new THREE.PlaneGeometry(d.w * TILE, d.h * TILE).rotateX(-Math.PI / 2), footMat);
   footMesh.position.y = 0.1; footMesh.renderOrder = 5;
   ghostGroup.add(footMesh);
+  if (type === 'abm') ghostGroup.add(makeAbmRing(0x50ff70));
+}
+// 反导保护范围圈
+const abmRingGeo = new THREE.RingGeometry(ABM_R * TILE - 0.35, ABM_R * TILE, 96).rotateX(-Math.PI / 2);
+function makeAbmRing(color) {
+  const r = new THREE.Mesh(abmRingGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false }));
+  r.position.y = 0.25; r.renderOrder = 5;
+  return r;
+}
+let abmSelRing = null;
+function updateAbmSelRing() {
+  const b = selection.length === 1 && selection[0].kind === 'b' && selection[0].type === 'abm' && selection[0].alive ? selection[0] : null;
+  if (!b) { if (abmSelRing) abmSelRing.visible = false; return; }
+  if (!abmSelRing) { abmSelRing = makeAbmRing(0xffffff); scene.add(abmSelRing); }
+  abmSelRing.material.color.set(b.team === PLAYER ? 0x50ff70 : 0xff5040);
+  abmSelRing.position.set(b.x, 0.25, b.z);
+  abmSelRing.visible = true;
 }
 function updateGhost() {
   if (!placing) return;
@@ -4227,6 +4336,7 @@ function updateGhost() {
 // 网格同步（插值渲染）
 // =====================================================================
 function syncMeshes(alpha, rdt, gdt) {
+  updateAbmSelRing();
   for (const u of units) {
     if (!u.alive) continue;
     const show = canSeeEntity(u);
@@ -4301,6 +4411,7 @@ function syncMeshes(alpha, rdt, gdt) {
       b.slide = lerp(b.slide || 0, o, Math.min(1, rdt * 2));
       if (b.parts.doorL) { b.parts.doorL.position.x = -0.55 - b.slide * 1.1; b.parts.doorR.position.x = 0.55 + b.slide * 1.1; }
     }
+    if (b.parts.lamp) b.parts.lamp.visible = b.abmReady && powered && b.buildAnim >= 1;
     if (b.turretMesh) {
       b.turretMesh.rotation.y = b.turretAngle;
       const r = b.recoil || 0;
@@ -4731,6 +4842,7 @@ function updateSelPanel() {
   if (e.kind === 'b' && e.def.power) s += `　电力 ${e.def.power > 0 ? '+' : ''}${e.def.power}`;
   if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
+  if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
   if (e.weapon) s += `　射程 ${e.weapon.range} 格`;
   if (e.def.plane) s += `　弹药 ${e.ammo}/${e.def.ammo}${e.parked ? '（停机）' : ''}`;
   if (e.kind === 'u' && e.team === PLAYER && e.weapon && !Net.isClient && e.rank < 2) s += `　经验 ${Math.floor(e.xp)}/${e.rank ? Math.max(900, e.def.cost * 3) : Math.max(300, e.def.cost)}`;
@@ -4939,6 +5051,7 @@ const GUIDE = [
           <li>敌人步兵多：用<b>步枪兵</b>、<b>侦察车</b>、<b>机枪塔</b>、<b>自行火炮</b>。</li>
           <li>敌人坦克多：用<b>主战坦克</b>、<b>反坦克兵</b>、<b>反装甲炮塔</b>。</li>
           <li>敌人直升机来了：用<b>防空车</b>、<b>防空炮</b>、<b>反坦克兵</b>（火箭可以打飞机）。步枪兵、机枪塔也能对直升机造成少量伤害，总部自带一门防空炮。</li>
+          <li>敌人造了<b>战略导弹井</b>：在雷达站之后建<b>反导系统</b>，它会自动拦下落在 13 格内的战略导弹。拦一次要装填几分钟，被多家围攻时多建几座。</li>
           <li><b>自行火炮</b>和<b>沙暴火箭车</b>射程很远但很脆，躲在坦克后面用；它们打不到太近的目标。</li>
           <li>拆基地：坦克、火炮、反坦克兵对建筑伤害都不错，机枪基本打不动建筑。</li>
           <li>敌人舰队靠岸：<b>反装甲炮塔</b>、坦克、<b>攻击机</b>都能打舰船；潜艇只能用<b>驱逐舰</b>、<b>潜艇</b>对付。</li>
@@ -5599,7 +5712,7 @@ const Net = {
       const o = i * 7;
       bid[i] = b.id; bd[o] = BLD_IDX[b.type]; bd[o + 1] = b.team; bd[o + 2] = b.tx; bd[o + 3] = b.tz;
       bd[o + 4] = Math.ceil(Math.max(0, b.hp)); bd[o + 5] = Math.round(wrapA(b.turretAngle) * 10000);
-      bd[o + 6] = (b.repairing ? 1 : 0) | (Math.round(b.buildAnim * 100) << 1);
+      bd[o + 6] = (b.repairing ? 1 : 0) | (Math.round(b.buildAnim * 100) << 1) | (b.abmReady ? 256 : 0);
     });
     const td = teams.map(T => ({
       c: Math.round(T.credits), q: CAT_ORDER.map(cat => T.queues[cat].map(it => [it.type, Math.round(it.progress * 1000) / 1000, it.ready ? 1 : 0])),
@@ -5629,10 +5742,11 @@ function applySnapshot(m) {
   for (let i = 0; i < bid.length; i++) {
     const o = i * 7, id = bid[i], type = BLD_TYPES[bd[o]], team = bd[o + 1];
     let b = entById.get(id);
-    if (!b || !b.alive) b = createBuilding(type, team, bd[o + 2], bd[o + 3], { instant: (bd[o + 6] >> 1) >= 100, noHarv: true, id });
+    if (!b || !b.alive) b = createBuilding(type, team, bd[o + 2], bd[o + 3], { instant: ((bd[o + 6] >> 1) & 127) >= 100, noHarv: true, id });
     if (b.team !== team) { const old = b.team; b.team = team; buildBuildingMesh(b); recalcTeam(old); recalcTeam(team); }
     b.hp = bd[o + 4]; b.turretAngle = bd[o + 5] / 10000; b.repairing = !!(bd[o + 6] & 1);
-    b.buildAnim = Math.max(b.buildAnim, (bd[o + 6] >> 1) / 100);
+    b.buildAnim = Math.max(b.buildAnim, ((bd[o + 6] >> 1) & 127) / 100);
+    b.abmReady = !!(bd[o + 6] & 256);
     seenB.add(id);
   }
   // 单位
@@ -5671,7 +5785,7 @@ function applySnapshot(m) {
   for (const e of ev) {
     if (e.k === 'f') { const s = entById.get(e.s), t = entById.get(e.t); if (s && t) fireWeapon(s, t); }
     else if (e.k === 'msg') { if (e.team === 'all' || e.team === PLAYER) showMsg(e.text, e.kind, e.snd, e.ping); }
-    else if (e.k === 'nuke') { const s = entById.get(e.sid); if (s) missileVisual(s, e.x, e.z); }
+    else if (e.k === 'nuke') { const s = entById.get(e.sid); if (s) missileVisual(s, e.x, e.z, e.ab || 0); }
     else if (e.k === 'ab') abilityEffect(e.team, e.ab, e.x, e.z);
   }
   // 删除消失的实体
