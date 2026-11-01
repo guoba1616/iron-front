@@ -297,6 +297,7 @@ button { font-family: inherit; }
   <span class="faction" id="tbNation">北岭联邦</span>
   <div class="tb-item"><span class="tb-label">资金</span><span id="credits">$0</span></div>
   <div class="tb-item"><span class="tb-label">电力</span><div id="powerBar"><div id="powerFill"></div><div id="powerUseMark"></div></div><span id="powerText">0/0</span></div>
+  <div class="tb-item" title="人口：单位占用 / 建筑提供（总部 40，副部 20，兵营、工厂等每座 10，上限 150）"><span style="color:var(--ui-dim);font-size:12px">人口</span><span id="popText" style="font-family:Consolas,monospace;font-size:12px">0/0</span></div>
   <div class="spacer"></div>
   <div class="tb-item" id="envItem" title="战场时间与天气（只影响画面氛围）"><span id="envInfo" style="font-size:12px;white-space:nowrap"></span></div>
   <div class="tb-item"><span class="tb-label">时间</span><span id="timer">00:00</span></div>
@@ -412,7 +413,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5; 
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.7';
+const GAME_VERSION = 'iron-2.8';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -510,6 +511,7 @@ const BUILDINGS = {
   bunker:   { name: '步兵碉堡', cat: 'defense', w: 2, h: 2, hp: 1400, power: 0, cost: 600, time: 10, sight: 8, garrison: 5, req: ['barracks'], desc: '最多进驻 5 名步枪兵或反坦克兵（选中步兵右键点碉堡）。里面的步兵射程 +1 格、伤害 +20%，不会被直接打到；碉堡被摧毁时步兵会弹出并受伤。碉堡自己没有武器。' },
   abm:      { name: '反导系统', cat: 'defense', w: 2, h: 2, hp: 900, power: -60, cost: 2000, time: 20, sight: 8, req: ['radar'], desc: '自动拦截落在 13 格内的敌方战略导弹，必定命中。拦截一次后要装填（标准节奏 5 分钟，快速节奏约 3 分钟），停电时无法装填和拦截。可以多建几座叠加防护。' },
   fortress: { name: '“长城”要塞炮', cat: 'defense', w: 2, h: 2, hp: 1600, power: -40, cost: 1800, time: 20, sight: 11, weapon: 'fortGun', defense: true, nation: 'gold', req: ['tech'], desc: '金穗专属。重型要塞炮，射程远、威力大。' },
+  subhq:    { name: '副部', cat: 'building', w: 3, h: 3, hp: 2500, power: 0, cost: 2500, time: 25, sight: 9, max: 1, weapon: 'hqFlak', reach: 14, req: ['factory'], desc: '前线指挥所：可以建在离己方建筑 14 格以内的地方（普通建筑只能 4 格），建好后周围就能继续造建筑，用来占领远处的矿区和油井。提供 20 人口，自带防空炮。最多 1 座，被摧毁不会战败。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
   airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
@@ -518,7 +520,22 @@ const BUILDINGS = {
   airfield: { name: '机场', cat: 'building', w: 3, h: 3, hp: 1300, power: -40, cost: 1500, time: 16, sight: 7, req: ['radar'], desc: '生产固定翼飞机。有 4 个停机位，飞机在这里补充弹药和修理；每个机场最多停 4 架。' },
 };
 for (const k in UNITS) UNITS[k].type = k;
+// 人口：单位占用 / 建筑提供（总上限 POP_MAX）
+const POP_MAX = 150;
+const UNIT_POP = {
+  rifle: 1, rocketInf: 1, engineer: 1, moto: 2, scout: 2, harvester: 0, aa: 3, artillery: 3, tank: 3, salvo: 3, heavy: 4,
+  heli: 3, raptor: 4, fighter: 3, striker: 3, bomber: 5, pboat: 2, sub: 3, destroyer: 4, cruiser: 5,
+};
+for (const k in UNITS) UNITS[k].pop = UNIT_POP[k] ?? 2;
 for (const k in BUILDINGS) { BUILDINGS[k].type = k; BUILDINGS[k].armor = 'bld'; BUILDINGS[k].isBuilding = true; }
+const BLD_POP = { hq: 40, subhq: 20, barracks: 10, airBarracks: 10, factory: 10, helipad: 10, airfield: 10, shipyard: 10 };
+for (const k in BLD_POP) BUILDINGS[k].popCap = BLD_POP[k];
+function popUsed(T) {
+  let n = 0;
+  for (const u of units) if (u.alive && u.team === T.id) n += u.def.pop;
+  for (const cat of CAT_ORDER) { const it = T.queues[cat][0]; if (it && UNITS[it.type] && it.progress > 0) n += UNITS[it.type].pop; }
+  return n;
+}
 // 兵营科技升级：在步兵栏研究，研究一次永久生效
 const UPGRADES = {
   upArmor: { name: '防弹衣', cat: 'infantry', cost: 1000, time: 25, req: ['barracks'], icon: 'shield', desc: '所有步兵生命 +35%（已有的步兵立即生效）。' },
@@ -1415,6 +1432,20 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       m.muzzle = { y: 3.4, z: 0 };   // 总部防空炮从屋顶开火
       break;
     }
+    case 'subhq': {
+      // 副部：缩小版的指挥部，带沙袋和雷达盘
+      plinth();
+      L.push(B(3.6, 1.5, 3.0, C.concrete, 0, 0.99, -0.3), B(3.66, 0.14, 3.06, p.accent, 0, 1.74, -0.3));
+      L.push(B(1.8, 0.8, 1.6, p.base, -0.6, 2.21, -0.6), B(1.9, 0.07, 1.7, p.dark, -0.6, 2.62, -0.6));
+      L.push(B(3.0, 0.22, 0.05, C.glass, 0, 1.25, 1.21), B(0.9, 0.75, 0.08, C.dark, 0.9, 0.6, 1.24));
+      L.push(CY(0.04, 0.06, 2.2, C.steel, -1.4, 3.0, -1.4, 6));
+      for (let i = 0; i < 4; i++) L.push(B(0.55, 0.3, 0.32, C.sand, -1.6 + i * 0.6, 0.39, 1.75));
+      L.push(B(0.6, 0.45, 0.45, C.steel, 1.3, 0.47, -1.9));
+      const dish = new THREE.CylinderGeometry(0.55, 0.12, 0.28, 12, 1, true); dish.rotateX(-1.0);
+      m.parts.dish = { geo: MG([colorGeo(dish, C.white), CY(0.03, 0.03, 0.5, C.steel, 0, 0.08, 0.15, 4, -1.0)]), x: 1.0, y: 2.0, z: -0.9, spin: 0.7 };
+      m.muzzle = { y: 2.6, z: 0 };
+      break;
+    }
     case 'power': {
       plinth();
       for (const s of [-1, 1]) {
@@ -2230,13 +2261,14 @@ function freeGrid(b) {
 function recalcTeam(t) {
   if (t < 0) return;
   const T = teams[t];
-  let prod = 0, use = 0; const counts = {};
+  let prod = 0, use = 0, cap = 0; const counts = {};
   for (const b of buildings) {
     if (!b.alive || b.team !== t) continue;
     counts[b.type] = (counts[b.type] || 0) + 1;
     if (b.def.power > 0) prod += b.def.power; else use -= b.def.power;
+    cap += b.def.popCap || 0;
   }
-  T.powerProd = prod; T.powerUse = use; T.counts = counts;
+  T.powerProd = prod; T.powerUse = use; T.counts = counts; T.popCap = Math.min(POP_MAX, cap);
   const was = T.lowPower;
   T.lowPower = use > prod;
   if (T.human && T.lowPower && !was && G.state === 'playing') tnotify(T.id, '电力不足！', 'bad', 'alert');
@@ -3354,6 +3386,11 @@ function productionTick(T) {
     let rate = 1 / (d.time * TPS) * (1 + 0.5 * (nProd - 1)) * (T.lowPower ? 0.5 : 1);
     if (T.isAI) rate *= DIFFS[G.difficulty].build;
     rate *= G.pace.build;
+    // 人口上限：还没开工的单位在人口满时暂停（已开工的照常完成）
+    if (it.progress === 0 && d.pop && popUsed(T) + d.pop > (T.popCap || 0)) {
+      if (T.human && G.tick - (T.lastPop || -9999) > 15 * TPS) { T.lastPop = G.tick; tnotify(T.id, `人口已满（${popUsed(T)}/${T.popCap}），需要更多兵营、工厂或副部`, 'bad', 'error'); }
+      continue;
+    }
     const step = Math.min(rate, 1 - it.progress), cost = costOf(T.id, it.type) * step;
     if (T.credits < cost) {
       if (T.human && G.tick - T.lastMoney > 15 * TPS) { T.lastMoney = G.tick; tnotify(T.id, '资金不足', 'bad', 'error'); }
@@ -3430,7 +3467,7 @@ function canPlace(team, type, tx, tz, spacing = 0) {
   const x0 = tx * TILE, z0 = tz * TILE, x1 = (tx + d.w) * TILE, z1 = (tz + d.h) * TILE;
   for (const u of units) if (u.alive && !u.def.air && u.x > x0 - 0.2 && u.x < x1 + 0.2 && u.z > z0 - 0.2 && u.z < z1 + 0.2) return false;
   let near = false;
-  const reach = d.naval ? 8 : 4;
+  const reach = d.reach || (d.naval ? 8 : 4);
   for (const b of buildings) {
     if (!b.alive || b.team !== team || b.def.derrick) continue;
     const gx = Math.max(0, b.tx - (tx + d.w), tx - (b.tx + b.w)), gz = Math.max(0, b.tz - (tz + d.h), tz - (b.tz + b.h));
@@ -3757,6 +3794,8 @@ const AI_PLAN = [
   ['airBarracks', 1, 260], ['minePlatform', 1, 330], ['repairDepot', 1, 420], ['minePlatform', 2, 700], ['repairDepot', 2, 1000],
   // 船厂只在内海地图可建；机场所有地图都有
   ['shipyard', 1, 470], ['airfield', 1, 640], ['power', 8, 900],
+  // 人口：副部和第二座兵营、工厂都会提高人口上限
+  ['subhq', 1, 700], ['barracks', 2, 800], ['factory', 3, 1300],
 ];
 const AI_DEF_PLAN = [
   ['mgTurret', 1, 160], ['bunker', 1, 200], ['atTurret', 1, 260], ['bunker', 2, 600], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
@@ -3835,6 +3874,10 @@ class AIController {
     } else if (d.naval) {
       if (!this.shore) return null;
       cx = this.shore.tx; cz = this.shore.tz; maxR = 8;
+    } else if (type === 'subhq' && !this.subhqNear) {
+      // 副部：朝敌人方向前推，放不下就回到基地附近
+      const f = rnd(12, 16);
+      cx = Math.round(cx + this.dir.x * f); cz = Math.round(cz + this.dir.z * f); maxR = 6;
     }
     const ox = Math.floor(d.w / 2), oz = Math.floor(d.h / 2);
     for (let r = 0; r <= maxR; r++) {
@@ -3847,6 +3890,7 @@ class AIController {
         return { tx, tz };
       }
     }
+    if (type === 'subhq' && !this.subhqNear) { this.subhqNear = true; return this.findSpot(type); }
     return null;
   }
   // 选进攻目标：离得最近的敌方队伍的建筑
@@ -4246,7 +4290,7 @@ function tryPlace() {
     placing = null; setGhost(null);
   } else {
     Sound.play('error');
-    notify(placing.type === 'minePlatform' ? '自动采矿平台必须建在矿区旁（3 格以内）' : placing.type === 'shipyard' ? '船厂必须建在岸边：紧挨着水面，并且离己方建筑 8 格以内' : '无法在此处建造', 'bad');
+    notify(placing.type === 'minePlatform' ? '自动采矿平台必须建在矿区旁（3 格以内）' : placing.type === 'subhq' ? '副部必须建在空地上，并且离己方建筑 14 格以内' : placing.type === 'shipyard' ? '船厂必须建在岸边：紧挨着水面，并且离己方建筑 8 格以内' : '无法在此处建造', 'bad');
   }
 }
 function ghostTile() {
@@ -4862,6 +4906,8 @@ function showTip(type, el) {
   if (d.weapon) { const w = WEAPONS[d.weapon]; html += `<br>射程 ${w.range} 格${d.ammo ? '　弹药 ' + d.ammo : ''}`; }
   if (d.upgrade) html += T && T.upg[type] ? '<br><span style="color:#8fd070">已研究</span>' : `<br>研究时间 ${d.time} 秒（在兵营研究，研究期间暂停步兵生产）`;
   else html += `<br>生命 ${Math.round(hpOf(PLAYER, d))}${d.isBuilding ? '' : '　速度 ' + (d.speed * natOf(PLAYER).speedMul).toFixed(1)}`;
+  if (!d.isBuilding && !d.upgrade) html += `　人口 ${d.pop}`;
+  if (d.popCap) html += `<br>提供人口 +${d.popCap}`;
   if (miss.length) html += `<br><span class="req">需要：${miss.join('、')}</span>`;
   if (d.max && T && (T.counts[type] || 0) >= d.max) html += `<br><span class="req">最多建造 ${d.max} 座</span>`;
   html += `<br><span style="color:#8a9080">${d.isBuilding ? '左键建造/放置，右键取消' : d.upgrade ? '左键研究，右键取消' : '左键生产，Shift+左键 ×5，右键取消'}</span>`;
@@ -4906,6 +4952,7 @@ function updateBuildGrid() {
     if (head) {
       if (head.ready) st = '就绪';
       else if (!(countOf(T, prodOf(d)) > 0)) st = '暂停';
+      else if (head.progress === 0 && d.pop && popUsed(T) + d.pop > (T.popCap || 0)) st = '人口满';
       else { st = Math.floor(head.progress * 100) + '%'; prog = 1 - head.progress; }
     } else if (mine.length) { st = '排队'; prog = 1; }
     if (d.upgrade && T.upg[it.type]) { st = '已研究'; it.el.classList.add('disabled'); }
@@ -4990,6 +5037,7 @@ function updateSelPanel() {
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
   if (e.def.garrison) s += `　进驻 ${garrisonCount(e)}/${e.def.garrison}`;
+  if (e.kind === 'b' && e.def.popCap) s += `　人口 +${e.def.popCap}`;
   if (e.weapon) s += `　射程 ${e.weapon.range} 格`;
   if (e.def.plane) s += `　弹药 ${e.ammo}/${e.def.ammo}${e.parked ? '（停机）' : ''}`;
   if (e.kind === 'u' && e.team === PLAYER && e.weapon && !Net.isClient && e.rank < 2) s += `　经验 ${Math.floor(e.xp)}/${e.rank ? Math.max(900, e.def.cost * 3) : Math.max(300, e.def.cost)}`;
@@ -5021,6 +5069,9 @@ function uiFrame() {
     $('powerUseMark').style.left = (T.powerUse / max * 100) + '%';
     $('powerText').textContent = T.powerUse + '/' + T.powerProd;
     $('powerText').style.color = T.lowPower ? '#ff8a70' : '';
+    const pu = popUsed(T), pc = T.popCap || 0;
+    $('popText').textContent = pu + '/' + pc;
+    $('popText').style.color = pu >= pc ? '#ff8a70' : pu >= pc * 0.9 ? '#e8c060' : '';
     updateBuildGrid();
     const sb = $('btnSuper');
     if (T.counts.silo > 0) {
@@ -5112,6 +5163,13 @@ const GUIDE = [
         <li>发电站提供 <b>+100</b> 电力，其他建筑大多耗电。顶栏电力条里，绿色是发电量，白线是用电量。</li>
         <li><b>电力不足</b>（白线超过绿色）时：所有生产速度减半，<b>防御塔和雷达停止工作</b>，导弹井停止充能。被敌人炸掉发电站时尤其要注意！</li>
         <li>多造一两座发电站留余量，比较安全。</li>
+      </ul>
+      <h3>人口</h3>
+      <ul>
+        <li>每个单位占用人口：步兵 1，侦察车 2，坦克、防空车、火炮 3，重坦 4，直升机 3–4，飞机 3–5，舰船 2–5。<b>采矿车不占人口</b>。</li>
+        <li>人口由建筑提供：<b>总部 40</b>、<b>副部 20</b>，兵营、战车工厂、直升机坪、机场、船厂<b>每座 +10</b>，总上限 <b>${POP_MAX}</b>。顶栏显示“人口 已用/上限”。</li>
+        <li>人口满了，还没开工的单位会暂停（不扣钱），已经开工的照常完成。</li>
+        <li><b>副部</b>（$${BUILDINGS.subhq.cost}，最多 1 座）可以建在离己方建筑 14 格以内的地方，建好后它周围就能继续造建筑，适合去占领远处的矿区和油井。被摧毁不会战败。</li>
       </ul>`,
   },
   {
@@ -5170,7 +5228,7 @@ const GUIDE = [
           else if (!w.air) good += '　不能打空中';
         }
         h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}<span style="font-weight:normal;font-size:12px;color:var(--ui-dim)">${fac}</span></div>
-          <div class="gm">$${d.cost}　生命 ${d.hp}　护甲 ${ARMOR_NAME[d.armor]}${w ? '　射程 ' + w.range + ' 格' : ''}</div>
+          <div class="gm">$${d.cost}　生命 ${d.hp}　护甲 ${ARMOR_NAME[d.armor]}${w ? '　射程 ' + w.range + ' 格' : ''}　人口 ${d.pop}</div>
           <div class="gm">需要：${d.req.map(r => BUILDINGS[r].name).join('、')}</div>
           <div class="gd">${d.desc}${good ? '<br>' + good : ''}</div></div></div>`;
       }
