@@ -412,7 +412,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5; 
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.5';
+const GAME_VERSION = 'iron-2.6';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -470,8 +470,8 @@ const WEAPONS = {
 
 // 速度单位：世界单位/秒（1 格 = 2）
 const UNITS = {
-  rifle:     { name: '步枪兵', cat: 'infantry', cost: 100, time: 5, hp: 125, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '廉价的基础步兵，克制步兵。' },
-  rocketInf: { name: '反坦克兵', cat: 'infantry', cost: 300, time: 8, hp: 100, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
+  rifle:     { name: '步枪兵', cat: 'infantry', cost: 100, time: 5, hp: 150, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '廉价的基础步兵，克制步兵。' },
+  rocketInf: { name: '反坦克兵', cat: 'infantry', cost: 250, time: 8, hp: 120, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
   engineer:  { name: '工程师', cat: 'infantry', cost: 500, time: 10, hp: 80, armor: 'inf', speed: 2.4, sight: 6, radius: 0.35, inf: true, engineer: true, req: [], desc: '占领油井获得持续收入，或进入己方建筑将其完全修复。' },
   moto:      { name: '突击摩托兵', cat: 'vehicle', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, nation: 'south', req: ['factory'], desc: '赤砂专属。便宜、极快的机枪摩托，适合骚扰采矿车和步兵。' },
   harvester: { name: '采矿车', cat: 'vehicle', cost: 1400, time: 18, hp: 1000, armor: 'heavy', speed: 3.0, sight: 5, radius: 1.3, harvester: true, turn: 3, req: ['factory', 'refinery'], desc: '采集矿石运回精炼厂换取资金。' },
@@ -507,6 +507,7 @@ const BUILDINGS = {
   mgTurret: { name: '机枪塔', cat: 'defense', w: 1, h: 1, hp: 500, power: -10, cost: 400, time: 6, sight: 7, weapon: 'turretMg', defense: true, req: ['barracks'], desc: '克制步兵。' },
   atTurret: { name: '反装甲炮塔', cat: 'defense', w: 1, h: 1, hp: 750, power: -25, cost: 800, time: 10, sight: 8, weapon: 'atGun', defense: true, req: ['factory'], desc: '克制装甲。' },
   aaGun:    { name: '防空炮', cat: 'defense', w: 1, h: 1, hp: 550, power: -25, cost: 550, time: 9, sight: 10, weapon: 'aaGun', defense: true, req: ['radar'], desc: '只能攻击空中单位。' },
+  bunker:   { name: '步兵碉堡', cat: 'defense', w: 2, h: 2, hp: 1400, power: 0, cost: 600, time: 10, sight: 8, garrison: 5, req: ['barracks'], desc: '最多进驻 5 名步枪兵或反坦克兵（选中步兵右键点碉堡）。里面的步兵射程 +1 格、伤害 +20%，不会被直接打到；碉堡被摧毁时步兵会弹出并受伤。碉堡自己没有武器。' },
   abm:      { name: '反导系统', cat: 'defense', w: 2, h: 2, hp: 900, power: -60, cost: 2000, time: 20, sight: 8, req: ['radar'], desc: '自动拦截落在 13 格内的敌方战略导弹，必定命中。拦截一次后要装填（标准节奏 5 分钟，快速节奏约 3 分钟），停电时无法装填和拦截。可以多建几座叠加防护。' },
   fortress: { name: '“长城”要塞炮', cat: 'defense', w: 2, h: 2, hp: 1600, power: -40, cost: 1800, time: 20, sight: 11, weapon: 'fortGun', defense: true, nation: 'gold', req: ['tech'], desc: '金穗专属。重型要塞炮，射程远、威力大。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
@@ -518,6 +519,15 @@ const BUILDINGS = {
 };
 for (const k in UNITS) UNITS[k].type = k;
 for (const k in BUILDINGS) { BUILDINGS[k].type = k; BUILDINGS[k].armor = 'bld'; BUILDINGS[k].isBuilding = true; }
+// 兵营科技升级：在步兵栏研究，研究一次永久生效
+const UPGRADES = {
+  upArmor: { name: '防弹衣', cat: 'infantry', cost: 1000, time: 25, req: ['barracks'], icon: 'shield', desc: '所有步兵生命 +35%（已有的步兵立即生效）。' },
+  upAP:    { name: '穿甲弹', cat: 'infantry', cost: 1200, time: 30, req: ['barracks', 'radar'], icon: 'round', desc: '步兵伤害 +20%；步枪兵打载具和建筑的伤害翻倍。' },
+  upMedic: { name: '战地急救', cat: 'infantry', cost: 1500, time: 35, req: ['barracks', 'tech'], icon: 'cross', desc: '步兵 5 秒没受伤后，每秒回复 2% 生命。' },
+};
+for (const k in UPGRADES) { UPGRADES[k].type = k; UPGRADES[k].upgrade = true; }
+const hasUpg = (team, k) => team >= 0 && !!(teams[team] && teams[team].upg && teams[team].upg[k]);
+const ARMOR_UPG = 1.35;
 
 // 国家：数值特性 + 专属 + 迷彩
 const NATION_KEYS = ['north', 'south', 'gold', 'hawk'];
@@ -551,10 +561,10 @@ const teamColor = team => team < 0 ? '#bbbbaa' : SLOT_COLORS[slotOf(team)].css;
 const countOf = (T, type) => (T.counts[type] || 0) + (type === 'barracks' ? (T.counts.airBarracks || 0) : 0);
 const natOf = team => team >= 0 ? NATIONS[nationKeyOf(team)] : NEUTRAL_NATION;
 function costOf(team, type) {
-  const d = UNITS[type] || BUILDINGS[type], n = natOf(team);
+  const d = UNITS[type] || BUILDINGS[type] || UPGRADES[type], n = natOf(team);
   return Math.round(d.cost * (d.isBuilding ? n.bldCostMul : 1) * (d.air ? n.airCostMul : 1));
 }
-function hpOf(team, d) { const n = natOf(team); return d.hp * n.hpMul * (d.air ? n.airHpMul : 1); }
+function hpOf(team, d) { const n = natOf(team); return d.hp * n.hpMul * (d.air ? n.airHpMul : 1) * (d.inf && hasUpg(team, 'upArmor') ? ARMOR_UPG : 1); }
 const PRODUCER = { building: 'hq', defense: 'hq', infantry: 'barracks', vehicle: 'factory', air: 'helipad', naval: 'shipyard' };
 const CAT_ORDER = ['building', 'defense', 'infantry', 'vehicle', 'air', 'naval'];
 // 单位的生产建筑（飞机由机场生产，其余按类别）
@@ -1494,6 +1504,19 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       m.parts.doorR = { geo: MG([B(1.1, 0.14, 2.2, C.concreteLt, 0, 0, 0), B(0.2, 0.02, 2.2, C.yellow, -0.4, 0.08, 0)]), x: 0.55, y: 0.86, z: -0.2 };
       break;
     }
+    case 'bunker': {
+      plinth();
+      // 低矮混凝土掩体 + 沙袋 + 射击孔
+      L.push(B(3.0, 0.95, 2.8, C.concreteDk, 0, 0.7, -0.1), B(3.2, 0.22, 3.0, C.concrete, 0, 1.28, -0.1));
+      L.push(B(2.4, 0.16, 0.06, C.dark, 0, 0.92, 1.31), B(0.06, 0.16, 2.2, C.dark, -1.51, 0.92, -0.1), B(0.06, 0.16, 2.2, C.dark, 1.51, 0.92, -0.1));
+      L.push(B(0.9, 0.7, 0.3, C.dark, -0.9, 0.55, -1.55));
+      for (let i = 0; i < 6; i++) L.push(B(0.52, 0.26, 0.3, C.sand, -1.35 + i * 0.54, 0.37, 1.72, rnd(-0.08, 0.08)));
+      for (let i = 0; i < 5; i++) L.push(B(0.52, 0.26, 0.3, C.sand, -1.1 + i * 0.54, 0.62, 1.72, rnd(-0.08, 0.08)));
+      L.push(B(0.6, 0.06, 0.6, p.accent, 1.0, 1.42, -0.9));
+      for (let i = 0; i < 5; i++) L.push(B(0.24, 0.06, 0.24, C.dark, -1.0 + i * 0.5, 1.41, 0.95));
+      for (let i = 0; i < 5; i++) m.parts['slot' + i] = { geo: B(0.2, 0.08, 0.2, 0x50ff70), x: -1.0 + i * 0.5, y: 1.46, z: 0.95 };
+      break;
+    }
     case 'abm': {
       plinth();
       L.push(B(3.2, 0.3, 3.2, C.concrete, 0, 0.39, 0), B(1.9, 0.03, 1.9, C.dark, 0.2, 0.55, 0.3));
@@ -2105,12 +2128,12 @@ function makeTeam(id, isAI, nation, slot = id, corner = id, name = '') {
     id, isAI, nation, slot, corner, name: name || (isAI ? '电脑' : '玩家'), ai: null, defeated: false, human: !isAI,
     abilityCharge: 0, abilityReady: false, credits: G.pace.credits, powerProd: 0, powerUse: 0, lowPower: false,
     queues: { building: [], defense: [], infantry: [], vehicle: [], air: [], naval: [] },
-    superCharge: 0, superReady: false, rally: {}, counts: {}, primary: {},
+    superCharge: 0, superReady: false, rally: {}, counts: {}, primary: {}, upg: {},
     stats: { kills: 0, losses: 0, bKills: 0, bLosses: 0, harvested: 0, unitsBuilt: 0, bBuilt: 0 },
     lastAlert: -9999, lastHarvAlert: -9999, lastMoney: -9999, lastReady: -9999,
   };
 }
-const defOf = type => UNITS[type] || BUILDINGS[type];
+const defOf = type => UNITS[type] || BUILDINGS[type] || UPGRADES[type];
 
 // =====================================================================
 // 实体：单位
@@ -2525,7 +2548,7 @@ function findTarget(src, range, w = src.weapon) {
   let best = null, bestS = 1e9;
   const minR = (w.minRange || 0) * TILE;
   queryHash(src.x, src.z, range + 2, (o) => {
-    if (!o.alive || o.team === src.team || o.team < 0 || !canHit(w, o)) return;
+    if (!o.alive || o.team === src.team || o.team < 0 || o.inside || !canHit(w, o)) return;
     if (o.def.sub && !detectedBy(src.team, o)) return;
     const d = Math.max(0, Math.hypot(o.x - src.x, o.z - src.z) - o.radius * 0.5);
     if (d > range || d < minR) return;
@@ -2546,13 +2569,13 @@ function findTarget(src, range, w = src.weapon) {
 function updateTarget(u) {
   const o = u.order, w = u.weapon;
   if (o.type === 'attack') {
-    if (!o.target.alive || o.target.team === u.team || o.target.team < 0) { u.order = { type: 'idle' }; u.target = null; u.guardX = u.x; u.guardZ = u.z; u.path = null; }
+    if (!o.target.alive || o.target.team === u.team || o.target.team < 0 || o.target.inside) { u.order = { type: 'idle' }; u.target = null; u.guardX = u.x; u.guardZ = u.z; u.path = null; }
     else { u.target = o.target; return; }
   }
   const t = u.target;
   if (t) {
     const d = distTo(u, t);
-    if (!t.alive || t.team === u.team || t.team < 0 || !canHit(w, t) || d > (u.def.sight + 3) * TILE || (w.minRange && d < w.minRange * TILE) ||
+    if (!t.alive || t.team === u.team || t.team < 0 || t.inside || !canHit(w, t) || d > (u.def.sight + 3) * TILE || (w.minRange && d < w.minRange * TILE) ||
       (t.def.sub && !detectedBy(u.team, t)) ||
       (o.type === 'move' && d > w.range * TILE)) {
       u.target = null;
@@ -2598,7 +2621,8 @@ function aimAndFire(u, t) {
 function fireWeapon(s, t) {
   const w = s.weapon;
   if (Net.isHost) Net.event({ k: 'f', s: s.id, t: t.id });
-  const dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
+  let dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
+  if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
   s.lastFire = G.tick;
   const aim = s.hasTurret ? s.turretAngle : s.angle;
   const mz = s.muzzle || { y: 1, z: 1 }, sc = s.def.inf ? 1.25 : 1;
@@ -2737,11 +2761,12 @@ function impact(p) {
 function splashDamage(x, z, r, dmg, wh, team, src) {
   if (Net.isClient) return;
   queryHash(x, z, r + 1.5, (o) => {
-    if (!o.alive || o.team === team || o.team < 0) return;
+    if (!o.alive || o.team === team || o.team < 0 || o.inside) return;
     if (o.def.air && wh !== 'nuke') return;
     const d = Math.hypot(o.x - x, o.z - z) - o.radius * 0.5;
     if (d > r) return;
-    damage(o, dmg * (1 - 0.5 * clamp(d / r, 0, 1)), wh, src);
+    // 步兵会卧倒，只受 60% 溅射伤害
+    damage(o, dmg * (1 - 0.5 * clamp(d / r, 0, 1)) * (o.def.inf && wh !== 'nuke' ? 0.6 : 1), wh, src);
   });
   for (const b of buildings) {
     if (!b.alive || b.team === team || b.team < 0) continue;
@@ -2752,7 +2777,10 @@ function splashDamage(x, z, r, dmg, wh, team, src) {
 function damage(t, amount, wh, src) {
   if (!t.alive || Net.isClient) return;
   if (wh === 'nuke' && t.type === 'hq') return;   // 战略导弹对总部无效
-  const mult = WARHEAD[wh][ARMOR_IDX[t.def.armor]];
+  if (t.inside) return;   // 碉堡里的步兵不会被打到
+  let mult = WARHEAD[wh][ARMOR_IDX[t.def.armor]];
+  // 穿甲弹升级：步兵轻武器打载具和建筑伤害翻倍
+  if (wh === 'small' && !t.def.inf && src && src.kind === 'u' && src.def.inf && hasUpg(src.team, 'upAP')) mult *= 2;
   if (mult <= 0) return;
   t.hp -= amount * mult;
   t.lastHit = G.tick;
@@ -2846,6 +2874,9 @@ function unitTick(u) {
   }
   // 精英单位每秒回复 1% 生命
   if (u.rank === 2 && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.01);
+  // 战地急救：步兵 5 秒没受伤后每秒回复 2%
+  if (u.def.inf && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0 && G.tick - u.lastHit > 5 * TPS && hasUpg(u.team, 'upMedic')) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.02);
+  if (u.inside) return garrisonTick(u);
   if (u.def.plane) return planeTick(u);
   if (u.def.harvester) return harvesterTick(u);
   if (u.def.engineer) return engineerTick(u);
@@ -2853,6 +2884,13 @@ function unitTick(u) {
 }
 function combatTick(u) {
   const o = u.order;
+  if (o.type === 'garrison') {
+    const b = o.target;
+    if (!b.alive || b.team !== u.team || garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; u.path = null; return; }
+    if (rectDist(u.x, u.z, b) < 1.7) { garrisonEnter(u, b); return; }
+    chase(u, b);
+    return;
+  }
   if (u.weapon) updateTarget(u);
   let standing = false;
   if (u.target) {
@@ -3204,6 +3242,49 @@ function commandEnter(list, b) {
   for (const u of list) if (u.def.engineer) { u.order = { type: 'enter', target: b }; u.chaseT = null; u.nextRepath = 0; }
 }
 
+// ---------------------------------------------------------------------
+// 步兵碉堡：进驻 / 在里面开火 / 撤出
+// ---------------------------------------------------------------------
+const canGarrison = u => u.alive && u.def.inf && u.weapon && !u.inside && !u.chute;
+const garrisonCount = b => { let n = 0; for (const u of units) if (u.alive && u.inside === b) n++; return n; };
+function commandGarrison(list, b) {
+  let free = b.def.garrison - garrisonCount(b);
+  for (const u of list) {
+    if (!canGarrison(u) || u.team !== b.team) continue;
+    if (free-- <= 0) { u.order = { type: 'move', x: b.x, z: b.z + b.h * TILE / 2 + 2 }; requestPath(u, u.order.x, u.order.z); continue; }
+    u.order = { type: 'garrison', target: b }; u.target = null; u.chaseT = null; u.nextRepath = 0;
+  }
+}
+function garrisonEnter(u, b) {
+  if (garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; return; }
+  u.inside = b; u.order = { type: 'idle' }; u.target = null; u.path = null; u.moving = false;
+  u.x = u.px = b.x; u.z = u.pz = b.z;
+  u.mesh.visible = false; if (u.ring) u.ring.visible = false;
+  const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
+}
+function ejectUnit(u, hurt = false) {
+  const b = u.inside;
+  u.inside = null;
+  const e = exitPos(b);
+  u.x = u.px = e.x + rnd(-0.6, 0.6); u.z = u.pz = e.z + rnd(-0.6, 0.6);
+  u.guardX = u.x; u.guardZ = u.z; u.order = { type: 'idle' }; u.target = null; u.path = null;
+  if (hurt) { u.hp -= u.maxHp * 0.5; if (u.hp <= 0) { u.hp = 1; kill(u, null); } }
+}
+function garrisonTick(u) {
+  const b = u.inside;
+  if (!b.alive || b.team !== u.team) { ejectUnit(u, b.hp <= 0); return; }   // 碉堡被摧毁才会受伤，出售则安全撤出
+  u.moving = false;
+  const range = (u.weapon.range + 1) * TILE + b.radius * 0.5;
+  if (u.target && (!u.target.alive || u.target.inside || u.target.team === u.team || distTo(u, u.target) > range)) u.target = null;
+  if (!u.target && (G.tick + u.id) % 5 === 0) u.target = findTarget(u, range);
+  if (u.target && u.cd <= 0) {
+    u.angle = Math.atan2(u.target.x - u.x, u.target.z - u.z);
+    fireWeapon(u, u.target);
+    u.cd = Math.round(u.weapon.cd * TPS / RANKS[rankOf(u)].rof);
+  }
+}
+function unloadBunker(b) { for (const u of units) if (u.alive && u.inside === b) ejectUnit(u); }
+
 // =====================================================================
 // 生产与经济
 // =====================================================================
@@ -3223,7 +3304,15 @@ function isUnlocked(T, type) {
   for (const r of d.req || []) if (!(countOf(T, r) > 0)) return false;
   if (d.max && (T.counts[type] || 0) + T.queues[d.cat].filter(i => i.type === type).length >= d.max) return false;
   if (d.plane && planeCount(T) >= planeCap(T)) return false;
+  if (d.upgrade && (T.upg[type] || T.queues[d.cat].some(i => i.type === type))) return false;
   return true;
+}
+// 研究完成：记录升级；防弹衣让现有步兵立即加血
+function applyUpgrade(T, k) {
+  if (T.upg[k]) return;
+  T.upg[k] = true;
+  if (k === 'upArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.inf) { u.maxHp *= ARMOR_UPG; u.hp *= ARMOR_UPG; }
+  if (T.human) tnotify(T.id, '研究完成：' + UPGRADES[k].name, 'good', 'ready');
 }
 function missingReq(T, type) {
   const d = defOf(type), out = [];
@@ -3242,6 +3331,7 @@ function enqueue(T, type, n = 1) {
     return true;
   }
   let added = 0;
+  if (d.upgrade) n = 1;
   for (let i = 0; i < n; i++) {
     if (q.length >= 15 || !isUnlocked(T, type)) break;
     q.push({ type, progress: 0, paid: 0 }); added++;
@@ -3278,7 +3368,8 @@ function productionTick(T) {
       if (d.isBuilding) {
         it.ready = true;
         if (T.human) tnotify(T.id, '建造完成：' + d.name + '（点击放置）', 'good', 'ready');
-      } else { q.shift(); spawnProduced(T, it.type); }
+      } else if (d.upgrade) { q.shift(); applyUpgrade(T, it.type); }
+      else { q.shift(); spawnProduced(T, it.type); }
     }
   }
 }
@@ -3671,7 +3762,7 @@ const AI_PLAN = [
   ['shipyard', 1, 470], ['airfield', 1, 640], ['power', 8, 900],
 ];
 const AI_DEF_PLAN = [
-  ['mgTurret', 1, 160], ['atTurret', 1, 260], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
+  ['mgTurret', 1, 160], ['bunker', 1, 200], ['atTurret', 1, 260], ['bunker', 2, 600], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
   ['mgTurret', 3, 640], ['aaGun', 2, 700], ['atTurret', 4, 800], ['atTurret', 5, 1000], ['aaGun', 3, 1050], ['mgTurret', 4, 1150], ['atTurret', 6, 1350],
   ['fortress', 1, 720], ['fortress', 2, 1000], ['fortress', 3, 1400],
 ];
@@ -3704,6 +3795,11 @@ class AIController {
     if (u.def.engineer) { this.taskEngineer(u); return; }
     if (u.def.harvester || u.def.plane) return;
     if (u.def.naval) return;   // 舰船由舰队逻辑统一调度
+    // 新步兵有一半几率去填满自己的碉堡
+    if (canGarrison(u) && Math.random() < 0.5) {
+      const bk = buildings.find(b => b.alive && b.team === this.team && b.def.garrison && b.buildAnim >= 1 && garrisonCount(b) + units.filter(o => o.alive && o.order.type === 'garrison' && o.order.target === b).length < b.def.garrison);
+      if (bk) { commandGarrison([u], bk); return; }
+    }
     const r = this.rally();
     commandMove([u], r.x + rnd(-6, 6), r.z + rnd(-6, 6));
   }
@@ -3847,8 +3943,14 @@ class AIController {
     for (const e of engs) if (e.order.type === 'idle') this.taskEngineer(e);
     const freeDerricks = buildings.filter(b => b.alive && b.def.derrick && b.team !== this.team).length;
     if (freeDerricks && engs.length + this.queued('engineer') < 1 && time > 50 && time < 1800 && T.credits > 700 && isUnlocked(T, 'engineer')) enqueue(T, 'engineer');
+    // --- 兵营升级（插到步兵队列最前面）---
+    if (countOf(T, 'barracks') && !T.queues.infantry.some(i => UPGRADES[i.type])) {
+      for (const [k, at] of [['upArmor', 400], ['upAP', 650], ['upMedic', 900]]) {
+        if (time >= at && isUnlocked(T, k) && T.credits > costOf(T.id, k) + reserve) { T.queues.infantry.unshift({ type: k, progress: 0, paid: 0 }); break; }
+      }
+    }
     // --- 作战单位 ---
-    const all = units.filter(u => u.alive && u.team === this.team && u.weapon && !u.chute);
+    const all = units.filter(u => u.alive && u.team === this.team && u.weapon && !u.chute && !u.inside && u.order.type !== 'garrison');
     const planes = all.filter(u => u.def.plane), ships = all.filter(u => u.def.naval);
     const army = all.filter(u => !u.def.plane && !u.def.naval);
     const comp = time < 420 ? { rifle: 4, rocketInf: 2, scout: 2, tank: 3 }
@@ -4032,6 +4134,7 @@ function centerOn(x, z) { cam.x = x; cam.z = z; }
 // =====================================================================
 let mode = null, placing = null, hovered = null, lastClick = { t: 0, type: null };
 function canSeeEntity(e) {
+  if (e.inside) return false;   // 进驻碉堡的步兵不显示
   if (e.team === PLAYER) return true;
   if (e.kind !== 'u') return e.seen;
   return visibleAt(e.x, e.z) && (!e.def.sub || revealAll || detectedBy(PLAYER, e));
@@ -4070,7 +4173,7 @@ function boxSelect(x0, y0, x1, y1, add) {
   const minX = Math.min(x0, x1), maxX = Math.max(x0, x1), minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
   let found = [];
   for (const u of units) {
-    if (!u.alive || u.team !== PLAYER) continue;
+    if (!u.alive || u.team !== PLAYER || u.inside) continue;
     const p = worldToScreen(u.mesh.position.x, u.mesh.position.y + 0.5, u.mesh.position.z);
     if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) found.push(u);
   }
@@ -4102,6 +4205,16 @@ function contextCommand(sx, sy) {
   const planes = own.filter(u => u.def.plane);
   if (t && t.kind === 'b' && t.team === PLAYER && t.type === 'airfield' && planes.length) {
     issueCommand({ c: 'stop', ids: idsOf(planes) });
+    addMarker(t.x, t.z, '#60c0ff', 0.6);
+    return;
+  }
+  // 右键己方碉堡：步兵进驻，其余单位移动到碉堡旁边
+  const grunts = own.filter(canGarrison);
+  if (t && t.kind === 'b' && t.team === PLAYER && t.def.garrison && grunts.length) {
+    if (garrisonCount(t) >= t.def.garrison) { notify('碉堡已满（最多 ' + t.def.garrison + ' 人）', 'bad'); return; }
+    issueCommand({ c: 'garrison', ids: idsOf(grunts), bid: t.id });
+    const rest = own.filter(u => !grunts.includes(u));
+    if (rest.length) issueCommand({ c: 'move', ids: idsOf(rest), x: t.x, z: t.z + 5 });
     addMarker(t.x, t.z, '#60c0ff', 0.6);
     return;
   }
@@ -4412,6 +4525,7 @@ function syncMeshes(alpha, rdt, gdt) {
       if (b.parts.doorL) { b.parts.doorL.position.x = -0.55 - b.slide * 1.1; b.parts.doorR.position.x = 0.55 + b.slide * 1.1; }
     }
     if (b.parts.lamp) b.parts.lamp.visible = b.abmReady && powered && b.buildAnim >= 1;
+    if (b.def.garrison && (uiFrameN + b.id) % 10 === 0) { const n = garrisonCount(b); for (let i = 0; i < b.def.garrison; i++) b.parts['slot' + i].visible = i < n; }
     if (b.turretMesh) {
       b.turretMesh.rotation.y = b.turretAngle;
       const r = b.recoil || 0;
@@ -4669,6 +4783,35 @@ function makeIcons(nation, opts = {}) {
   }
   fogData.fill(0); fogTex.needsUpdate = true;
   r2.dispose(); r2.forceContextLoss();
+  if (out === ICONS) for (const k in UPGRADES) ICONS[k] = upgradeIcon(UPGRADES[k].icon, W, H);
+}
+// 兵营升级图标：2D 绘制的徽章
+function upgradeIcon(kind, W, H) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2c3424'); g.addColorStop(1, '#1a1f15');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  x.strokeStyle = 'rgba(214,184,96,0.35)'; x.lineWidth = 2; x.strokeRect(3, 3, W - 6, H - 6);
+  const cx = W / 2, cy = H / 2;
+  x.fillStyle = '#d6b860'; x.strokeStyle = '#3a3220'; x.lineWidth = 3;
+  x.beginPath();
+  if (kind === 'shield') {
+    x.moveTo(cx, cy - 30); x.lineTo(cx + 24, cy - 20); x.lineTo(cx + 22, cy + 6);
+    x.quadraticCurveTo(cx + 16, cy + 24, cx, cy + 32); x.quadraticCurveTo(cx - 16, cy + 24, cx - 22, cy + 6); x.lineTo(cx - 24, cy - 20); x.closePath();
+    x.fill(); x.stroke();
+    x.fillStyle = '#3a3220'; x.fillRect(cx - 3, cy - 18, 6, 36); x.fillRect(cx - 14, cy - 3, 28, 6);
+  } else if (kind === 'round') {
+    for (const dx of [-16, 0, 16]) {
+      x.beginPath();
+      x.moveTo(cx + dx - 6, cy + 28); x.lineTo(cx + dx - 6, cy - 10); x.quadraticCurveTo(cx + dx, cy - 32, cx + dx + 6, cy - 10); x.lineTo(cx + dx + 6, cy + 28); x.closePath();
+      x.fill(); x.stroke();
+      x.fillStyle = '#9a7a3a'; x.fillRect(cx + dx - 6, cy + 18, 12, 10); x.fillStyle = '#d6b860';
+    }
+  } else {
+    x.fillStyle = '#e8e2d0'; x.arc(cx, cy, 28, 0, Math.PI * 2); x.fill(); x.stroke();
+    x.fillStyle = '#c03828'; x.fillRect(cx - 7, cy - 20, 14, 40); x.fillRect(cx - 20, cy - 7, 40, 14);
+  }
+  return c.toDataURL('image/png');
 }
 
 // =====================================================================
@@ -4698,6 +4841,7 @@ function renderTab() {
   const mine = d => d.cat === curTab && (!d.nation || d.nation === teams[PLAYER].nation) && (!d.naval || G.mapType === 'sea');
   for (const k in BUILDINGS) if (mine(BUILDINGS[k])) types.push(k);
   for (const k in UNITS) if (mine(UNITS[k])) types.push(k);
+  for (const k in UPGRADES) if (mine(UPGRADES[k])) types.push(k);
   for (const type of types) {
     const d = defOf(type);
     const el = document.createElement('div');
@@ -4719,10 +4863,11 @@ function showTip(type, el) {
   let html = `<b>${d.name}</b>　$${cost}${cost < d.cost ? `<span style="color:#8a9080;text-decoration:line-through;margin-left:4px">$${d.cost}</span>` : ''}<br>${d.desc || ''}`;
   if (d.isBuilding && d.power) html += `<br>电力：${d.power > 0 ? '+' : ''}${d.power}`;
   if (d.weapon) { const w = WEAPONS[d.weapon]; html += `<br>射程 ${w.range} 格${d.ammo ? '　弹药 ' + d.ammo : ''}`; }
-  html += `<br>生命 ${Math.round(hpOf(PLAYER, d))}${d.isBuilding ? '' : '　速度 ' + (d.speed * natOf(PLAYER).speedMul).toFixed(1)}`;
+  if (d.upgrade) html += T && T.upg[type] ? '<br><span style="color:#8fd070">已研究</span>' : `<br>研究时间 ${d.time} 秒（在兵营研究，研究期间暂停步兵生产）`;
+  else html += `<br>生命 ${Math.round(hpOf(PLAYER, d))}${d.isBuilding ? '' : '　速度 ' + (d.speed * natOf(PLAYER).speedMul).toFixed(1)}`;
   if (miss.length) html += `<br><span class="req">需要：${miss.join('、')}</span>`;
   if (d.max && T && (T.counts[type] || 0) >= d.max) html += `<br><span class="req">最多建造 ${d.max} 座</span>`;
-  html += `<br><span style="color:#8a9080">${d.isBuilding ? '左键建造/放置，右键取消' : '左键生产，Shift+左键 ×5，右键取消'}</span>`;
+  html += `<br><span style="color:#8a9080">${d.isBuilding ? '左键建造/放置，右键取消' : d.upgrade ? '左键研究，右键取消' : '左键生产，Shift+左键 ×5，右键取消'}</span>`;
   tooltip.innerHTML = html;
   const r = el.getBoundingClientRect();
   tooltip.style.display = 'block';
@@ -4744,6 +4889,7 @@ function onBuildClick(type, e) {
     if (q.length && q[0].type === type && q[0].ready) { placing = { type }; setGhost(type); setMode(null); Sound.play('click'); return; }
     if (q.length) { notify(q[0].type === type ? '正在建造中' : '正在建造其他建筑', 'bad'); Sound.play('error'); return; }
   }
+  if (d.upgrade && (T.upg[type] || q.some(i => i.type === type))) { Sound.play('error'); notify(T.upg[type] ? '已经研究过了' : '正在研究中', 'bad'); return; }
   if (!isUnlocked(T, type)) { Sound.play('error'); const m = missingReq(T, type); notify(m.length ? '需要：' + m.join('、') : '无法建造', 'bad'); return; }
   issueCommand({ c: 'enqueue', type, n: e.shiftKey ? 5 : 1 });
   Sound.play('click');
@@ -4765,6 +4911,7 @@ function updateBuildGrid() {
       else if (!(countOf(T, prodOf(d)) > 0)) st = '暂停';
       else { st = Math.floor(head.progress * 100) + '%'; prog = 1 - head.progress; }
     } else if (mine.length) { st = '排队'; prog = 1; }
+    if (d.upgrade && T.upg[it.type]) { st = '已研究'; it.el.classList.add('disabled'); }
     it.st.textContent = st;
     it.prog.style.height = (head || mine.length ? prog * 100 : 0) + '%';
     if (!d.isBuilding && mine.length > 0) { it.cnt.style.display = 'block'; it.cnt.textContent = mine.length; } else it.cnt.style.display = 'none';
@@ -4805,6 +4952,7 @@ function renderSelPanel() {
       if (e.type !== 'hq' && !d.derrick) cmds += `<button data-c="sell">出售</button>`;
       if (!d.derrick) cmds += `<button data-c="repair">${e.repairing ? '停止维修' : '维修'}</button>`;
       if (PROD_TYPES.includes(e.type) && countOf(teams[PLAYER], e.type === 'airBarracks' ? 'barracks' : e.type) > 1) cmds += `<button data-c="primary">设为主建筑</button>`;
+      if (d.garrison) cmds += `<button data-c="unload">撤出步兵</button>`;
     }
     const rk = e.kind === 'u' && e.rank ? `<span style="color:#ffd860;margin-left:4px">${'︽'.repeat(e.rank)}${RANKS[e.rank].name}</span>` : '';
     p.innerHTML = `<div class="row"><img class="big" src="${ICONS[e.type] || ''}"><div><div class="title">${d.name}${rk}${teamName}</div>
@@ -4826,6 +4974,7 @@ function renderSelPanel() {
     if (c === 'sell' && e) issueCommand({ c: 'sell', bid: e.id });
     if (c === 'repair' && e) { e.repairing = !e.repairing; issueCommand({ c: 'repair', bid: e.id, on: e.repairing }); renderSelPanel(); }
     if (c === 'primary' && e) { issueCommand({ c: 'primary', bid: e.id }); notify(e.def.name + ' 已设为主建筑'); }
+    if (c === 'unload' && e) issueCommand({ c: 'unload', bid: e.id });
     Sound.play('click');
   }));
   updateSelPanel();
@@ -4843,6 +4992,7 @@ function updateSelPanel() {
   if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
+  if (e.def.garrison) s += `　进驻 ${garrisonCount(e)}/${e.def.garrison}`;
   if (e.weapon) s += `　射程 ${e.weapon.range} 格`;
   if (e.def.plane) s += `　弹药 ${e.ammo}/${e.def.ammo}${e.parked ? '（停机）' : ''}`;
   if (e.kind === 'u' && e.team === PLAYER && e.weapon && !Net.isClient && e.rank < 2) s += `　经验 ${Math.floor(e.xp)}/${e.rank ? Math.max(900, e.def.cost * 3) : Math.max(300, e.def.cost)}`;
@@ -5027,6 +5177,14 @@ const GUIDE = [
           <div class="gm">需要：${d.req.map(r => BUILDINGS[r].name).join('、')}</div>
           <div class="gd">${d.desc}${good ? '<br>' + good : ''}</div></div></div>`;
       }
+      h += `</div><h3>步兵生存</h3><p>步兵会卧倒，只受 <b>60%</b> 的爆炸溅射伤害。把步兵放进<b>步兵碉堡</b>（选中步兵，右键点自己的碉堡）：最多 5 人，射程 +1 格、伤害 +20%，敌人只能先拆碉堡。</p>
+        <h3>兵营升级</h3><p>在步兵栏研究，研究期间该兵营暂停生产步兵。研究一次永久生效。</p><div class="gcards">`;
+      for (const k in UPGRADES) {
+        const d = UPGRADES[k];
+        h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}</div>
+          <div class="gm">$${d.cost}　研究 ${d.time} 秒　需要：${d.req.map(r => BUILDINGS[r].name).join('、')}</div>
+          <div class="gd">${d.desc}</div></div></div>`;
+      }
       return h + '</div>';
     },
   },
@@ -5053,7 +5211,8 @@ const GUIDE = [
           <li>敌人直升机来了：用<b>防空车</b>、<b>防空炮</b>、<b>反坦克兵</b>（火箭可以打飞机）。步枪兵、机枪塔也能对直升机造成少量伤害，总部自带一门防空炮。</li>
           <li>敌人造了<b>战略导弹井</b>：在雷达站之后建<b>反导系统</b>，它会自动拦下落在 13 格内的战略导弹。拦一次要装填几分钟，被多家围攻时多建几座。</li>
           <li><b>自行火炮</b>和<b>沙暴火箭车</b>射程很远但很脆，躲在坦克后面用；它们打不到太近的目标。</li>
-          <li>拆基地：坦克、火炮、反坦克兵对建筑伤害都不错，机枪基本打不动建筑。</li>
+          <li>拆基地：坦克、火炮、反坦克兵对建筑伤害都不错，机枪基本打不动建筑（研究<b>穿甲弹</b>后步枪兵打建筑和载具伤害翻倍）。</li>
+          <li>守家：<b>步兵碉堡</b>里塞满步枪兵和反坦克兵，便宜又耐打；敌人要用坦克、火炮把碉堡拆掉。后期研究<b>防弹衣</b>、<b>穿甲弹</b>、<b>战地急救</b>，步兵也能顶上去。</li>
           <li>敌人舰队靠岸：<b>反装甲炮塔</b>、坦克、<b>攻击机</b>都能打舰船；潜艇只能用<b>驱逐舰</b>、<b>潜艇</b>对付。</li>
           <li>敌人飞机多：<b>截击机</b>停在机场会自动起飞拦截，再配合防空车、防空炮。</li>
         </ul>`;
@@ -5475,6 +5634,8 @@ function executeCommand(team, c) {
     case 'harvest': if (c.tile >= 0 && c.tile < MAP * MAP) commandHarvest(own(c.ids), c.tile | 0); break;
     case 'dock': { const r = ownB(c.rid); if (r && r.type === 'refinery') commandDock(own(c.ids), r); break; }
     case 'enter': { const b = entById.get(c.bid); if (b && b.alive && b.kind === 'b') commandEnter(own(c.ids), b); break; }
+    case 'garrison': { const b = entById.get(c.bid); if (b && b.alive && b.team === team && b.def.garrison) commandGarrison(own(c.ids), b); break; }
+    case 'unload': { const b = entById.get(c.bid); if (b && b.alive && b.team === team && b.def.garrison) unloadBunker(b); break; }
     case 'enqueue': if (defOf(c.type)) enqueue(T, c.type, clamp(c.n | 0, 1, 5)); break;
     case 'cancel': if (T.queues[c.cat]) cancelItem(T, c.cat, c.type); break;
     case 'place':
@@ -5704,7 +5865,7 @@ const Net = {
       ud[o + 2] = Math.round(u.x * 50); ud[o + 3] = Math.round(u.z * 50); ud[o + 4] = Math.round(u.y * 50);
       ud[o + 5] = Math.round(wrapA(u.angle) * 10000); ud[o + 6] = Math.round(wrapA(u.turretAngle) * 10000);
       // flags：bit0 移动 / bit1 伞降 / bit2-3 军衔 / bit4 停在机场
-      ud[o + 7] = Math.ceil(Math.max(0, u.hp)); ud[o + 8] = (u.moving ? 1 : 0) | (u.chute ? 2 : 0) | (u.rank << 2) | (u.parked ? 16 : 0);
+      ud[o + 7] = Math.ceil(Math.max(0, u.hp)); ud[o + 8] = (u.moving ? 1 : 0) | (u.chute ? 2 : 0) | (u.rank << 2) | (u.parked ? 16 : 0) | (u.inside ? 32 : 0);
       ud[o + 9] = u.def.plane ? u.ammo : Math.round((u.cargo || 0) / HARV_CAP * 100);
     });
     const bid = new Int32Array(bs.length), bd = new Int16Array(bs.length * 7);
@@ -5716,7 +5877,7 @@ const Net = {
     });
     const td = teams.map(T => ({
       c: Math.round(T.credits), q: CAT_ORDER.map(cat => T.queues[cat].map(it => [it.type, Math.round(it.progress * 1000) / 1000, it.ready ? 1 : 0])),
-      sc: T.superCharge, sr: T.superReady ? 1 : 0, ac: T.abilityCharge, ar: T.abilityReady ? 1 : 0, d: T.defeated ? 1 : 0, r: T.rally, p: T.primary, ai: T.isAI ? 1 : 0,
+      sc: T.superCharge, sr: T.superReady ? 1 : 0, ac: T.abilityCharge, ar: T.abilityReady ? 1 : 0, d: T.defeated ? 1 : 0, r: T.rally, p: T.primary, ai: T.isAI ? 1 : 0, ug: Object.keys(T.upg),
     }));
     const oreList = [];
     for (const i of this.oreChanges) oreList.push(i, Math.round(ore[i]));
@@ -5763,6 +5924,9 @@ function applySnapshot(m) {
     const fl = ud[o + 8], rk = (fl >> 2) & 3;
     if (rk !== u.rank) { u.maxHp *= RANKS[rk].hp / RANKS[u.rank].hp; u.rank = rk; }
     u.hp = ud[o + 7]; u.moving = !!(fl & 1); u.chute = !!(fl & 2); u.parked = !!(fl & 16);
+    const inB = (fl & 32) ? entById.get(bldGrid[tileOf(z) * MAP + tileOf(x)]) : null;
+    if (inB && !u.inside) { const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); } }
+    u.inside = inB || null;
     if (u.def.plane) u.ammo = ud[o + 9]; else u.cargo = ud[o + 9] / 100 * HARV_CAP;
     if (u.cargoMesh) { u.cargoMesh.visible = u.cargo > 0; u.cargoMesh.scale.y = Math.max(0.05, u.cargo / HARV_CAP); }
     seenU.add(id);
@@ -5775,6 +5939,10 @@ function applySnapshot(m) {
     CAT_ORDER.forEach((cat, ci) => { T.queues[cat] = (d.q[ci] || []).map(([type, p, r]) => ({ type, progress: p, ready: !!r, paid: 0 })); });
     T.superCharge = d.sc; T.superReady = !!d.sr; T.abilityCharge = d.ac; T.abilityReady = !!d.ar;
     T.rally = d.r || {}; T.primary = d.p || {};
+    for (const k of d.ug || []) if (UPGRADES[k] && !T.upg[k]) {
+      T.upg[k] = true;
+      if (k === 'upArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.inf) u.maxHp *= ARMOR_UPG;
+    }
     if (d.ai && !T.isAI) { T.isAI = true; T.human = false; }
     if (d.d && !T.defeated) { T.defeated = true; if (i === PLAYER) revealAll = true; }
   });
