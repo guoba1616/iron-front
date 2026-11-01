@@ -410,10 +410,15 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // =====================================================================
 const TILE = 2, MAP = 160, WORLD = TILE * MAP, TICK = 0.05, TPS = 20;
 const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5;   // T_VOID：小地图以外的区域
+const T_SWAMP = 6, T_SAND = 7, T_ROAD = 8, T_FORD = 9, T_BRIDGE = 10;            // 沼泽、沙地、公路、浅滩、桥面
+// 地表通行：[步兵, 载具] 速度倍率，0 = 不可通行（林地可以穿行，只是慢）
+const TERRAIN_SPEED = [[1, 1], [1, 1], [0, 0], [0, 0], [0.75, 0.5], [0, 0], [0.6, 0.35], [0.9, 0.8], [1, 1.3], [0.6, 0.5], [1, 1.15]];
+const TERRAIN_NAME = ['草地', '土地', '岩石', '水', '林地', '', '沼泽', '沙地', '公路', '浅滩', '桥'];
+const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.8';
+const GAME_VERSION = 'iron-3.0';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -515,6 +520,8 @@ const BUILDINGS = {
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
   airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
+  bridge:   { name: '桥', w: 3, h: 6, hp: 1500, power: 0, cost: 0, time: 0, sight: 0, desc: '河上的公路桥。可以用炮弹、火箭、炸弹炸断（右键下令攻击），断了以后谁都过不去；派工程师右键断桥可以修好。' },
+  house:    { name: '民房', w: 2, h: 2, hp: 1200, power: 0, cost: 0, time: 0, sight: 6, garrison: 4, desc: '小镇里的民房。最多进驻 4 名步兵（射程 +1 格、伤害 +20%），有人进驻后算作那一方的据点。被打爆后变成废墟。' },
   derrick:  { name: '油井', w: 2, h: 2, hp: 700, power: 0, cost: 0, time: 0, sight: 4, derrick: true, income: 4, desc: '派工程师占领后，每秒提供 4 资金。' },
   shipyard: { name: '船厂', cat: 'building', w: 3, h: 3, hp: 1500, power: -30, cost: 1500, time: 16, sight: 7, naval: true, req: ['refinery'], desc: '生产舰船。必须建在岸边（紧挨水面），可以离己方建筑稍远（8 格以内）。只在内海地图上可建。' },
   airfield: { name: '机场', cat: 'building', w: 3, h: 3, hp: 1300, power: -40, cost: 1500, time: 16, sight: 7, req: ['radar'], desc: '生产固定翼飞机。有 4 个停机位，飞机在这里补充弹药和修理；每个机场最多停 4 架。' },
@@ -759,6 +766,22 @@ const navigable = new Uint8Array(MAP * MAP);   // 舰船能走的水面（与中
 const bldGrid = new Int32Array(MAP * MAP);
 let oreFields = [];
 let derrickSites = [];
+let bridgeSites = [], houseSites = [];   // 桥（{tx,tz,w,h}）和民房（2×2）位置，由地图生成，联机各方一致
+// 高度场：存放在 (MAP+1)² 个格点上，单位是世界坐标
+const HG = MAP + 1;
+const hgt = new Float32Array(HG * HG);
+const tileCost = [new Float32Array(MAP * MAP), new Float32Array(MAP * MAP)];   // 寻路代价：[步兵, 载具]
+function groundH(x, z) {
+  const gx = clamp(x / TILE, 0, MAP - 0.001), gz = clamp(z / TILE, 0, MAP - 0.001);
+  const ix = gx | 0, iz = gz | 0, fx = gx - ix, fz = gz - iz, i = iz * HG + ix;
+  return (hgt[i] * (1 - fx) + hgt[i + 1] * fx) * (1 - fz) + (hgt[i + HG] * (1 - fx) + hgt[i + HG + 1] * fx) * fz;
+}
+const terrainAt = (x, z) => { const tx = tileOf(x), tz = tileOf(z); return inMap(tx, tz) ? terrain[tz * MAP + tx] : T_VOID; };
+// 单位在当前地表的速度倍率（步兵 / 载具）
+const terrainMul = u => TERRAIN_SPEED[terrainAt(u.x, u.z)][u.def.inf ? 0 : 1] || 0.5;
+function refreshTileCost(i) {
+  for (let k = 0; k < 2; k++) { const s = passable[i] ? TERRAIN_SPEED[terrain[i]][k] : 0; tileCost[k][i] = s > 0 ? 1 / s : 99; }
+}
 // 地图按 90° 旋转对称：rot 把左下象限依次转到左上、右上、右下
 const rotP = (x, z) => [MAP - 1 - z, x];
 const rotK = (x, z, k) => { for (let i = 0; i < k; i++) [x, z] = rotP(x, z); return [x, z]; };
@@ -783,12 +806,16 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   { const bx = Math.round(P(20)); BASES.forEach((b, i) => { const [tx, tz] = rotK(bx, MAP - 1 - bx, i); b.tx = tx; b.tz = tz; }); }
   const rng = mulberry32(seed);
   const nRock = makeNoise(rng), nTree = makeNoise(rng), nWater = makeNoise(rng), nDirt = makeNoise(rng);
+  const nSwamp = makeNoise(rng), nSand = makeNoise(rng), nHill = makeNoise(rng);
   for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
     const r = nRock(x / 20, z / 20), f = nTree(x / 13, z / 13), w = nWater(x / 26, z / 26), d = nDirt(x / 9, z / 9);
+    const sw = nSwamp(x / 16, z / 16), sa = nSand(x / 22, z / 22);
     let t = T_GRASS;
     if (w > (sea ? 0.74 : 0.69)) t = T_WATER;
-    else if (r > 0.655) t = T_ROCK;
-    else if (f > 0.64) t = T_TREE;
+    else if (r > 0.68) t = T_ROCK;
+    else if (w > 0.6 && sw > 0.55) t = T_SWAMP;    // 沼泽：低洼、靠近水边
+    else if (f > 0.6) t = T_TREE;                   // 林地：可以穿行
+    else if (sa > 0.68) t = T_SAND;
     else if (d > 0.68) t = T_DIRT;
     terrain[z * MAP + x] = t;
   }
@@ -796,7 +823,7 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   const clearDisc = (cx, cz, r, t = T_GRASS) => {
     for (let z = Math.floor(cz - r); z <= cz + r; z++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
       if (!inMap(x, z)) continue;
-      if ((x - cx) ** 2 + (z - cz) ** 2 <= r * r) { const i = z * MAP + x; if (terrain[i] !== T_DIRT || t !== T_GRASS) terrain[i] = t; }
+      if ((x - cx) ** 2 + (z - cz) ** 2 <= r * r) { const i = z * MAP + x; if ((terrain[i] !== T_DIRT && terrain[i] !== T_ROAD) || t !== T_GRASS) terrain[i] = t; }
     }
   };
   // 道路（只在左下象限生成，之后旋转复制）
@@ -815,7 +842,7 @@ function generateMap(seed, mapType = 'land', size = 'large') {
           const tx = Math.round(cx + dx), tz = Math.round(cz + dz);
           if (!inMap(tx, tz)) continue;
           const ii = tz * MAP + tx;
-          terrain[ii] = (dx * dx + dz * dz <= 1.5) ? T_DIRT : (terrain[ii] === T_DIRT ? T_DIRT : T_GRASS);
+          terrain[ii] = (dx * dx + dz * dz <= 1.5) ? T_ROAD : (terrain[ii] === T_ROAD || terrain[ii] === T_DIRT ? terrain[ii] : T_DIRT);
         }
       }
     }
@@ -851,6 +878,37 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   }
   for (const f of fieldDefs) clearDisc(f.x, f.z, f.r + 1.5);
   for (const d of derrickSites) clearDisc(d.tx + 1, d.tz + 1, 2.6);
+
+  // 小镇：在通往中央的公路旁，十字街道 + 4 栋民房
+  const townC = (sea ? pp(20, 100) : pp(45, 112)).map(Math.round);   // 内海地图避开通往海湾的水道
+  clearDisc(townC[0], townC[1], 8);
+  for (let d = -7; d <= 7; d++) { setT(townC[0] + d, townC[1], T_ROAD); setT(townC[0], townC[1] + d, T_ROAD); }
+  houseSites = [[-4, -4], [2, -4], [-4, 2], [2, 2]].map(([dx, dz]) => ({ tx: townC[0] + dx, tz: townC[1] + dz }));
+  for (const h of houseSites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
+
+  // 河流（只在大陆地图）：沿象限边缘从地图边流向中央，中央留出一片空地；一座桥 + 一处浅滩
+  bridgeSites = [];
+  if (!sea) {
+    const rz = P(H + 3), x0 = PLAY.lo, x1 = P(H - 12);
+    const ph = rng() * 6;
+    for (let x = x0; x <= x1; x++) {
+      const zc = rz + Math.sin(x * 0.18 + ph) * 1.2;
+      for (let z = Math.floor(zc - 2); z <= Math.ceil(zc + 2); z++) if (Math.abs(z - zc) <= 1.8 && z >= H) setT(x, z, T_WATER);
+    }
+    const waterRun = x => { let a = -1, b = -1; for (let z = H; z < H + 12; z++) if (terrain[z * MAP + x] === T_WATER) { if (a < 0) a = z; b = z; } return [a, b]; };
+    // 桥：公路过河的地方（3 格宽）
+    const bx = Math.round(P(19));
+    let [za, zb] = waterRun(bx);
+    for (let x = bx - 1; x <= bx + 1; x++) { const [a, b] = waterRun(x); if (a >= 0) { za = Math.min(za < 0 ? a : za, a); zb = Math.max(zb, b); } }
+    if (za >= 0) {
+      for (let x = bx - 1; x <= bx + 1; x++) for (let z = za; z <= zb; z++) setT(x, z, T_BRIDGE);
+      for (let x = bx - 1; x <= bx + 1; x++) { setT(x, za - 1, T_ROAD); setT(x, zb + 1, T_ROAD); }
+      bridgeSites.push({ tx: bx - 1, tz: za - 1, w: 3, h: zb - za + 3 });
+    }
+    // 浅滩
+    const fx = Math.round(P(44));
+    for (let x = fx - 1; x <= fx + 1; x++) for (let z = H; z < H + 12; z++) if (terrain[z * MAP + x] === T_WATER) terrain[z * MAP + x] = T_FORD;
+  }
 
   // 内海：中央圆形海面 + 一条水道通到基地旁的海湾（基地附近保持陆地）
   if (sea) {
@@ -894,7 +952,7 @@ function generateMap(seed, mapType = 'land', size = 'large') {
       const d = Math.hypot(x - cx, z - cz) + (rng() - 0.5) * 1.4;
       if (d > r) continue;
       const i = z * MAP + x;
-      if (terrain[i] === T_ROCK || terrain[i] === T_WATER || terrain[i] === T_TREE || terrain[i] === T_VOID) continue;
+      if (!BUILDABLE_T[terrain[i]]) continue;
       const a = Math.round(amt * (0.7 + 0.3 * (1 - d / r)));
       ore[i] = a; oreMax[i] = a; gem[i] = isGem ? 1 : 0;
       fld.tiles.push(i);
@@ -912,6 +970,10 @@ function generateMap(seed, mapType = 'land', size = 'large') {
     sites.push({ tx, tz });
   }
   derrickSites = sites;
+  // 桥和民房同样四角对称（矩形旋转 90°：tx' = MAP - tz - h，tz' = tx，宽高互换）
+  const rotRect = (r, k) => { let { tx, tz, w, h } = r; for (let i = 0; i < k; i++) [tx, tz, w, h] = [MAP - tz - h, tx, h, w]; return { tx, tz, w, h, rot: k % 2 }; };
+  bridgeSites = bridgeSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect(r, k)));
+  houseSites = houseSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect({ ...r, w: 2, h: 2 }, k)));
 
   // 4 邻域泛洪
   const flood = (start, ok) => {
@@ -936,13 +998,76 @@ function generateMap(seed, mapType = 'land', size = 'large') {
     for (let i = 0; i < MAP * MAP; i++) if (terrain[i] === T_WATER) { if (wet[i]) navigable[i] = 1; else terrain[i] = T_GRASS; }
   }
   // 通行性 + 连通性检查
-  for (let i = 0; i < MAP * MAP; i++) passable[i] = (terrain[i] === T_GRASS || terrain[i] === T_DIRT) ? 1 : 0;
+  for (let i = 0; i < MAP * MAP; i++) passable[i] = TERRAIN_SPEED[terrain[i]][0] > 0 ? 1 : 0;
   const seen = flood(B0.tz * MAP + B0.tx, i => passable[i] === 1);
   for (let i = 0; i < MAP * MAP; i++) if (passable[i] && !seen[i]) {
-    terrain[i] = T_TREE; passable[i] = 0; ore[i] = 0; oreMax[i] = 0;
+    terrain[i] = T_ROCK; passable[i] = 0; ore[i] = 0; oreMax[i] = 0;
   }
   for (const f of oreFields) f.tiles = f.tiles.filter(i => oreMax[i] > 0);
+  for (let i = 0; i < MAP * MAP; i++) refreshTileCost(i);
   bldGrid.fill(0);
+  generateHeights(rng, nHill, k, kr);
+}
+
+// 高度场：左下象限里放几座山丘，按旋转对称求值；基地、公路、水边、矿区、油井、小镇附近压平
+function generateHeights(rng, nHill, k, kr) {
+  const H = MAP / 2, FADE = 5;
+  // 到“必须平坦”的格子（水、公路、矿、基地、油井、民房）的距离（格），最多算到 20
+  const dist = new Uint8Array(MAP * MAP).fill(255), q = [];
+  const flat = (i) => { if (dist[i] !== 0) { dist[i] = 0; q.push(i); } };
+  for (let i = 0; i < MAP * MAP; i++) {
+    const t = terrain[i];
+    if (t === T_WATER || t === T_FORD || t === T_BRIDGE || t === T_ROAD || t === T_VOID || oreMax[i] > 0) flat(i);
+  }
+  const disc = (cx, cz, r) => { for (let z = Math.floor(cz - r); z <= cz + r; z++) for (let x = Math.floor(cx - r); x <= cx + r; x++) if (inMap(x, z) && (x - cx) ** 2 + (z - cz) ** 2 <= r * r) flat(z * MAP + x); };
+  for (const b of BASES) disc(b.tx, b.tz, 15 * kr);
+  for (const d of derrickSites) disc(d.tx + 1, d.tz + 1, 3);
+  for (const s of houseSites) disc(s.tx + 1, s.tz + 1, 3);
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h], cx = c % MAP, cz = (c / MAP) | 0, d = dist[c];
+    if (d >= 20) continue;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, nz = cz + dz;
+      if (!inMap(nx, nz)) continue;
+      const ni = nz * MAP + nx;
+      if (dist[ni] > d + 1) { dist[ni] = d + 1; q.push(ni); }
+    }
+  }
+  // 山丘放在左下象限里离公路、基地最远的空地上（每座试 30 个点取最好的），再复制到四个象限
+  const hills = [];
+  const n = k < 1 ? 4 : 6;
+  for (let i = 0; i < n; i++) {
+    let best = null, bd = -1;
+    for (let tries = 0; tries < 30; tries++) {
+      const x = PLAY.lo + 3 + rng() * (H - PLAY.lo - 6), z = H + 3 + rng() * (PLAY.hi - H - 6);
+      let d = dist[(z | 0) * MAP + (x | 0)];
+      for (const o of hills) d = Math.min(d, Math.hypot(o.x - x, o.z - z) * 0.6);   // 山丘之间别挤在一起
+      if (d > bd) { bd = d; best = { x, z }; }
+    }
+    if (bd < 4) continue;
+    const o = { x: best.x, z: best.z, r: Math.min(bd + 2, (6 + rng() * 4) * kr), a: 3.8 + rng() * 2.2 };
+    // 连续坐标的 90° 旋转：(X, Z) → (MAP - Z, X)，这样跨象限也是连续的
+    for (let j = 0; j < 4; j++) { hills.push({ ...o }); [o.x, o.z] = [MAP - o.z, o.x]; }
+  }
+  const fnH = (X, Z) => {
+    let h = 0;
+    for (const o of hills) { const d2 = ((X - o.x) ** 2 + (Z - o.z) ** 2) / (o.r * o.r); if (d2 < 4) h += o.a * Math.exp(-d2 * 1.4); }
+    let nz = 0, x = X, z = Z;
+    for (let j = 0; j < 4; j++) { nz += nHill(x / 14, z / 14); [x, z] = [MAP - z, x]; }
+    return h + (nz / 4 - 0.5) * 0.9;
+  };
+  const tdist = (x, z) => inMap(x, z) ? Math.min(dist[z * MAP + x], FADE) : 0;
+  for (let z = 0; z <= MAP; z++) for (let x = 0; x <= MAP; x++) {
+    const d = Math.min(tdist(x, z), tdist(x - 1, z), tdist(x, z - 1), tdist(x - 1, z - 1));
+    const f = d / FADE, sm = f * f * (3 - 2 * f);
+    hgt[z * HG + x] = clamp(fnH(x, z), 0, 6) * sm;
+  }
+}
+// 建筑占地内的高差（地面不平就不能建）
+function footSlope(tx, tz, w, h) {
+  let lo = 1e9, hi = -1e9;
+  for (let z = tz; z <= tz + h; z++) for (let x = tx; x <= tx + w; x++) { const v = hgt[clamp(z, 0, MAP) * HG + clamp(x, 0, MAP)]; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  return hi - lo;
 }
 
 // =====================================================================
@@ -957,11 +1082,15 @@ function paintGround() {
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const c = cv.getContext('2d');
   const pal = {
-    [T_GRASS]: [88, 102, 58], [T_DIRT]: [122, 104, 74], [T_ROCK]: [104, 97, 84], [T_WATER]: [40, 66, 70], [T_TREE]: [66, 80, 44], [T_VOID]: [10, 11, 9],
+    [T_GRASS]: [88, 102, 58], [T_DIRT]: [122, 104, 74], [T_ROCK]: [104, 97, 84], [T_WATER]: [40, 66, 70], [T_TREE]: [58, 72, 38], [T_VOID]: [10, 11, 9],
+    [T_SWAMP]: [62, 70, 44], [T_SAND]: [168, 150, 104], [T_ROAD]: [96, 90, 80], [T_FORD]: [70, 92, 88], [T_BRIDGE]: [40, 66, 70],
   };
   for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
     const i = z * MAP + x;
     let [r, g, b] = pal[terrain[i]];
+    // 高处颜色稍亮稍黄，低处偏暗
+    const hh = (hgt[z * HG + x] + hgt[z * HG + x + 1] + hgt[(z + 1) * HG + x] + hgt[(z + 1) * HG + x + 1]) / 4;
+    if (terrain[i] !== T_VOID) { r += hh * 5; g += hh * 4; b += hh * 1.5; }
     if (oreMax[i] > 0) { r = gem[i] ? 88 : 128; g = gem[i] ? 110 : 112; b = gem[i] ? 100 : 66; }
     const j = (Math.random() - 0.5) * 14;
     c.fillStyle = `rgb(${r + j | 0},${g + j | 0},${b + j * 0.6 | 0})`;
@@ -992,9 +1121,22 @@ function paintGround() {
   // 道路车辙
   c2.strokeStyle = 'rgba(70,55,35,0.18)'; c2.lineWidth = 2;
   for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
-    if (terrain[z * MAP + x] !== T_DIRT || Math.random() > 0.35) continue;
+    const t = terrain[z * MAP + x];
+    if ((t !== T_DIRT && t !== T_ROAD) || Math.random() > (t === T_ROAD ? 0.8 : 0.35)) continue;
+    c2.strokeStyle = t === T_ROAD ? 'rgba(40,36,30,0.28)' : 'rgba(70,55,35,0.18)';
     c2.beginPath(); const px = x * S + Math.random() * S, pz = z * S + Math.random() * S;
     c2.moveTo(px, pz); c2.lineTo(px + (Math.random() - 0.5) * 30, pz + (Math.random() - 0.5) * 30); c2.stroke();
+  }
+  // 沼泽：小水洼和芦苇点；沙地：浅色波纹
+  for (let z = 0; z < MAP; z++) for (let x = 0; x < MAP; x++) {
+    const t = terrain[z * MAP + x];
+    if (t === T_SWAMP) {
+      for (let n = 0; n < 2; n++) { c2.fillStyle = 'rgba(30,48,46,0.55)'; c2.beginPath(); c2.ellipse(x * S + Math.random() * S, z * S + Math.random() * S, 2 + Math.random() * 5, 1.5 + Math.random() * 3, Math.random() * 3, 0, 6.3); c2.fill(); }
+      c2.fillStyle = 'rgba(120,130,60,0.5)'; for (let n = 0; n < 5; n++) c2.fillRect(x * S + Math.random() * S, z * S + Math.random() * S, 1, 3);
+    } else if (t === T_SAND && Math.random() < 0.5) {
+      c2.strokeStyle = 'rgba(220,205,160,0.25)'; c2.beginPath(); const px = x * S, pz = z * S + Math.random() * S;
+      c2.moveTo(px, pz); c2.quadraticCurveTo(px + S / 2, pz - 3, px + S, pz); c2.stroke();
+    }
   }
   const tex = new THREE.CanvasTexture(cv2);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1008,8 +1150,10 @@ function buildWorld() {
     o.geometry && o.geometry.dispose();
   }
   // 地面
-  const gGeo = new THREE.PlaneGeometry(WORLD, WORLD, 1, 1);
+  // 地面按格点细分，顶点高度来自高度场
+  const gGeo = new THREE.PlaneGeometry(WORLD, WORLD, MAP, MAP);
   gGeo.rotateX(-Math.PI / 2); gGeo.translate(WORLD / 2, 0, WORLD / 2);
+  { const p = gGeo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, groundH(p.getX(i), p.getZ(i))); gGeo.computeVertexNormals(); }
   groundMesh = new THREE.Mesh(gGeo, fogify(new THREE.MeshStandardMaterial({ map: paintGround(), roughness: 0.96, metalness: 0 })));
   groundMesh.receiveShadow = true;
   worldRoot.add(groundMesh);
@@ -1022,7 +1166,18 @@ function buildWorld() {
   const tilesOf = t => { const a = []; for (let i = 0; i < MAP * MAP; i++) if (terrain[i] === t) a.push(i); return a; };
 
   // 水面
-  const waterTiles = tilesOf(T_WATER);
+  const waterTiles = tilesOf(T_WATER).concat(tilesOf(T_BRIDGE));
+  // 浅滩：浅色水面 + 垫脚石
+  const fordTiles = tilesOf(T_FORD);
+  if (fordTiles.length) {
+    const fm = new THREE.InstancedMesh(new THREE.PlaneGeometry(TILE, TILE).rotateX(-Math.PI / 2), fogify(new THREE.MeshStandardMaterial({ color: 0x5c8078, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.6 })), fordTiles.length);
+    fordTiles.forEach((i, k) => { dummy.position.set(tc(i % MAP), 0.08, tc((i / MAP) | 0)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); fm.setMatrixAt(k, dummy.matrix); });
+    worldRoot.add(fm);
+    const sm = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.28, 0), fogify(new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.9, flatShading: true })), fordTiles.length * 3);
+    let k = 0;
+    for (const i of fordTiles) for (let n = 0; n < 3; n++) { dummy.position.set(tc(i % MAP) + rnd(-0.8, 0.8), 0.05, tc((i / MAP) | 0) + rnd(-0.8, 0.8)); dummy.rotation.set(rnd(0, 3), rnd(0, 3), 0); const s = rnd(0.6, 1.3); dummy.scale.set(s, s * 0.5, s); dummy.updateMatrix(); sm.setMatrixAt(k++, dummy.matrix); }
+    sm.receiveShadow = true; worldRoot.add(sm);
+  }
   if (waterTiles.length) {
     const wGeo = new THREE.PlaneGeometry(TILE, TILE).rotateX(-Math.PI / 2);
     const wm = new THREE.InstancedMesh(wGeo, fogify(new THREE.MeshStandardMaterial({ color: 0x2a5058, roughness: 0.12, metalness: 0.2, transparent: true, opacity: 0.86 })), waterTiles.length);
@@ -1042,7 +1197,7 @@ function buildWorld() {
       for (let n = 0; n < 2; n++) {
         const s = n === 0 ? rnd(1.2, 1.7) : rnd(0.6, 1.0);
         const sy = n === 0 ? rnd(0.7, 1.6) : rnd(0.5, 1.0);
-        dummy.position.set(x + rnd(-0.5, 0.5), sy * 0.35, z + rnd(-0.5, 0.5));
+        dummy.position.set(x + rnd(-0.5, 0.5), sy * 0.35 + groundH(x, z), z + rnd(-0.5, 0.5));
         dummy.rotation.set(rnd(0, 3), rnd(0, 6), rnd(0, 3));
         dummy.scale.set(s, sy, s * rnd(0.8, 1.2));
         dummy.updateMatrix(); rm.setMatrixAt(k, dummy.matrix);
@@ -1068,8 +1223,8 @@ function buildWorld() {
     for (const i of treeTiles) {
       const x = tc(i % MAP), z = tc((i / MAP) | 0);
       for (let n = 0; n < 2; n++) {
-        const s = rnd(0.8, 1.35);
-        dummy.position.set(x + rnd(-0.6, 0.6), 0, z + rnd(-0.6, 0.6));
+        const s = rnd(0.8, 1.35), px = x + rnd(-0.75, 0.75), pz = z + rnd(-0.75, 0.75);
+        dummy.position.set(px, groundH(px, pz) - 0.05, pz);
         dummy.rotation.set(rnd(-0.06, 0.06), rnd(0, 6), rnd(-0.06, 0.06));
         dummy.scale.set(s, s * rnd(0.9, 1.25), s);
         dummy.updateMatrix(); tm.setMatrixAt(k, dummy.matrix);
@@ -1117,7 +1272,7 @@ function updateOreTile(i, mark = true) {
     const k = s0 + n, o = k * 5;
     const vis = f > n * 0.3;
     const s = vis ? (0.45 + 0.6 * f) * oreBase[o + 3] : 0.0001;
-    _od.position.set(oreBase[o], 0.25 * s, oreBase[o + 1]);
+    _od.position.set(oreBase[o], 0.25 * s + groundH(oreBase[o], oreBase[o + 1]), oreBase[o + 1]);
     _od.rotation.set(oreBase[o + 4], oreBase[o + 2], 0);
     _od.scale.set(s, s, s);
     _od.updateMatrix();
@@ -1432,6 +1587,16 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       m.muzzle = { y: 3.4, z: 0 };   // 总部防空炮从屋顶开火
       break;
     }
+    case 'house': {
+      // 民房：砖墙 + 坡屋顶，按位置换几种颜色；窗户在有人进驻时亮灯
+      const v = (team + 7) % 3, wall = [0xb8a888, 0xa89070, 0xc0b8a0][v], roof = [0x8a3a2a, 0x5a5048, 0x6a4a30][v];
+      L.push(B(3.4, 1.6, 3.2, wall, 0, 0.8, 0));
+      const rg = new THREE.ConeGeometry(2.6, 1.2, 4, 1); rg.rotateY(Math.PI / 4); rg.scale(1, 1, 0.93); rg.translate(0, 2.2, 0); L.push(colorGeo(rg, roof));
+      L.push(B(0.7, 1.1, 0.06, C.dark, 0.9, 0.55, 1.61), B(0.32, 0.6, 0.6, 0x7a6a58, -1.1, 2.4, -0.6));
+      for (const [x, y] of [[-0.8, 1.0], [0.9, 1.25]]) L.push(B(0.55, 0.45, 0.05, C.dark, x, y + (x > 0 ? -0.0 : 0), 1.61));
+      m.parts.win = { geo: MG([B(0.5, 0.4, 0.05, 0xffd070, -0.8, 0, 0), B(0.5, 0.4, 0.05, 0xffd070, 0.9, 0.25, 0), B(0.05, 0.4, 0.5, 0xffd070, 1.72, 0.1, -0.5)]), x: 0, y: 1.0, z: 1.63 };
+      break;
+    }
     case 'subhq': {
       // 副部：缩小版的指挥部，带沙袋和雷达盘
       plinth();
@@ -1656,7 +1821,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       break;
     }
   }
-  m.body = MG(L);
+  m.body = MG(L.length ? L : [B(0.01, 0.01, 0.01, C.dark)]);
   m.W = W; m.D = D;
   bldModelCache[key] = m;
   return m;
@@ -1814,7 +1979,7 @@ scorchMesh.renderOrder = 1;
 scene.add(scorchMesh);
 let scorchIdx = 0;
 function addScorch(x, z, s) {
-  _od.position.set(x, 0.03 + (scorchIdx % 10) * 0.002, z); _od.rotation.set(0, Math.random() * 6, 0); _od.scale.set(s, 1, s); _od.updateMatrix();
+  _od.position.set(x, groundH(x, z) + 0.03 + (scorchIdx % 10) * 0.002, z); _od.rotation.set(0, Math.random() * 6, 0); _od.scale.set(s, 1, s); _od.updateMatrix();
   scorchMesh.setMatrixAt(scorchIdx, _od.matrix); scorchMesh.instanceMatrix.needsUpdate = true;
   scorchIdx = (scorchIdx + 1) % SCORCH_MAX;
 }
@@ -1927,6 +2092,7 @@ function updateEnvironment(rdt) {
   // 爆炸照明衰减
   for (const o of flashLights) if (o.intensity > 0) o.intensity = o.intensity < 0.5 ? 0 : o.intensity * Math.exp(-rdt * 9);
   updateGlows(1 - l);
+  Sound.ambient(rdt, l);
 }
 // 夜间灯光：天越黑越亮，只画玩家看得见的对象
 function updateGlows(dark) {
@@ -2012,12 +2178,22 @@ function fxHit(x, y, z) {
   pSmoke.spawn(x, y, z, 0, 0.6, 0, 0.6, 0.4, 1.2, 0.5, 0.48, 0.42, 0.4);
 }
 function fxDust(x, z, s = 1) {
-  pSmoke.spawn(x + rnd(-0.4, 0.4), 0.25, z + rnd(-0.4, 0.4), rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0.8, 1.4), 0.6 * s, 2.2 * s, 0.55, 0.48, 0.36, 0.28, 0, 1);
+  pSmoke.spawn(x + rnd(-0.4, 0.4), groundH(x, z) + 0.25, z + rnd(-0.4, 0.4), rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0.8, 1.4), 0.6 * s, 2.2 * s, 0.55, 0.48, 0.36, 0.28, 0, 1);
 }
 // 水花（鱼雷命中、舰船尾迹）
 function fxSplash(x, z, s = 1) {
   if (!visibleAt(x, z)) return;
   for (let i = 0; i < 8 * s; i++) pSmoke.spawn(x + rnd(-0.5, 0.5) * s, 0.2, z + rnd(-0.5, 0.5) * s, rnd(-0.8, 0.8), rnd(3, 6) * s, rnd(-0.8, 0.8), rnd(0.8, 1.4), 0.6 * s, 2.0 * s, 0.85, 0.9, 0.92, 0.7, 6, 0.5);
+}
+// 炮弹落地：按地表冒出尘土 / 水花 / 碎叶；scorch 是留下弹坑焦痕的几率
+function fxGround(x, z, s = 1, scorch = 0) {
+  if (!visibleAt(x, z)) return;
+  const t = terrainAt(x, z), gy = groundH(x, z);
+  if (t === T_WATER || t === T_FORD || t === T_SWAMP) { fxSplash(x, z, s * 0.8); return; }
+  const leaf = t === T_TREE, sand = t === T_SAND;
+  const [r, g, b] = leaf ? [0.32, 0.4, 0.2] : sand ? [0.72, 0.64, 0.46] : [0.5, 0.42, 0.3];
+  for (let i = 0; i < 7 * s; i++) pSmoke.spawn(x + rnd(-0.5, 0.5) * s, gy + 0.2, z + rnd(-0.5, 0.5) * s, rnd(-1.2, 1.2) * s, rnd(2, 5) * s, rnd(-1.2, 1.2) * s, rnd(0.6, 1.2), 0.3 * s, 1.6 * s, r, g, b, 0.75, 7, 0.6);
+  if (Math.random() < scorch) addScorch(x + rnd(-0.3, 0.3), z + rnd(-0.3, 0.3), rnd(1.2, 2.2) * s);
 }
 function fxWake(x, z, s = 1) {
   pSmoke.spawn(x + rnd(-0.3, 0.3), 0.12, z + rnd(-0.3, 0.3), rnd(-0.3, 0.3), 0.05, rnd(-0.3, 0.3), rnd(1.2, 1.8), 0.5 * s, 2.0 * s, 0.82, 0.88, 0.9, 0.45, 0, 1);
@@ -2083,6 +2259,32 @@ const Sound = {
     if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+  },
+  // 远处的战斗声：镜头外 30–120 格的爆炸和炮声，被闷住的低频轰鸣
+  far(x, z, s = 1) {
+    if (!this.ctx || !this.enabled || G.state !== 'playing') return;
+    const d = Math.hypot(x - cam.x, z - cam.z) / TILE;
+    if (d < 30 || d > 120) return;
+    const now = this.ctx.currentTime;
+    if (now - (this.lastFar || 0) < 0.5) return;
+    this.lastFar = now;
+    const v = 0.16 * s * (1 - (d - 30) / 100);
+    this.burst(v, 0.9 + s * 0.4, 'lowpass', 320, 60, 0.7, rnd(0, 0.15));
+    this.tone(v * 0.5, 0.7, 'sine', 60, 30, 0.05);
+  },
+  // 环境声：镜头下林地多时偶尔有鸟叫（白天），沼泽附近有虫鸣
+  ambient(dt, light) {
+    if (!this.ctx || !this.enabled || G.state !== 'playing' || G.paused) return;
+    if ((this.ambT = (this.ambT ?? 6) - dt) > 0) return;
+    this.ambT = rnd(5, 12);
+    let tree = 0, swamp = 0, n = 0;
+    for (let i = 0; i < 40; i++) { const t = terrainAt(cam.x + rnd(-1, 1) * cam.h, cam.z + rnd(-1, 0.6) * cam.h); n++; if (t === T_TREE) tree++; else if (t === T_SWAMP) swamp++; }
+    if (tree / n > 0.2 && light > 0.5) {
+      const f = rnd(2600, 3800);
+      for (let i = 0; i < 3; i++) this.tone(0.03, 0.09, 'sine', f * rnd(0.9, 1.1), f * rnd(1.15, 1.35), i * 0.13);
+    } else if (swamp / n > 0.12) {
+      for (let i = 0; i < 6; i++) this.burst(0.02, 0.05, 'bandpass', 4200, 0, 8, i * 0.06);
+    }
   },
   play(type, x, z) {
     if (!this.ctx || !this.enabled) return;
@@ -2214,16 +2416,20 @@ function buildUnitMesh(u) {
 function createBuilding(type, team, tx, tz, opts = {}) {
   const def = BUILDINGS[type];
   const hpMul = natOf(team).hpMul;
+  // 桥的长宽和朝向来自地图生成的桥址
+  let w = def.w, h = def.h;
+  if (type === 'bridge') { const s = bridgeSites.find(s => s.tx === tx && s.tz === tz); if (s) { w = s.w; h = s.h; } }
   const b = {
-    id: opts.id || nextId++, kind: 'b', type, def, team, tx, tz, w: def.w, h: def.h,
-    x: (tx + def.w / 2) * TILE, z: (tz + def.h / 2) * TILE, y: 0,
+    id: opts.id || nextId++, kind: 'b', type, def, team, tx, tz, w, h,
+    x: (tx + w / 2) * TILE, z: (tz + h / 2) * TILE, y: 0,
     hp: def.hp * hpMul, maxHp: def.hp * hpMul, alive: true, weapon: def.weapon ? WEAPONS[def.weapon] : null,
     cd: 0, turretAngle: Math.atan2(WORLD / 2 - tx * TILE, WORLD / 2 - tz * TILE), target: null, repairing: false,
-    buildAnim: opts.instant ? 1 : 0, lastHit: -999, seen: team === PLAYER, radius: Math.max(def.w, def.h) * TILE / 2,
+    buildAnim: opts.instant ? 1 : 0, lastHit: -999, seen: team === PLAYER, radius: Math.max(w, h) * TILE / 2,
     smokeT: 0, doorOpen: 0, angle: 0, abmReady: type === 'abm', abmCharge: 0,
   };
   b.hasTurret = !!def.weapon;
-  for (let z = tz; z < tz + def.h; z++) for (let x = tx; x < tx + def.w; x++) bldGrid[z * MAP + x] = b.id;
+  // 桥不占格子（桥面本身就是可通行的地块）
+  if (type !== 'bridge') for (let z = tz; z < tz + h; z++) for (let x = tx; x < tx + w; x++) bldGrid[z * MAP + x] = b.id;
   buildBuildingMesh(b);
   buildings.push(b); entById.set(b.id, b);
   if (team >= 0) { recalcTeam(team); if (!opts.instant) teams[team].stats.bBuilt++; }
@@ -2236,7 +2442,7 @@ function createBuilding(type, team, tx, tz, opts = {}) {
 }
 function buildBuildingMesh(b) {
   if (b.mesh) scene.remove(b.mesh);
-  const m = getBuildingModel(b.type, b.team);
+  const m = b.type === 'bridge' ? bridgeModel(b) : getBuildingModel(b.type, b.team);
   const g = new THREE.Group();
   const body = new THREE.Mesh(m.body, matBld); body.castShadow = true; body.receiveShadow = true; g.add(body);
   b.parts = {};
@@ -2244,6 +2450,7 @@ function buildBuildingMesh(b) {
     const p = m.parts[k];
     const pm = new THREE.Mesh(p.geo, matBld); pm.position.set(p.x, p.y, p.z); pm.castShadow = true; g.add(pm);
     b.parts[k] = pm; pm.userData = p;
+    if (k === 'win') pm.visible = false;   // 民房窗户有人进驻才亮
   }
   if (m.turret) { const t = new THREE.Mesh(m.turret, matVehicle); t.castShadow = true; g.add(t); b.turretMesh = t; }
   b.muzzle = m.muzzle || { y: 1, z: 1 };
@@ -2251,9 +2458,62 @@ function buildBuildingMesh(b) {
   const ring = new THREE.Mesh(ringGeo, ringMats[b.team === PLAYER ? 0 : b.team >= 0 ? 1 : 2]);
   ring.scale.setScalar(Math.max(m.W, m.D) * 0.62); ring.position.y = 0.08; ring.visible = false; ring.renderOrder = 4;
   g.add(ring); b.ring = ring;
-  g.position.set(b.x, 0, b.z);
+  g.position.set(b.x, groundH(b.x, b.z), b.z);
   scene.add(g);
   b.mesh = g;
+}
+// ---------------------------------------------------------------------
+// 桥：模型按桥址长度生成；炸断 / 修复会改变桥面的通行性
+// ---------------------------------------------------------------------
+const BRIDGE_WH = new Set(['he', 'ap', 'rocket', 'bomb', 'nuke']);
+function bridgeModel(b) {
+  const along = b.h >= b.w, Ln = (along ? b.h : b.w) * TILE, Wd = (along ? b.w : b.h) * TILE;
+  const L = [];
+  if (!b.broken) {
+    L.push(B(Wd - 0.4, 0.35, Ln, C.concrete, 0, 0.5, 0), B(Wd - 0.9, 0.02, Ln, 0x5a5650, 0, 0.69, 0));
+    for (const s of [-1, 1]) { L.push(B(0.12, 0.45, Ln, C.steel, s * (Wd / 2 - 0.25), 0.9, 0)); for (let i = 0; i < Ln / 1.6; i++) L.push(B(0.1, 0.5, 0.1, C.steel, s * (Wd / 2 - 0.25), 0.9, -Ln / 2 + 0.4 + i * 1.6)); }
+    L.push(B(Wd - 0.1, 0.06, 0.25, C.yellow, 0, 0.7, -Ln / 2 + 0.2), B(Wd - 0.1, 0.06, 0.25, C.yellow, 0, 0.7, Ln / 2 - 0.2));
+  } else {
+    // 断桥：两端残段向下倾斜，中间只剩桥墩和碎块
+    for (const s of [-1, 1]) L.push(B(Wd - 0.4, 0.35, Ln * 0.3, C.concreteDk, 0, 0.3, s * Ln * 0.35, 0, s * 0.18));
+    for (let i = 0; i < 5; i++) L.push(B(rnd(0.4, 1.0), rnd(0.2, 0.5), rnd(0.4, 1.0), C.concreteDk, rnd(-Wd / 3, Wd / 3), 0.05, rnd(-Ln / 5, Ln / 5), rnd(0, 3)));
+  }
+  for (const z of [-Ln / 6, Ln / 6]) L.push(B(Wd * 0.6, 0.9, 0.6, C.concreteDk, 0, 0.0, z));
+  const body = MG(L);
+  if (!along) body.rotateY(Math.PI / 2);
+  return { body, parts: {}, smoke: [], W: b.w * TILE, D: b.h * TILE };
+}
+// 桥面格子（地形是 T_BRIDGE 的部分）
+function bridgeTiles(b) { const out = []; for (let z = b.tz; z < b.tz + b.h; z++) for (let x = b.tx; x < b.tx + b.w; x++) if (terrain[z * MAP + x] === T_BRIDGE) out.push(z * MAP + x); return out; }
+function setBridgeState(b, broken) {
+  if (!!b.broken === broken) return;
+  b.broken = broken;
+  for (const i of bridgeTiles(b)) { passable[i] = broken ? 0 : 1; refreshTileCost(i); }
+  buildBuildingMesh(b);
+}
+function breakBridge(b) {
+  b.hp = 0;
+  // 桥上的地面单位掉进河里
+  const x0 = b.tx * TILE, z0 = b.tz * TILE, x1 = (b.tx + b.w) * TILE, z1 = (b.tz + b.h) * TILE;
+  for (const u of units) if (u.alive && !u.def.air && u.x > x0 && u.x < x1 && u.z > z0 && u.z < z1 && terrainAt(u.x, u.z) === T_BRIDGE) kill(u, null);
+  setBridgeState(b, true);
+  fxExplosion(b.x, 1, b.z, 2.2); fxSplash(b.x, b.z, 2.5);
+  Sound.play('bigExplosion', b.x, b.z);
+  tnotify('all', '一座桥被炸断了！', 'bad', 'alert', { x: b.x, z: b.z });
+}
+function repairBridge(b) {
+  b.hp = b.maxHp;
+  setBridgeState(b, false);
+  tnotify('all', '一座桥已被修复', 'good', null, { x: b.x, z: b.z });
+}
+// 民房被毁：留下一堆不能通行的废墟（房主和客户端都会调用）
+function houseRuin(b) {
+  const L = [];
+  for (let i = 0; i < 9; i++) L.push(B(rnd(0.5, 1.3), rnd(0.2, 0.7), rnd(0.5, 1.3), i % 3 ? 0x8a7a64 : 0x5a4a3a, rnd(-1.4, 1.4), 0.15, rnd(-1.4, 1.4), rnd(0, 3)));
+  L.push(B(1.6, 0.9, 0.2, 0x9a8a70, -0.6, 0.45, 1.3), B(0.2, 1.1, 1.4, 0x9a8a70, 1.5, 0.55, 0.4));
+  const m = new THREE.Mesh(MG(L), matBld); m.position.set(b.x, groundH(b.x, b.z), b.z); m.castShadow = true; m.receiveShadow = true;
+  worldRoot.add(m);
+  for (let z = b.tz; z < b.tz + b.h; z++) for (let x = b.tx; x < b.tx + b.w; x++) { const i = z * MAP + x; passable[i] = 0; refreshTileCost(i); }
 }
 function freeGrid(b) {
   for (let z = b.tz; z < b.tz + b.h; z++) for (let x = b.tx; x < b.tx + b.w; x++) if (bldGrid[z * MAP + x] === b.id) bldGrid[z * MAP + x] = 0;
@@ -2317,7 +2577,7 @@ function distTo(a, t) {
   if (t.kind === 'b') return rectDist(a.x, a.z, t);
   return Math.max(0, Math.hypot(t.x - a.x, t.z - a.z) - t.radius * 0.5);
 }
-const targetPoint = t => t.kind === 'b' ? { x: t.x, y: 1.0, z: t.z } : { x: t.x, y: t.y + (t.def.inf ? 0.7 : 0.8), z: t.z };
+const targetPoint = t => t.kind === 'b' ? { x: t.x, y: 1.0 + groundH(t.x, t.z), z: t.z } : { x: t.x, y: t.y + (t.def.naval ? 0 : groundH(t.x, t.z)) + (t.def.inf ? 0.7 : 0.8), z: t.z };
 // 停在机场上的飞机不能被攻击；鱼雷只能打舰船
 const canHit = (w, t) => t.def.air ? (!!w.air && !t.parked) : w.navalOnly ? !!t.def.naval : !!w.ground;
 // 潜艇隐身：某队伍的单位或建筑在 5 格内，或潜艇刚开过火，才算被发现
@@ -2395,11 +2655,13 @@ function hpop() {
   return top;
 }
 const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142]];
-function astar(sx, sz, gx, gz, nav = false) {
+// kind：0 步兵 / 1 载具；每一步的代价按地表速度计算（载具爱走公路、绕开沼泽）
+function astar(sx, sz, gx, gz, nav = false, kind = 1) {
   asGen++; heapSize = 0;
   const start = sz * MAP + sx, goal = gz * MAP + gx;
   if (start === goal) return [goal];
-  const H = (x, z) => { const dx = Math.abs(x - gx), dz = Math.abs(z - gz); return dx + dz - 0.5858 * Math.min(dx, dz); };
+  const cost = nav ? null : tileCost[kind], hm = nav ? 1 : kind ? 0.77 : 1;
+  const H = (x, z) => { const dx = Math.abs(x - gx), dz = Math.abs(z - gz); return (dx + dz - 0.5858 * Math.min(dx, dz)) * hm; };
   asG[start] = 0; asStamp[start] = asGen; asParent[start] = -1;
   hpush(start, H(sx, sz));
   let best = start, bestH = H(sx, sz), exp = 0;
@@ -2419,7 +2681,7 @@ function astar(sx, sz, gx, gz, nav = false) {
       if (k >= 4 && (!walkable(cx + d[0], cz, nav) || !walkable(cx, cz + d[1], nav))) continue;
       const ni = nz * MAP + nx;
       if (asClosed[ni] === asGen) continue;
-      const ng = gc + d[2];
+      const ng = gc + d[2] * (cost ? (cost[cur] + cost[ni]) * 0.5 : 1);
       if (asStamp[ni] !== asGen || ng < asG[ni]) { asStamp[ni] = asGen; asG[ni] = ng; asParent[ni] = cur; hpush(ni, ng + H(nx, nz) * 1.001); }
     }
   }
@@ -2444,23 +2706,28 @@ function nearestWalkable(gx, gz, maxR, px, pz, nav = false) {
   }
   return null;
 }
-function losClear(x0, z0, x1, z1, nav = false) {
+// kind ≥ 0 时还要求直线上的地表不比起点更难走（避免路径拉直后穿过沼泽、林地）
+function losClear(x0, z0, x1, z1, nav = false, kind = -1) {
   const dx = x1 - x0, dz = z1 - z0, d = Math.hypot(dx, dz);
   if (d < 0.01) return true;
   const n = Math.ceil(d / 0.6), px = -dz / d * 0.75, pz = dx / d * 0.75;
+  const cost = kind >= 0 && !nav ? tileCost[kind] : null;
+  const c0 = cost ? Math.max(cost[tileOf(z0) * MAP + tileOf(x0)], cost[tileOf(z1) * MAP + tileOf(x1)]) + 0.01 : 0;
   for (let i = 1; i <= n; i++) {
     const t = i / n, x = x0 + dx * t, z = z0 + dz * t;
     if (!walkable(tileOf(x), tileOf(z), nav) || !walkable(tileOf(x + px), tileOf(z + pz), nav) || !walkable(tileOf(x - px), tileOf(z - pz), nav)) return false;
+    if (cost && cost[tileOf(z) * MAP + tileOf(x)] > c0) return false;
   }
   return true;
 }
+const kindOf = u => u.def.inf ? 0 : 1;
 const pathQueue = [];
 function requestPath(u, x, z) {
   x = clampPlay(x); z = clampPlay(z);
   u.dest = { x, z }; u.stuckT = 0; u.bestD = 1e9;
   if (u.def.air) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
   const nav = !!u.def.naval;
-  if (walkable(tileOf(x), tileOf(z), nav) && Math.hypot(x - u.x, z - u.z) < 40 && losClear(u.x, u.z, x, z, nav)) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
+  if (walkable(tileOf(x), tileOf(z), nav) && Math.hypot(x - u.x, z - u.z) < 40 && losClear(u.x, u.z, x, z, nav, kindOf(u))) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
   u.path = null;
   if (!u.inQueue) { u.inQueue = true; pathQueue.push(u); }
 }
@@ -2481,7 +2748,7 @@ function computePath(u) {
     if (!n) { u.path = null; return; }
     gx = n.x; gz = n.z; exact = false;
   }
-  const tiles = astar(sx, sz, gx, gz, nav);
+  const tiles = astar(sx, sz, gx, gz, nav, kindOf(u));
   if (!tiles) { u.path = null; return; }
   const pts = tiles.map(i => ({ x: tc(i % MAP), z: tc((i / MAP) | 0) }));
   if (exact && tiles[tiles.length - 1] === gz * MAP + gx) pts[pts.length - 1] = { x: u.dest.x, z: u.dest.z };
@@ -2489,7 +2756,7 @@ function computePath(u) {
   let cx = u.x, cz = u.z, i = 0;
   while (i < pts.length) {
     let j = Math.min(pts.length - 1, i + 20);
-    while (j > i && !losClear(cx, cz, pts[j].x, pts[j].z, nav)) j--;
+    while (j > i && !losClear(cx, cz, pts[j].x, pts[j].z, nav, kindOf(u))) j--;
     out.push(pts[j]); cx = pts[j].x; cz = pts[j].z; i = j + 1;
   }
   u.path = out; u.pathIdx = 0;
@@ -2505,6 +2772,12 @@ function walkableFor(u, x, z) {
 function moveToward(u, tx, tz, d) {
   const want = Math.atan2(tx - u.x, tz - u.z);
   let sp = u.speed * TICK;
+  if (!u.def.air && !u.def.naval) {
+    // 地表速度 + 上坡减速（最多 -30%）
+    sp *= terrainMul(u);
+    const ahead = groundH(u.x + Math.sin(want) * 1.5, u.z + Math.cos(want) * 1.5) - groundH(u.x, u.z);
+    if (ahead > 0) sp *= Math.max(0.7, 1 - ahead * 0.35);
+  }
   let dirx, dirz;
   if (u.def.inf) { u.angle = want; dirx = (tx - u.x) / d; dirz = (tz - u.z) / d; }
   else {
@@ -2572,20 +2845,56 @@ function separation() {
 // =====================================================================
 // 战斗
 // =====================================================================
+// ---------------------------------------------------------------------
+// 地形对战斗的影响
+// ---------------------------------------------------------------------
+// 高低差：+1 居高临下 / -1 仰攻 / 0 差不多（飞行器不算）
+function heightAdv(s, t) {
+  if (s.def.air || t.def.air) return 0;
+  const d = (s.def.naval ? 0 : groundH(s.x, s.z)) - (t.def.naval ? 0 : groundH(t.x, t.z));
+  return d > 1.2 ? 1 : d < -1.2 ? -1 : 0;
+}
+const HIGH_GROUND = 1.5;   // 站在这个高度以上算高地（视野 +2 格）
+// 有效射程：居高临下 +1 格
+const rangeTo = (s, t) => s.weapon.range * TILE + (heightAdv(s, t) > 0 ? TILE : 0);
+// 林地隐蔽：林地里静止、最近 2 秒没开火的步兵
+const concealed = u => u.kind === 'u' && u.def.inf && !u.moving && !u.inside && terrainAt(u.x, u.z) === T_TREE && G.tick - u.lastFire > 2 * TPS;
+// 某一方有没有单位或建筑在 4 格内（发现隐蔽的步兵）
+function spottedBy(team, u) {
+  if (u._spT === G.tick && u._spTeam === team) return u._spV;
+  const r = 4 * TILE;
+  let v = false;
+  for (const o of units) if (o.alive && o.team === team && !o.inside && Math.abs(o.x - u.x) < r && Math.abs(o.z - u.z) < r && Math.hypot(o.x - u.x, o.z - u.z) <= r) { v = true; break; }
+  if (!v) for (const b of buildings) if (b.alive && b.team === team && rectDist(u.x, u.z, b) <= r) { v = true; break; }
+  u._spT = G.tick; u._spTeam = team; u._spV = v;
+  return v;
+}
+const hiddenFrom = (team, u) => concealed(u) && !spottedBy(team, u);
+// 能不能把 e 当成敌方目标（民房看里面是谁）
+const hostileTeam = e => e.kind === 'b' && e.def.garrison && e.team < 0 ? (e.garTeam ?? -1) : e.team;
+// 能不能攻击：敌方单位/建筑、敌人占着的民房、没断的桥（只能手动下令）
+function attackable(team, t) {
+  if (!t || !t.alive || t.inside) return false;
+  const ht = hostileTeam(t);
+  if (ht >= 0) return ht !== team;
+  return t.type === 'bridge' && !t.broken;
+}
 function findTarget(src, range, w = src.weapon) {
   let best = null, bestS = 1e9;
   const minR = (w.minRange || 0) * TILE;
-  queryHash(src.x, src.z, range + 2, (o) => {
+  queryHash(src.x, src.z, range + 2 + TILE, (o) => {
     if (!o.alive || o.team === src.team || o.team < 0 || o.inside || !canHit(w, o)) return;
     if (o.def.sub && !detectedBy(src.team, o)) return;
+    if (hiddenFrom(src.team, o)) return;
     const d = Math.max(0, Math.hypot(o.x - src.x, o.z - src.z) - o.radius * 0.5);
-    if (d > range || d < minR) return;
+    if (d > range + (heightAdv(src, o) > 0 ? TILE : 0) || d < minR) return;
     let s = d; if (o.weapon) s -= 6; if (o.def.harvester) s -= 1;
     if (s < bestS) { bestS = s; best = o; }
   });
   if (!best && w.ground && !w.navalOnly) {
     for (const b of buildings) {
-      if (!b.alive || b.team === src.team || b.team < 0) continue;
+      const bt = hostileTeam(b);
+      if (!b.alive || bt === src.team || bt < 0) continue;
       const d = rectDist(src.x, src.z, b);
       if (d > range || d < minR) continue;
       let s = d + 4; if (b.weapon) s -= 10;
@@ -2597,14 +2906,14 @@ function findTarget(src, range, w = src.weapon) {
 function updateTarget(u) {
   const o = u.order, w = u.weapon;
   if (o.type === 'attack') {
-    if (!o.target.alive || o.target.team === u.team || o.target.team < 0 || o.target.inside) { u.order = { type: 'idle' }; u.target = null; u.guardX = u.x; u.guardZ = u.z; u.path = null; }
+    if (!attackable(u.team, o.target)) { u.order = { type: 'idle' }; u.target = null; u.guardX = u.x; u.guardZ = u.z; u.path = null; }
     else { u.target = o.target; return; }
   }
   const t = u.target;
   if (t) {
     const d = distTo(u, t);
-    if (!t.alive || t.team === u.team || t.team < 0 || t.inside || !canHit(w, t) || d > (u.def.sight + 3) * TILE || (w.minRange && d < w.minRange * TILE) ||
-      (t.def.sub && !detectedBy(u.team, t)) ||
+    if (!attackable(u.team, t) || !canHit(w, t) || d > (u.def.sight + 3) * TILE || (w.minRange && d < w.minRange * TILE) ||
+      (t.def.sub && !detectedBy(u.team, t)) || hiddenFrom(u.team, t) ||
       (o.type === 'move' && d > w.range * TILE)) {
       u.target = null;
       if (o.type === 'attackMove') requestPath(u, o.x, o.z);
@@ -2651,14 +2960,16 @@ function fireWeapon(s, t) {
   if (Net.isHost) Net.event({ k: 'f', s: s.id, t: t.id });
   let dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
   if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
+  { const adv = heightAdv(s, t); if (adv) dmgMul *= adv > 0 ? 1.15 : 0.85; }   // 居高临下 +15%，仰攻 -15%
   s.lastFire = G.tick;
   const aim = s.hasTurret ? s.turretAngle : s.angle;
   const mz = s.muzzle || { y: 1, z: 1 }, sc = s.def.inf ? 1.25 : 1;
   const sin = Math.sin(aim), cos = Math.cos(aim);
-  const sx = s.x + sin * mz.z * sc, sz = s.z + cos * mz.z * sc, sy = (s.y || 0) + mz.y * sc;
+  const sx = s.x + sin * mz.z * sc, sz = s.z + cos * mz.z * sc, sy = (s.y || 0) + (s.def.naval ? 0 : groundH(s.x, s.z)) + mz.y * sc;
   const tp = targetPoint(t);
   const seen = visibleAt(s.x, s.z) || visibleAt(t.x, t.z);
   if (seen) Sound.play(w.sfx, s.x, s.z);
+  else if (/cannon|arty|salvo|rocket/.test(w.sfx)) Sound.far(s.x, s.z, 0.6);
   s.recoil = 1;
   switch (w.proj) {
     case 'bullet': {
@@ -2721,7 +3032,7 @@ function spawnHoming(kind, x, y, z, target, w, src, dmgMul) {
 function spawnBallistic(kind, x, y, z, tx, tz, w, src, dmgMul, delay, arcMul = 0.3, dur = 0) {
   const d = Math.hypot(tx - x, tz - z);
   projectiles.push({
-    kind, homing: false, sx: x, sy: y, sz: z, x, y, z, tx, ty: 0, tz, t: -delay, dur: dur || Math.max(0.6, d / w.speed), arc: d * arcMul + 2,
+    kind, homing: false, sx: x, sy: y, sz: z, x, y, z, tx, ty: groundH(tx, tz), tz, t: -delay, dur: dur || Math.max(0.6, d / w.speed), arc: d * arcMul + 2,
     dmg: w.dmg * dmgMul, wh: w.wh, splash: w.splash || 0, team: src.team, src, mesh: projMesh(kind), launched: delay <= 0,
   });
 }
@@ -2780,10 +3091,10 @@ function impact(p) {
   if (p.homing && p.target.alive) damage(p.target, p.dmg, p.wh, p.src);
   if (p.splash) splashDamage(p.x, p.z, p.splash * TILE, p.dmg, p.wh, p.team, p.src);
   const seen = visibleAt(p.x, p.z);
-  if (p.kind === 'shell') { fxExplosion(p.x, p.y - 0.5, p.z, 0.35); if (seen) Sound.play('hit', p.x, p.z); }
-  else if (p.kind === 'rocket') { fxExplosion(p.x, Math.max(0, p.y - 0.5), p.z, p.homing ? 0.4 : 0.6); if (seen) Sound.play('hit', p.x, p.z); }
-  else if (p.kind === 'arty') { fxExplosion(p.x, 0, p.z, 0.9); if (seen) Sound.play('explosion', p.x, p.z); }
-  else if (p.kind === 'bomb') { fxExplosion(p.x, 0, p.z, 1.0); if (seen) Sound.play('explosion', p.x, p.z); }
+  if (p.kind === 'shell') { fxExplosion(p.x, p.y - 0.5, p.z, 0.35); if (seen) Sound.play('hit', p.x, p.z); else Sound.far(p.x, p.z, 0.5); fxGround(p.x, p.z, 0.5, 0.3); }
+  else if (p.kind === 'rocket') { fxExplosion(p.x, Math.max(groundH(p.x, p.z), p.y - 0.5), p.z, p.homing ? 0.4 : 0.6); if (seen) Sound.play('hit', p.x, p.z); else Sound.far(p.x, p.z, 0.6); fxGround(p.x, p.z, 0.7, p.homing ? 0.3 : 0.5); }
+  else if (p.kind === 'arty') { fxExplosion(p.x, p.y, p.z, 0.9); if (seen) Sound.play('explosion', p.x, p.z); else Sound.far(p.x, p.z, 1); fxGround(p.x, p.z, 1.1, 1); }
+  else if (p.kind === 'bomb') { fxExplosion(p.x, p.y, p.z, 1.0); if (seen) Sound.play('explosion', p.x, p.z); else Sound.far(p.x, p.z, 1); fxGround(p.x, p.z, 1.2, 1); }
   else if (p.kind === 'torpedo') { fxSplash(p.x, p.z, 1.2); fxExplosion(p.x, 0.2, p.z, 0.5); if (seen) Sound.play('explosion', p.x, p.z); }
 }
 function splashDamage(x, z, r, dmg, wh, team, src) {
@@ -2794,24 +3105,30 @@ function splashDamage(x, z, r, dmg, wh, team, src) {
     const d = Math.hypot(o.x - x, o.z - z) - o.radius * 0.5;
     if (d > r) return;
     // 步兵会卧倒，只受 60% 溅射伤害
-    damage(o, dmg * (1 - 0.5 * clamp(d / r, 0, 1)) * (o.def.inf && wh !== 'nuke' ? 0.6 : 1), wh, src);
+    damage(o, dmg * (1 - 0.5 * clamp(d / r, 0, 1)) * (o.def.inf && wh !== 'nuke' ? 0.6 : 1), wh, src, true);
   });
   for (const b of buildings) {
-    if (!b.alive || b.team === team || b.team < 0) continue;
+    const bt = hostileTeam(b);
+    if (!b.alive || bt === team || bt < 0) continue;
     const d = rectDist(x, z, b);
-    if (d <= r) damage(b, dmg * (1 - 0.5 * d / r), wh, src);
+    if (d <= r) damage(b, dmg * (1 - 0.5 * d / r), wh, src, true);
   }
 }
-function damage(t, amount, wh, src) {
+function damage(t, amount, wh, src, splash = false) {
   if (!t.alive || Net.isClient) return;
   if (wh === 'nuke' && t.type === 'hq') return;   // 战略导弹对总部无效
   if (t.inside) return;   // 碉堡里的步兵不会被打到
+  // 桥：只有爆炸类武器能打坏，断了就不再受伤
+  if (t.type === 'bridge' && (t.broken || !BRIDGE_WH.has(wh))) return;
   let mult = WARHEAD[wh][ARMOR_IDX[t.def.armor]];
   // 穿甲弹升级：步兵轻武器打载具和建筑伤害翻倍
   if (wh === 'small' && !t.def.inf && src && src.kind === 'u' && src.def.inf && hasUpg(src.team, 'upAP')) mult *= 2;
+  // 林地里的单位：直射伤害 -25%（溅射不减）
+  if (!splash && t.kind === 'u' && !t.def.air && !t.def.naval && terrainAt(t.x, t.z) === T_TREE) mult *= 0.75;
   if (mult <= 0) return;
   t.hp -= amount * mult;
   t.lastHit = G.tick;
+  if (t.type === 'bridge' && t.hp <= 0) { breakBridge(t); return; }
   if (src && src.team !== t.team && src.team >= 0) {
     t.lastAttacker = src;
     if (t.team >= 0 && teams[t.team].ai) teams[t.team].ai.onAttacked(t, src);
@@ -2856,14 +3173,14 @@ function kill(e, src) {
 function deathFx(e) {
   if (e.kind === 'u') {
     const s = e.def.inf ? 0.25 : e.def.harvester ? 1.3 : e.def.air ? 1.0 : 0.9;
-    fxExplosion(e.x, e.y + (e.def.inf ? 0.3 : 0.6), e.z, s);
+    fxExplosion(e.x, e.y + (e.def.naval ? 0 : groundH(e.x, e.z)) + (e.def.inf ? 0.3 : 0.6), e.z, s);
     if (visibleAt(e.x, e.z)) Sound.play(e.def.inf ? 'hit' : 'explosion', e.x, e.z);
     if (e.def.inf) corpses.push({ mesh: e.mesh, t: 0, ang: Math.random() < 0.5 ? 1 : -1 });
     else {
       scene.remove(e.mesh);
       const wm = new THREE.Mesh(e.bodyMesh.geometry, matWreck);
-      wm.position.set(e.x, 0, e.z); wm.rotation.set(e.def.air ? 0.3 : 0, e.angle, e.def.air ? 0.4 : 0);
-      if (e.def.air) wm.position.y = 0.4;
+      wm.position.set(e.x, groundH(e.x, e.z), e.z); wm.rotation.set(e.def.air ? 0.3 : 0, e.angle, e.def.air ? 0.4 : 0);
+      if (e.def.air) wm.position.y += 0.4;
       // 飞机坠落在水面上、舰船被击沉：残骸很快沉没
       const sink = e.def.naval || navigable[tileOf(e.z) * MAP + tileOf(e.x)] === 1;
       if (sink) { wm.position.y = -0.1; fxSplash(e.x, e.z, 1.5); }
@@ -2874,13 +3191,14 @@ function deathFx(e) {
     }
   } else {
     const W = e.w * TILE, D = e.h * TILE;
-    fxExplosion(e.x, 0.8, e.z, 1.6);
+    fxExplosion(e.x, 0.8 + groundH(e.x, e.z), e.z, 1.6);
     for (let i = 0; i < 4 + e.w * 2; i++) {
       const x = e.x + rnd(-W / 2, W / 2), z = e.z + rnd(-D / 2, D / 2);
       delayed.push({ t: rnd(0.1, 1.2), fn: () => { fxExplosion(x, rnd(0.3, 1.5), z, rnd(0.6, 1.1)); } });
     }
     if (visibleAt(e.x, e.z)) { Sound.play('bigExplosion', e.x, e.z); shake = Math.max(shake, 0.35); }
     addScorch(e.x, e.z, Math.max(W, D) * 1.3);
+    if (e.type === 'house') houseRuin(e);
     scene.remove(e.mesh);
   }
   if (e.ring) e.ring.visible = false;
@@ -2915,7 +3233,7 @@ function combatTick(u) {
   const o = u.order;
   if (o.type === 'garrison') {
     const b = o.target;
-    if (!b.alive || b.team !== u.team || garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; u.path = null; return; }
+    if (!b.alive || !canHold(b, u.team) || garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; u.path = null; return; }
     if (rectDist(u.x, u.z, b) < 1.7) { garrisonEnter(u, b); return; }
     chase(u, b);
     return;
@@ -2924,7 +3242,7 @@ function combatTick(u) {
   let standing = false;
   if (u.target) {
     const t = u.target;
-    const d = distTo(u, t), range = u.weapon.range * TILE;
+    const d = distTo(u, t), range = rangeTo(u, t);
     if (d <= range) {
       if (o.type !== 'move') { standing = true; u.path = null; u.moving = false; }
       aimAndFire(u, t);
@@ -3141,7 +3459,7 @@ function engineerTick(u) {
   const o = u.order;
   if (o.type === 'enter') {
     const b = o.target;
-    const valid = b.alive && (b.def.derrick ? b.team !== u.team : (b.team === u.team && b.hp < b.maxHp));
+    const valid = b.alive && (b.type === 'bridge' ? b.broken : b.def.derrick ? b.team !== u.team : (b.team === u.team && b.hp < b.maxHp));
     if (!valid) { u.order = { type: 'idle' }; u.path = null; return; }
     if (rectDist(u.x, u.z, b) < 1.7) { engineerEnter(u, b); return; }
     chase(u, b);
@@ -3150,7 +3468,8 @@ function engineerTick(u) {
   }
 }
 function engineerEnter(u, b) {
-  if (b.def.derrick) {
+  if (b.type === 'bridge') repairBridge(b);
+  else if (b.def.derrick) {
     b.team = u.team; b.hp = b.maxHp; buildBuildingMesh(b);
     tnotify(u.team, '已占领油井', 'good', 'ready');
   } else {
@@ -3276,10 +3595,12 @@ function commandEnter(list, b) {
 // ---------------------------------------------------------------------
 const canGarrison = u => u.alive && u.def.inf && u.weapon && !u.inside && !u.chute;
 const garrisonCount = b => { let n = 0; for (const u of units) if (u.alive && u.inside === b) n++; return n; };
+// 能否进驻：自己的碉堡，或者空着 / 自己人占着的中立民房
+const canHold = (b, team) => b.alive && !!b.def.garrison && (b.team === team || (b.team < 0 && ((b.garTeam ?? -1) < 0 || b.garTeam === team)));
 function commandGarrison(list, b) {
   let free = b.def.garrison - garrisonCount(b);
   for (const u of list) {
-    if (!canGarrison(u) || u.team !== b.team) continue;
+    if (!canGarrison(u) || !canHold(b, u.team)) continue;
     if (free-- <= 0) { u.order = { type: 'move', x: b.x, z: b.z + b.h * TILE / 2 + 2 }; requestPath(u, u.order.x, u.order.z); continue; }
     u.order = { type: 'garrison', target: b }; u.target = null; u.chaseT = null; u.nextRepath = 0;
   }
@@ -3287,6 +3608,7 @@ function commandGarrison(list, b) {
 function garrisonEnter(u, b) {
   if (garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; return; }
   u.inside = b; u.order = { type: 'idle' }; u.target = null; u.path = null; u.moving = false;
+  if (b.team < 0 && b.garTeam !== u.team) { b.garTeam = u.team; tnotify(u.team, '步兵已进驻民房', 'good'); }
   u.x = u.px = b.x; u.z = u.pz = b.z;
   u.mesh.visible = false; if (u.ring) u.ring.visible = false;
   const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
@@ -3294,6 +3616,7 @@ function garrisonEnter(u, b) {
 function ejectUnit(u, hurt = false) {
   const b = u.inside;
   u.inside = null;
+  if (b.team < 0 && !garrisonCount(b)) b.garTeam = -1;   // 民房空了就恢复中立
   const e = exitPos(b);
   u.x = u.px = e.x + rnd(-0.6, 0.6); u.z = u.pz = e.z + rnd(-0.6, 0.6);
   u.guardX = u.x; u.guardZ = u.z; u.order = { type: 'idle' }; u.target = null; u.path = null;
@@ -3301,7 +3624,7 @@ function ejectUnit(u, hurt = false) {
 }
 function garrisonTick(u) {
   const b = u.inside;
-  if (!b.alive || b.team !== u.team) { ejectUnit(u, b.hp <= 0); return; }   // 碉堡被摧毁才会受伤，出售则安全撤出
+  if (!b.alive || !canHold(b, u.team)) { ejectUnit(u, b.hp <= 0); return; }   // 碉堡被摧毁才会受伤，出售则安全撤出
   u.moving = false;
   const range = (u.weapon.range + 1) * TILE + b.radius * 0.5;
   if (u.target && (!u.target.alive || u.target.inside || u.target.team === u.team || distTo(u, u.target) > range)) u.target = null;
@@ -3449,7 +3772,7 @@ function canPlace(team, type, tx, tz, spacing = 0) {
     if (!inMap(x, z)) return false;
     const i = z * MAP + x;
     const inside = x >= tx && x < tx + d.w && z >= tz && z < tz + d.h;
-    if (inside && (!passable[i] || ore[i] > 0)) return false;
+    if (inside && (!passable[i] || !BUILDABLE_T[terrain[i]] || ore[i] > 0)) return false;
     if (bldGrid[i]) return false;
   }
   for (const b of buildings) {
@@ -3458,6 +3781,7 @@ function canPlace(team, type, tx, tz, spacing = 0) {
     if (dx >= tx && dx < tx + d.w && dz >= tz && dz < tz + d.h) return false;
   }
   if (type === 'refinery' && !walkable(tx + 1, tz + d.h)) return false;
+  if (!d.naval && footSlope(tx, tz, d.w, d.h) > 0.45) return false;   // 地面太陡
   if (type === 'minePlatform') {
     let nearOre = false;
     for (let z = tz - 3; z < tz + d.h + 3 && !nearOre; z++) for (let x = tx - 3; x < tx + d.w + 3; x++) if (inMap(x, z) && ore[z * MAP + x] > 0) { nearOre = true; break; }
@@ -3720,7 +4044,8 @@ function updateFog() {
     }
   };
   SIGHT = sightMul();
-  for (const u of units) if (u.alive && u.team === PLAYER) stamp(u.x, u.z, u.def.sight * SIGHT);
+  // 站在高地上视野 +2 格
+  for (const u of units) if (u.alive && u.team === PLAYER) stamp(u.x, u.z, u.def.sight * SIGHT + (!u.def.air && !u.def.naval && groundH(u.x, u.z) > HIGH_GROUND ? 2 : 0));
   for (const b of buildings) if (b.alive && b.team === PLAYER) stamp(b.x, b.z, b.def.sight * SIGHT + Math.max(b.w, b.h) / 2);
   for (const r of reveals) if (r.until > G.time) stamp(r.x, r.z, r.r);
   for (let i = 0; i < MAP * MAP; i++) {
@@ -3990,6 +4315,14 @@ class AIController {
         if (time >= at && isUnlocked(T, k) && T.credits > costOf(T.id, k) + reserve) { T.queues.infantry.unshift({ type: k, progress: 0, paid: 0 }); break; }
       }
     }
+    // --- 小镇民房：附近闲着的步兵有时会进驻 ---
+    if ((G.tick / 20 | 0) % 8 === this.team) {
+      for (const b of buildings) {
+        if (!b.alive || b.type !== 'house' || !canHold(b, this.team) || garrisonCount(b) >= b.def.garrison) continue;
+        const inf = units.filter(u => u.team === this.team && canGarrison(u) && u.order.type !== 'garrison' && Math.hypot(u.x - b.x, u.z - b.z) < 6 * TILE);
+        if (inf.length && Math.random() < 0.3) commandGarrison(inf.slice(0, b.def.garrison - garrisonCount(b)), b);
+      }
+    }
     // --- 作战单位 ---
     const all = units.filter(u => u.alive && u.team === this.team && u.weapon && !u.chute && !u.inside && u.order.type !== 'garrison');
     const planes = all.filter(u => u.def.plane), ships = all.filter(u => u.def.naval);
@@ -4158,13 +4491,17 @@ function updateCamera(dt) {
   if (sc.right !== half) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.updateProjectionMatrix(); }
 }
 const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
-function screenToPlane(sx, sy, py = 0) {
+// py 省略时与起伏的地面求交（先和 y=0 平面求交，再按地面高度迭代修正）
+function screenToPlane(sx, sy, py) {
   ndc.set(sx / vw * 2 - 1, -(sy / vh) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
   if (d.y >= 0) return null;
-  const t = (py - o.y) / d.y;
-  return { x: o.x + d.x * t, z: o.z + d.z * t };
+  const at = h => { const t = (h - o.y) / d.y; return { x: o.x + d.x * t, z: o.z + d.z * t }; };
+  if (py !== undefined && py !== 0) return at(py);
+  let p = at(0);
+  for (let i = 0; i < 3; i++) p = at(groundH(p.x, p.z));
+  return p;
 }
 const _pv = new THREE.Vector3();
 function worldToScreen(x, y, z) { _pv.set(x, y, z).project(camera); return { x: (_pv.x + 1) / 2 * vw, y: (1 - _pv.y) / 2 * vh, z: _pv.z }; }
@@ -4178,6 +4515,7 @@ function canSeeEntity(e) {
   if (e.inside) return false;   // 进驻碉堡的步兵不显示
   if (e.team === PLAYER) return true;
   if (e.kind !== 'u') return e.seen;
+  if (hiddenFrom(PLAYER, e)) return false;   // 林地里隐蔽的步兵
   return visibleAt(e.x, e.z) && (!e.def.sub || revealAll || detectedBy(PLAYER, e));
 }
 function pickAt(sx, sy) {
@@ -4200,6 +4538,9 @@ function pickAt(sx, sy) {
     const id = bldGrid[tz * MAP + tx];
     if (id) { const b = entById.get(id); if (b && b.alive && canSeeEntity(b)) return b; }
   }
+  // 桥不占格子，单独判断
+  const g = screenToPlane(sx, sy);
+  if (g) for (const b of buildings) if (b.alive && b.type === 'bridge' && canSeeEntity(b) && rectDist(g.x, g.z, b) < 0.3) return b;
   return null;
 }
 function selectionChanged() {
@@ -4237,7 +4578,7 @@ function contextCommand(sx, sy) {
     return;
   }
   Sound.play('ack');
-  if (t && t.team !== PLAYER && t.team >= 0) {
+  if (t && attackable(PLAYER, t)) {
     issueCommand({ c: 'attack', ids: idsOf(own), tid: t.id });
     addMarker(t.x, t.z, '#ff5040', 0.6);
     return;
@@ -4251,7 +4592,7 @@ function contextCommand(sx, sy) {
   }
   // 右键己方碉堡：步兵进驻，其余单位移动到碉堡旁边
   const grunts = own.filter(canGarrison);
-  if (t && t.kind === 'b' && t.team === PLAYER && t.def.garrison && grunts.length) {
+  if (t && t.kind === 'b' && canHold(t, PLAYER) && grunts.length) {
     if (garrisonCount(t) >= t.def.garrison) { notify('碉堡已满（最多 ' + t.def.garrison + ' 人）', 'bad'); return; }
     issueCommand({ c: 'garrison', ids: idsOf(grunts), bid: t.id });
     const rest = own.filter(u => !grunts.includes(u));
@@ -4260,7 +4601,7 @@ function contextCommand(sx, sy) {
     return;
   }
   const engs = own.filter(u => u.def.engineer), harvs = own.filter(u => u.def.harvester);
-  if (t && t.kind === 'b' && engs.length && ((t.def.derrick && t.team !== PLAYER) || (t.team === PLAYER && !t.def.derrick && t.hp < t.maxHp))) {
+  if (t && t.kind === 'b' && engs.length && ((t.type === 'bridge' && t.broken) || (t.def.derrick && t.team !== PLAYER) || (t.team === PLAYER && !t.def.derrick && t.hp < t.maxHp))) {
     issueCommand({ c: 'enter', ids: idsOf(engs), bid: t.id });
     const rest = own.filter(u => !engs.includes(u));
     if (rest.length) issueCommand({ c: 'move', ids: idsOf(rest), x: t.x, z: t.z + 5 });
@@ -4474,7 +4815,7 @@ function updateAbmSelRing() {
   if (!b) { if (abmSelRing) abmSelRing.visible = false; return; }
   if (!abmSelRing) { abmSelRing = makeAbmRing(0xffffff); scene.add(abmSelRing); }
   abmSelRing.material.color.set(b.team === PLAYER ? 0x50ff70 : 0xff5040);
-  abmSelRing.position.set(b.x, 0.25, b.z);
+  abmSelRing.position.set(b.x, 0.25 + groundH(b.x, b.z), b.z);
   abmSelRing.visible = true;
 }
 function updateGhost() {
@@ -4482,7 +4823,7 @@ function updateGhost() {
   const g = ghostTile();
   if (!g) return;
   const d = BUILDINGS[placing.type];
-  ghostGroup.position.set((g.tx + d.w / 2) * TILE, 0, (g.tz + d.h / 2) * TILE);
+  ghostGroup.position.set((g.tx + d.w / 2) * TILE, groundH((g.tx + d.w / 2) * TILE, (g.tz + d.h / 2) * TILE), (g.tz + d.h / 2) * TILE);
   footMat.color.set(canPlace(PLAYER, placing.type, g.tx, g.tz) ? 0x40ff40 : 0xff3030);
 }
 
@@ -4498,11 +4839,13 @@ function syncMeshes(alpha, rdt, gdt) {
     if (!show) continue;
     const x = lerp(u.px, u.x, alpha), z = lerp(u.pz, u.z, alpha);
     let y = lerp(u.py ?? u.y, u.y, alpha);
+    const gy = u.def.naval ? 0 : groundH(x, z);   // 地面高度（舰船在水面上）
+    y += gy;
     const ang = lerpAngle(u.pangle, u.angle, alpha);
     if (Net.isClient && u.recoil > 0) u.recoil = Math.max(0, u.recoil - rdt * 4);
     if (!u.def.air) {
       // 伞降时显示降落伞
-      const chuting = y > 0.3;
+      const chuting = y - gy > 0.3;
       if (chuting && !u.chuteMesh) { u.chuteMesh = new THREE.Mesh(chuteGeo, matInf); u.chuteMesh.position.y = 2.1; u.mesh.add(u.chuteMesh); }
       if (u.chuteMesh) { u.chuteMesh.visible = chuting; if (chuting) u.chuteMesh.rotation.z = Math.sin(G.time * 2 + u.id) * 0.12; }
     }
@@ -4511,10 +4854,10 @@ function syncMeshes(alpha, rdt, gdt) {
       const turn = angDiff(u.pangle, u.angle);
       u.bank = lerp(u.bank || 0, clamp(turn * 12, -0.7, 0.7), Math.min(1, rdt * 5));
       u.mesh.rotation.z = -u.bank;
-      u.ring.position.y = -y + 0.06;
-      if (y > 1 && gdt > 0 && visibleAt(x, z)) pFire.spawn(x - Math.sin(ang) * 1.3, y + 0.05, z - Math.cos(ang) * 1.3, 0, 0, 0, 0.12, 0.45, 0.15, 1, 0.6, 0.25, 0.8);
+      u.ring.position.y = -(y - gy) + 0.06;
+      if (y - gy > 1 && gdt > 0 && visibleAt(x, z)) pFire.spawn(x - Math.sin(ang) * 1.3, y + 0.05, z - Math.cos(ang) * 1.3, 0, 0, 0, 0.12, 0.45, 0.15, 1, 0.6, 0.25, 0.8);
     } else if (u.def.air) {
-      y = AIR_Y + Math.sin(G.time * 2 + u.id) * 0.25;
+      y = gy + AIR_Y + Math.sin(G.time * 2 + u.id) * 0.25;
       u.mesh.rotation.x = u.moving ? 0.18 : 0;
       if (u.rotorMesh) u.rotorMesh.rotation.y += rdt * 25 * (G.paused ? 0 : 1);
       if (u.tailMesh) u.tailMesh.rotation.x += rdt * 30 * (G.paused ? 0 : 1);
@@ -4533,6 +4876,11 @@ function syncMeshes(alpha, rdt, gdt) {
       const rel = lerpAngle(u.pturret, u.turretAngle, alpha) - ang;
       u.turretMesh.rotation.y = rel;
       u.turretMesh.position.set(-Math.sin(rel) * u.recoil * 0.18, 0, -Math.cos(rel) * u.recoil * 0.18);
+    }
+    // 重伤的载具：冒黑烟，快不行了还冒火
+    if (!u.def.inf && gdt > 0 && u.hp < u.maxHp * 0.4 && Math.random() < gdt * 8 && visibleAt(x, z)) {
+      pSmoke.spawn(x + rnd(-0.3, 0.3), y + 1.0, z + rnd(-0.3, 0.3), rnd(-0.2, 0.2), rnd(1.2, 2), rnd(-0.2, 0.2), rnd(1.5, 2.5), 0.5, 2.2, 0.12, 0.11, 0.1, 0.6, -0.2, 0.4);
+      if (u.hp < u.maxHp * 0.2) pFire.spawn(x + rnd(-0.3, 0.3), y + 0.9, z + rnd(-0.3, 0.3), 0, rnd(0.8, 1.5), 0, 0.35, 0.5, 0.1, 1, 0.55, 0.15, 1);
     }
     if (u.moving && !u.def.air && !u.def.inf && gdt > 0) {
       u.dustT -= gdt;
@@ -4566,7 +4914,11 @@ function syncMeshes(alpha, rdt, gdt) {
       if (b.parts.doorL) { b.parts.doorL.position.x = -0.55 - b.slide * 1.1; b.parts.doorR.position.x = 0.55 + b.slide * 1.1; }
     }
     if (b.parts.lamp) b.parts.lamp.visible = b.abmReady && powered && b.buildAnim >= 1;
-    if (b.def.garrison && (uiFrameN + b.id) % 10 === 0) { const n = garrisonCount(b); for (let i = 0; i < b.def.garrison; i++) b.parts['slot' + i].visible = i < n; }
+    if (b.def.garrison && (uiFrameN + b.id) % 10 === 0) {
+      const n = garrisonCount(b);
+      if (b.parts.slot0) for (let i = 0; i < b.def.garrison; i++) b.parts['slot' + i].visible = i < n;
+      if (b.parts.win) b.parts.win.visible = n > 0;
+    }
     if (b.turretMesh) {
       b.turretMesh.rotation.y = b.turretAngle;
       const r = b.recoil || 0;
@@ -4711,11 +5063,14 @@ const mmFog = document.createElement('canvas'); mmFog.width = mmFog.height = MAP
 const mmFogData = mmFog.getContext('2d').createImageData(MAP, MAP);
 function paintMinimapBase() {
   const c = mmBase.getContext('2d'), img = c.createImageData(MAP, MAP);
-  const pal = { [T_GRASS]: [76, 92, 50], [T_DIRT]: [118, 100, 70], [T_ROCK]: [118, 110, 98], [T_WATER]: [38, 70, 82], [T_TREE]: [40, 58, 32], [T_VOID]: [8, 9, 7] };
+  const pal = { [T_GRASS]: [76, 92, 50], [T_DIRT]: [118, 100, 70], [T_ROCK]: [118, 110, 98], [T_WATER]: [38, 70, 82], [T_TREE]: [40, 58, 32], [T_VOID]: [8, 9, 7],
+    [T_SWAMP]: [56, 66, 48], [T_SAND]: [170, 152, 104], [T_ROAD]: [140, 130, 112], [T_FORD]: [70, 110, 110], [T_BRIDGE]: [150, 120, 80] };
   for (let i = 0; i < MAP * MAP; i++) {
     let c3 = pal[terrain[i]];
     if (ore[i] > 0) c3 = gem[i] ? [80, 200, 210] : [210, 170, 60];
-    img.data[i * 4] = c3[0]; img.data[i * 4 + 1] = c3[1]; img.data[i * 4 + 2] = c3[2]; img.data[i * 4 + 3] = 255;
+    // 高度明暗：越高越亮
+    const x = i % MAP, z = (i / MAP) | 0, l = 1 + hgt[z * HG + x] * 0.09;
+    img.data[i * 4] = Math.min(255, c3[0] * l); img.data[i * 4 + 1] = Math.min(255, c3[1] * l); img.data[i * 4 + 2] = Math.min(255, c3[2] * l); img.data[i * 4 + 3] = 255;
   }
   c.putImageData(img, 0, 0);
 }
@@ -4998,6 +5353,7 @@ function renderSelPanel() {
       if (PROD_TYPES.includes(e.type) && countOf(teams[PLAYER], e.type === 'airBarracks' ? 'barracks' : e.type) > 1) cmds += `<button data-c="primary">设为主建筑</button>`;
       if (d.garrison) cmds += `<button data-c="unload">撤出步兵</button>`;
     }
+    if (e.type === 'house' && hostileTeam(e) === PLAYER) cmds += `<button data-c="unload">撤出步兵</button>`;
     const rk = e.kind === 'u' && e.rank ? `<span style="color:#ffd860;margin-left:4px">${'︽'.repeat(e.rank)}${RANKS[e.rank].name}</span>` : '';
     p.innerHTML = `<div class="row"><img class="big" src="${ICONS[e.type] || ''}"><div><div class="title">${d.name}${rk}${teamName}</div>
       <div class="hpbar"><div id="selHp"></div></div><div class="sub" id="selSub"></div></div></div><div class="cmds">${cmds}</div>`;
@@ -5289,6 +5645,40 @@ const GUIDE = [
         <tr><td>精英</td><td style="color:#ffd860">︾︾ 两道</td><td>+40%</td><td>+40%</td><td>+15%</td><td>每秒自动回复 1% 生命</td></tr>
       </table>
       <div class="gtip">军衔显示在单位头顶左侧（金色 V 形），敌人的老兵也能看到。选中单位后，下方面板会显示当前经验。</div>`,
+  },
+  {
+    id: 'terrain', title: '地形', html: () => `
+      <p>战场有真实的地形：山丘、河流和桥、小镇和公路、林地、沼泽和沙地。<b>会用地形，往往比多造兵更管用。</b></p>
+      <h3>地表与速度</h3>
+      <table class="gtable"><tr><th>地表</th><th>步兵</th><th>载具</th><th>说明</th></tr>
+        <tr><td>公路</td><td>100%</td><td>130%</td><td>载具会自动优先走公路</td></tr>
+        <tr><td>草地、土地</td><td>100%</td><td>100%</td><td>—</td></tr>
+        <tr><td>沙地</td><td>90%</td><td>80%</td><td>浅黄色</td></tr>
+        <tr><td>林地</td><td>75%</td><td>50%</td><td>可以穿行；步兵能隐蔽，直射伤害 -25%</td></tr>
+        <tr><td>沼泽</td><td>60%</td><td>35%</td><td>载具陷进去很慢</td></tr>
+        <tr><td>浅滩</td><td>60%</td><td>50%</td><td>河上可以涉水的地方</td></tr>
+      </table>
+      <p>岩石、河流、湖泊不能通行。只有草地、土地、沙地、公路上能盖建筑，而且地面要平。</p>
+      <h3>林地隐蔽</h3>
+      <ul>
+        <li>步兵在林地里<b>停着不动</b>时，敌人要靠近到 <b>4 格以内</b>才能发现他们；一开火会暴露 2 秒。</li>
+        <li>林地里的单位受到子弹、炮弹的直接命中伤害 <b>-25%</b>（爆炸溅射不减）。适合打伏击。</li>
+      </ul>
+      <h3>山丘与高地</h3>
+      <ul>
+        <li>比目标高出一截时<b>居高临下</b>：射程 <b>+1 格</b>、伤害 <b>+15%</b>。从低处往上打是<b>仰攻</b>，伤害 <b>-15%</b>。</li>
+        <li>站在山顶上视野 <b>+2 格</b>。上坡会变慢（最多 -30%）。小地图上越亮的地方越高。</li>
+      </ul>
+      <h3>河流、桥与浅滩</h3>
+      <ul>
+        <li>大陆地图上有四条河把相邻的基地隔开，每条河有一座<b>桥</b>和一处<b>浅滩</b>，河的尽头（地图中央）也能绕过去。</li>
+        <li>桥可以用坦克、火炮、火箭、炸弹<b>炸断</b>（选中部队右键点桥），断了以后谁都过不去，桥上的单位会掉进河里。派<b>工程师</b>右键断桥可以修好。</li>
+      </ul>
+      <h3>小镇</h3>
+      <ul>
+        <li>每个象限有一个小镇，4 栋<b>民房</b>。选中步兵右键点空民房即可进驻（最多 4 人，射程 +1 格、伤害 +20%）。</li>
+        <li>有人进驻后，民房就算那一方的据点，敌人会来打它；民房被打爆后步兵弹出受伤，原地留下不能通行的废墟。</li>
+      </ul>`,
   },
   {
     id: 'env', title: '天气与昼夜', html: () => `
@@ -5617,6 +6007,13 @@ function startGame(cfg) {
       for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
       if (ok) createBuilding('derrick', NEUTRAL, s.tx, s.tz, { instant: true });
     }
+    // 桥和小镇民房
+    for (const s of bridgeSites) createBuilding('bridge', NEUTRAL, s.tx, s.tz, { instant: true });
+    for (const s of houseSites) {
+      let ok = true;
+      for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
+      if (ok) createBuilding('house', NEUTRAL, s.tx, s.tz, { instant: true });
+    }
     for (const u of units) { u.guardX = u.x; u.guardZ = u.z; }
   }
   updateFog();
@@ -5672,7 +6069,7 @@ function executeCommand(team, c) {
     case 'move': commandMove(own(c.ids), num(c.x), num(c.z), !!c.am); break;
     case 'attack': {
       const t = entById.get(c.tid);
-      if (!t || !t.alive || t.team === team || t.team < 0) break;
+      if (!attackable(team, t)) break;
       const l = own(c.ids), atk = l.filter(u => u.weapon && canHit(u.weapon, t));
       commandAttack(atk, t);
       const rest = l.filter(u => !atk.includes(u) && !u.def.harvester);
@@ -5683,8 +6080,8 @@ function executeCommand(team, c) {
     case 'harvest': if (c.tile >= 0 && c.tile < MAP * MAP) commandHarvest(own(c.ids), c.tile | 0); break;
     case 'dock': { const r = ownB(c.rid); if (r && r.type === 'refinery') commandDock(own(c.ids), r); break; }
     case 'enter': { const b = entById.get(c.bid); if (b && b.alive && b.kind === 'b') commandEnter(own(c.ids), b); break; }
-    case 'garrison': { const b = entById.get(c.bid); if (b && b.alive && b.team === team && b.def.garrison) commandGarrison(own(c.ids), b); break; }
-    case 'unload': { const b = entById.get(c.bid); if (b && b.alive && b.team === team && b.def.garrison) unloadBunker(b); break; }
+    case 'garrison': { const b = entById.get(c.bid); if (b && canHold(b, team)) commandGarrison(own(c.ids), b); break; }
+    case 'unload': { const b = entById.get(c.bid); if (b && b.alive && hostileTeam(b) === team && b.def.garrison) unloadBunker(b); break; }
     case 'enqueue': if (defOf(c.type)) enqueue(T, c.type, clamp(c.n | 0, 1, 5)); break;
     case 'cancel': if (T.queues[c.cat]) cancelItem(T, c.cat, c.type); break;
     case 'place':
@@ -5955,6 +6352,7 @@ function applySnapshot(m) {
     if (!b || !b.alive) b = createBuilding(type, team, bd[o + 2], bd[o + 3], { instant: ((bd[o + 6] >> 1) & 127) >= 100, noHarv: true, id });
     if (b.team !== team) { const old = b.team; b.team = team; buildBuildingMesh(b); recalcTeam(old); recalcTeam(team); }
     b.hp = bd[o + 4]; b.turretAngle = bd[o + 5] / 10000; b.repairing = !!(bd[o + 6] & 1);
+    if (type === 'bridge') setBridgeState(b, b.hp <= 0);
     b.buildAnim = Math.max(b.buildAnim, ((bd[o + 6] >> 1) & 127) / 100);
     b.abmReady = !!(bd[o + 6] & 256);
     seenB.add(id);
@@ -6005,6 +6403,8 @@ function applySnapshot(m) {
     else if (e.k === 'nuke') { const s = entById.get(e.sid); if (s) missileVisual(s, e.x, e.z, e.ab || 0); }
     else if (e.k === 'ab') abilityEffect(e.team, e.ab, e.x, e.z);
   }
+  // 民房归属：看里面的步兵是哪一方
+  for (const b of buildings) if (b.alive && b.type === 'house') { b.garTeam = -1; for (const u of units) if (u.alive && u.inside === b) { b.garTeam = u.team; break; } }
   // 删除消失的实体
   for (const b of buildings) if (b.alive && !seenB.has(b.id)) removeClientEntity(b, dead.has(b.id));
   for (const u of units) if (u.alive && !seenU.has(u.id)) removeClientEntity(u, dead.has(u.id));
@@ -6064,7 +6464,7 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { G, cam, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 resize();
 try {
   makeIcons('north');
