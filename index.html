@@ -317,7 +317,7 @@ button { font-family: inherit; }
   </div>
   <button class="sbtn" id="btnAbility" disabled style="flex:none">国家技能</button>
   <div id="tabs">
-    <button data-tab="building" class="active">建筑</button><button data-tab="defense">防御</button><button data-tab="infantry">步兵</button><button data-tab="vehicle">载具</button><button data-tab="air">空军</button><button data-tab="naval" id="tabNaval">海军</button>
+    <button data-tab="building" class="active">建筑</button><button data-tab="defense">防御</button><button data-tab="infantry">步兵</button><button data-tab="vehicle">载具</button><button data-tab="air">空军</button><button data-tab="naval" id="tabNaval">海军</button><button data-tab="research">研究</button>
   </div>
   <div id="buildGrid"></div>
 </div>
@@ -418,7 +418,7 @@ const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-3.0';
+const GAME_VERSION = 'iron-3.1';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -508,6 +508,7 @@ const BUILDINGS = {
   factory:  { name: '战车工厂', cat: 'building', w: 3, h: 3, hp: 1600, power: -30, cost: 2000, time: 18, sight: 5, req: ['refinery'], desc: '生产载具。' },
   radar:    { name: '雷达站', cat: 'building', w: 2, h: 2, hp: 1000, power: -40, cost: 1000, time: 12, sight: 10, req: ['factory'], desc: '启用小地图，解锁高级单位。' },
   helipad:  { name: '直升机坪', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1200, time: 12, sight: 5, req: ['radar'], desc: '生产武装直升机。' },
+  lab:      { name: '军事研究所', cat: 'building', w: 2, h: 2, hp: 900, power: -50, cost: 1500, time: 16, sight: 5, req: ['radar'], desc: '在「研究」栏研究载具、空军、经济和侦察方面的永久升级。有科技中心后可以研究二级项目。' },
   tech:     { name: '科技中心', cat: 'building', w: 2, h: 2, hp: 900, power: -60, cost: 1500, time: 18, sight: 5, req: ['radar'], desc: '解锁专属单位和战略导弹井。' },
   silo:     { name: '战略导弹井', cat: 'building', w: 2, h: 2, hp: 1300, power: -100, cost: 4000, time: 30, sight: 5, max: 1, req: ['tech'], desc: '定期发射一枚战略导弹（标准节奏 11 分钟，快速节奏约 6.6 分钟），对总部无效。' },
   mgTurret: { name: '机枪塔', cat: 'defense', w: 1, h: 1, hp: 500, power: -10, cost: 400, time: 6, sight: 7, weapon: 'turretMg', defense: true, req: ['barracks'], desc: '克制步兵。' },
@@ -548,10 +549,19 @@ const UPGRADES = {
   upArmor: { name: '防弹衣', cat: 'infantry', cost: 1000, time: 25, req: ['barracks'], icon: 'shield', desc: '所有步兵生命 +35%（已有的步兵立即生效）。' },
   upAP:    { name: '穿甲弹', cat: 'infantry', cost: 1200, time: 30, req: ['barracks', 'radar'], icon: 'round', desc: '步兵伤害 +20%；步枪兵打载具和建筑的伤害翻倍。' },
   upMedic: { name: '战地急救', cat: 'infantry', cost: 1500, time: 35, req: ['barracks', 'tech'], icon: 'cross', desc: '步兵 5 秒没受伤后，每秒回复 2% 生命。' },
+  // 研究所：一级只要研究所，二级还要科技中心
+  upVArmor:  { name: '复合装甲', cat: 'research', cost: 1500, time: 30, req: ['lab'], icon: 'plate', desc: '所有载具生命 +25%（已有的载具立即生效）。' },
+  upFire:    { name: '火控系统', cat: 'research', cost: 1200, time: 25, req: ['lab'], icon: 'sight', desc: '载具直射武器（坦克炮、机枪、防空炮）伤害 +15%。' },
+  upRefine:  { name: '自动化精炼', cat: 'research', cost: 1500, time: 30, req: ['lab'], icon: 'gear', desc: '采矿车和采矿平台的矿石收入 +20%。' },
+  upThermal: { name: '热成像', cat: 'research', cost: 1000, time: 20, req: ['lab'], icon: 'eye', desc: '林地里隐蔽的敌方步兵在 8 格内就能被发现（原来 4 格）。' },
+  upAPS:     { name: '主动防护系统', cat: 'research', cost: 2000, time: 40, req: ['lab', 'tech'], icon: 'aps', desc: '载具被火箭、导弹直接命中时有 30% 几率在半空拦截，不受伤害。' },
+  upRepair:  { name: '野战维修', cat: 'research', cost: 1800, time: 35, req: ['lab', 'tech'], icon: 'wrench', desc: '载具 5 秒没受伤后，每秒回复 1% 生命。' },
+  upGuide:   { name: '精确制导', cat: 'research', cost: 2000, time: 40, req: ['lab', 'tech'], icon: 'missile', desc: '空军和火炮、火箭车、导弹巡洋舰的伤害 +20%。' },
+  upECM:     { name: '电子对抗', cat: 'research', cost: 1800, time: 35, req: ['lab', 'tech'], icon: 'radar', desc: '飞机受到防空炮和空空导弹的伤害 -30%。' },
 };
 for (const k in UPGRADES) { UPGRADES[k].type = k; UPGRADES[k].upgrade = true; }
 const hasUpg = (team, k) => team >= 0 && !!(teams[team] && teams[team].upg && teams[team].upg[k]);
-const ARMOR_UPG = 1.35;
+const ARMOR_UPG = 1.35, VARMOR_UPG = 1.25;
 
 // 国家：数值特性 + 专属 + 迷彩
 const NATION_KEYS = ['north', 'south', 'gold', 'hawk'];
@@ -588,9 +598,9 @@ function costOf(team, type) {
   const d = UNITS[type] || BUILDINGS[type] || UPGRADES[type], n = natOf(team);
   return Math.round(d.cost * (d.isBuilding ? n.bldCostMul : 1) * (d.air ? n.airCostMul : 1));
 }
-function hpOf(team, d) { const n = natOf(team); return d.hp * n.hpMul * (d.air ? n.airHpMul : 1) * (d.inf && hasUpg(team, 'upArmor') ? ARMOR_UPG : 1); }
-const PRODUCER = { building: 'hq', defense: 'hq', infantry: 'barracks', vehicle: 'factory', air: 'helipad', naval: 'shipyard' };
-const CAT_ORDER = ['building', 'defense', 'infantry', 'vehicle', 'air', 'naval'];
+function hpOf(team, d) { const n = natOf(team); return d.hp * n.hpMul * (d.air ? n.airHpMul : 1) * (d.inf && hasUpg(team, 'upArmor') ? ARMOR_UPG : 1) * (d.cat === 'vehicle' && hasUpg(team, 'upVArmor') ? VARMOR_UPG : 1); }
+const PRODUCER = { building: 'hq', defense: 'hq', infantry: 'barracks', vehicle: 'factory', air: 'helipad', naval: 'shipyard', research: 'lab' };
+const CAT_ORDER = ['building', 'defense', 'infantry', 'vehicle', 'air', 'naval', 'research'];
 // 单位的生产建筑（飞机由机场生产，其余按类别）
 const prodOf = d => d.producer || PRODUCER[d.cat];
 const PROD_TYPES = ['barracks', 'airBarracks', 'factory', 'helipad', 'shipyard', 'airfield'];
@@ -1685,6 +1695,16 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(2.4, 0.3, 0.05, C.glass, 0, 0.9, 1.51), B(2.4, 0.3, 0.05, C.glass, 0, 1.3, 1.51));
       break;
     }
+    case 'lab': {
+      plinth();
+      // 低矮实验楼 + 卫星天线 + 通风塔
+      L.push(B(3.1, 1.1, 2.4, C.lab, 0, 0.8, 0.3), B(3.16, 0.1, 2.46, p.accent, 0, 1.38, 0.3));
+      L.push(B(2.6, 0.26, 0.05, C.glass, 0, 0.95, 1.51));
+      L.push(B(1.1, 0.5, 0.9, C.concrete, -0.8, 0.5, -1.2), CY(0.05, 0.05, 1.1, C.steel, -0.8, 1.2, -1.2, 6));
+      L.push(SP(0.55, C.white, -0.8, 1.75, -1.2, 12, 6, 1, Math.PI / 2));
+      L.push(CY(0.28, 0.32, 1.6, C.steel, 1.0, 1.5, -0.2, 10), CY(0.34, 0.34, 0.1, C.dark, 1.0, 2.3, -0.2, 10));
+      break;
+    }
     case 'silo': {
       plinth();
       L.push(B(3.3, 0.55, 3.3, C.concrete, 0, 0.5, 0));
@@ -2356,7 +2376,7 @@ function makeTeam(id, isAI, nation, slot = id, corner = id, name = '') {
   return {
     id, isAI, nation, slot, corner, name: name || (isAI ? '电脑' : '玩家'), ai: null, defeated: false, human: !isAI,
     abilityCharge: 0, abilityReady: false, credits: G.pace.credits, powerProd: 0, powerUse: 0, lowPower: false,
-    queues: { building: [], defense: [], infantry: [], vehicle: [], air: [], naval: [] },
+    queues: { building: [], defense: [], infantry: [], vehicle: [], air: [], naval: [], research: [] },
     superCharge: 0, superReady: false, rally: {}, counts: {}, primary: {}, upg: {},
     stats: { kills: 0, losses: 0, bKills: 0, bLosses: 0, harvested: 0, unitsBuilt: 0, bBuilt: 0 },
     lastAlert: -9999, lastHarvAlert: -9999, lastMoney: -9999, lastReady: -9999,
@@ -2862,7 +2882,7 @@ const concealed = u => u.kind === 'u' && u.def.inf && !u.moving && !u.inside && 
 // 某一方有没有单位或建筑在 4 格内（发现隐蔽的步兵）
 function spottedBy(team, u) {
   if (u._spT === G.tick && u._spTeam === team) return u._spV;
-  const r = 4 * TILE;
+  const r = (hasUpg(team, 'upThermal') ? 8 : 4) * TILE;
   let v = false;
   for (const o of units) if (o.alive && o.team === team && !o.inside && Math.abs(o.x - u.x) < r && Math.abs(o.z - u.z) < r && Math.hypot(o.x - u.x, o.z - u.z) <= r) { v = true; break; }
   if (!v) for (const b of buildings) if (b.alive && b.team === team && rectDist(u.x, u.z, b) <= r) { v = true; break; }
@@ -2960,6 +2980,8 @@ function fireWeapon(s, t) {
   if (Net.isHost) Net.event({ k: 'f', s: s.id, t: t.id });
   let dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
   if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
+  if (s.kind === 'u' && s.def.cat === 'vehicle' && w.wh !== 'he' && hasUpg(s.team, 'upFire')) dmgMul *= 1.15;
+  if (s.kind === 'u' && (s.def.air || w.wh === 'he') && hasUpg(s.team, 'upGuide')) dmgMul *= 1.2;
   { const adv = heightAdv(s, t); if (adv) dmgMul *= adv > 0 ? 1.15 : 0.85; }   // 居高临下 +15%，仰攻 -15%
   s.lastFire = G.tick;
   const aim = s.hasTurret ? s.turretAngle : s.angle;
@@ -3125,6 +3147,13 @@ function damage(t, amount, wh, src, splash = false) {
   if (wh === 'small' && !t.def.inf && src && src.kind === 'u' && src.def.inf && hasUpg(src.team, 'upAP')) mult *= 2;
   // 林地里的单位：直射伤害 -25%（溅射不减）
   if (!splash && t.kind === 'u' && !t.def.air && !t.def.naval && terrainAt(t.x, t.z) === T_TREE) mult *= 0.75;
+  // 主动防护：载具 30% 几率拦下直接命中的火箭/导弹
+  if (!splash && wh === 'rocket' && t.kind === 'u' && t.def.cat === 'vehicle' && hasUpg(t.team, 'upAPS') && Math.random() < 0.3) {
+    if (visibleAt(t.x, t.z)) fxHit(t.x, groundH(t.x, t.z) + 1.8, t.z);
+    return;
+  }
+  // 电子对抗：飞机受防空伤害 -30%
+  if (t.def.air && (wh === 'flak' || wh === 'aam') && hasUpg(t.team, 'upECM')) mult *= 0.7;
   if (mult <= 0) return;
   t.hp -= amount * mult;
   t.lastHit = G.tick;
@@ -3223,6 +3252,8 @@ function unitTick(u) {
   if (u.rank === 2 && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.01);
   // 战地急救：步兵 5 秒没受伤后每秒回复 2%
   if (u.def.inf && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0 && G.tick - u.lastHit > 5 * TPS && hasUpg(u.team, 'upMedic')) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.02);
+  // 野战维修：载具 5 秒没受伤后每秒回复 1%
+  if (u.def.cat === 'vehicle' && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0 && G.tick - u.lastHit > 5 * TPS && hasUpg(u.team, 'upRepair')) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.01);
   if (u.inside) return garrisonTick(u);
   if (u.def.plane) return planeTick(u);
   if (u.def.harvester) return harvesterTick(u);
@@ -3431,7 +3462,7 @@ function harvesterTick(h) {
       h.angle += clamp(angDiff(h.angle, Math.PI), -0.15, 0.15);
       const amt = Math.min(h.cargo, 25);
       h.cargo -= amt;
-      const inc = amt * natOf(h.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
+      const inc = amt * natOf(h.team).incomeMul * (hasUpg(h.team, 'upRefine') ? 1.2 : 1) * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
       T.credits += inc; T.stats.harvested += inc;
       if (h.cargo <= 0) { h.cargo = 0; h.hstate = 'seek'; }
       break;
@@ -3516,7 +3547,7 @@ function buildingTick(b) {
     if (best >= 0) {
       const take = Math.min(gem[best] ? 30 : 15, ore[best]);
       ore[best] -= take; updateOreTile(best);
-      const inc = take * natOf(b.team).incomeMul * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
+      const inc = take * natOf(b.team).incomeMul * (hasUpg(b.team, 'upRefine') ? 1.2 : 1) * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
       T.credits += inc; T.stats.harvested += inc;
       if (visibleAt(b.x, b.z)) fxDust(tc(best % MAP), tc((best / MAP) | 0), 0.9);
     }
@@ -3664,6 +3695,7 @@ function applyUpgrade(T, k) {
   if (T.upg[k]) return;
   T.upg[k] = true;
   if (k === 'upArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.inf) { u.maxHp *= ARMOR_UPG; u.hp *= ARMOR_UPG; }
+  if (k === 'upVArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.cat === 'vehicle') { u.maxHp *= VARMOR_UPG; u.hp *= VARMOR_UPG; }
   if (T.human) tnotify(T.id, '研究完成：' + UPGRADES[k].name, 'good', 'ready');
 }
 function missingReq(T, type) {
@@ -4121,6 +4153,8 @@ const AI_PLAN = [
   ['shipyard', 1, 470], ['airfield', 1, 640], ['power', 8, 900],
   // 人口：副部和第二座兵营、工厂都会提高人口上限
   ['subhq', 1, 700], ['barracks', 2, 800], ['factory', 3, 1300],
+  // 研究所
+  ['lab', 1, 620],
 ];
 const AI_DEF_PLAN = [
   ['mgTurret', 1, 160], ['bunker', 1, 200], ['atTurret', 1, 260], ['bunker', 2, 600], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
@@ -4313,6 +4347,12 @@ class AIController {
     if (countOf(T, 'barracks') && !T.queues.infantry.some(i => UPGRADES[i.type])) {
       for (const [k, at] of [['upArmor', 400], ['upAP', 650], ['upMedic', 900]]) {
         if (time >= at && isUnlocked(T, k) && T.credits > costOf(T.id, k) + reserve) { T.queues.infantry.unshift({ type: k, progress: 0, paid: 0 }); break; }
+      }
+    }
+    // --- 研究所升级 ---
+    if (countOf(T, 'lab') && !T.queues.research.length) {
+      for (const [k, at] of [['upRefine', 650], ['upVArmor', 750], ['upFire', 850], ['upThermal', 950], ['upAPS', 1050], ['upRepair', 1150], ['upGuide', 1250], ['upECM', 1350]]) {
+        if (time >= at && isUnlocked(T, k) && T.credits > costOf(T.id, k) + reserve) { enqueue(T, k); break; }
       }
     }
     // --- 小镇民房：附近闲着的步兵有时会进驻 ---
@@ -5203,6 +5243,37 @@ function upgradeIcon(kind, W, H) {
       x.fill(); x.stroke();
       x.fillStyle = '#9a7a3a'; x.fillRect(cx + dx - 6, cy + 18, 12, 10); x.fillStyle = '#d6b860';
     }
+  } else if (kind === 'plate') {
+    x.rect(cx - 26, cy - 22, 52, 44); x.fill(); x.stroke();
+    x.fillStyle = '#9a7a3a'; x.fillRect(cx - 26, cy - 8, 52, 6); x.fillRect(cx - 26, cy + 6, 52, 6);
+    x.fillStyle = '#3a3220'; for (const [dx, dy] of [[-20, -16], [20, -16], [-20, 16], [20, 16]]) { x.beginPath(); x.arc(cx + dx, cy + dy, 3, 0, 7); x.fill(); }
+  } else if (kind === 'sight') {
+    x.lineWidth = 5; x.strokeStyle = '#d6b860'; x.arc(cx, cy, 22, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); x.moveTo(cx - 32, cy); x.lineTo(cx - 8, cy); x.moveTo(cx + 8, cy); x.lineTo(cx + 32, cy); x.moveTo(cx, cy - 32); x.lineTo(cx, cy - 8); x.moveTo(cx, cy + 8); x.lineTo(cx, cy + 32); x.stroke();
+    x.fillStyle = '#c03828'; x.beginPath(); x.arc(cx, cy, 4, 0, 7); x.fill();
+  } else if (kind === 'gear') {
+    for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, r = i % 2 ? 22 : 30; x[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+    x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#3a3220'; x.beginPath(); x.arc(cx, cy, 9, 0, 7); x.fill();
+  } else if (kind === 'eye') {
+    x.moveTo(cx - 32, cy); x.quadraticCurveTo(cx, cy - 30, cx + 32, cy); x.quadraticCurveTo(cx, cy + 30, cx - 32, cy); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#c84020'; x.beginPath(); x.arc(cx, cy, 11, 0, 7); x.fill(); x.fillStyle = '#ffe080'; x.beginPath(); x.arc(cx, cy, 4, 0, 7); x.fill();
+  } else if (kind === 'aps') {
+    x.moveTo(cx - 28, cy + 26); x.lineTo(cx - 28, cy + 8); x.lineTo(cx + 28, cy + 8); x.lineTo(cx + 28, cy + 26); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#ffb040'; for (let i = 0; i < 8; i++) { const a = -Math.PI * (i + 0.5) / 8; x.beginPath(); x.moveTo(cx, cy - 12); x.lineTo(cx + Math.cos(a) * 26, cy - 12 + Math.sin(a) * 20); x.lineTo(cx + Math.cos(a + 0.15) * 14, cy - 12 + Math.sin(a + 0.15) * 10); x.fill(); }
+  } else if (kind === 'wrench') {
+    x.save(); x.translate(cx, cy); x.rotate(-Math.PI / 4);
+    x.rect(-5, -14, 10, 44); x.fill(); x.stroke();
+    x.beginPath(); x.arc(0, -20, 14, 0, Math.PI * 2); x.fill(); x.stroke();
+    x.fillStyle = '#1a1f15'; x.fillRect(-5, -36, 10, 16); x.restore();
+  } else if (kind === 'missile') {
+    x.save(); x.translate(cx, cy); x.rotate(Math.PI / 4);
+    x.moveTo(0, -32); x.lineTo(6, -20); x.lineTo(6, 18); x.lineTo(14, 28); x.lineTo(-14, 28); x.lineTo(-6, 18); x.lineTo(-6, -20); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#c03828'; x.fillRect(-6, -18, 12, 6); x.restore();
+  } else if (kind === 'radar') {
+    x.lineWidth = 4; x.strokeStyle = '#d6b860';
+    for (const r of [10, 20, 30]) { x.beginPath(); x.arc(cx - 18, cy + 18, r, -Math.PI / 2, 0); x.stroke(); }
+    x.fillStyle = '#d6b860'; x.beginPath(); x.arc(cx - 18, cy + 18, 5, 0, 7); x.fill();
   } else {
     x.fillStyle = '#e8e2d0'; x.arc(cx, cy, 28, 0, Math.PI * 2); x.fill(); x.stroke();
     x.fillStyle = '#c03828'; x.fillRect(cx - 7, cy - 20, 14, 40); x.fillRect(cx - 20, cy - 7, 40, 14);
@@ -5259,7 +5330,7 @@ function showTip(type, el) {
   let html = `<b>${d.name}</b>　$${cost}${cost < d.cost ? `<span style="color:#8a9080;text-decoration:line-through;margin-left:4px">$${d.cost}</span>` : ''}<br>${d.desc || ''}`;
   if (d.isBuilding && d.power) html += `<br>电力：${d.power > 0 ? '+' : ''}${d.power}`;
   if (d.weapon) { const w = WEAPONS[d.weapon]; html += `<br>射程 ${w.range} 格${d.ammo ? '　弹药 ' + d.ammo : ''}`; }
-  if (d.upgrade) html += T && T.upg[type] ? '<br><span style="color:#8fd070">已研究</span>' : `<br>研究时间 ${d.time} 秒（在兵营研究，研究期间暂停步兵生产）`;
+  if (d.upgrade) html += T && T.upg[type] ? '<br><span style="color:#8fd070">已研究</span>' : `<br>研究时间 ${d.time} 秒（${d.cat === 'research' ? '在研究所研究' : '在兵营研究，研究期间暂停步兵生产'}）`;
   else html += `<br>生命 ${Math.round(hpOf(PLAYER, d))}${d.isBuilding ? '' : '　速度 ' + (d.speed * natOf(PLAYER).speedMul).toFixed(1)}`;
   if (!d.isBuilding && !d.upgrade) html += `　人口 ${d.pop}`;
   if (d.popCap) html += `<br>提供人口 +${d.popCap}`;
@@ -5645,6 +5716,15 @@ const GUIDE = [
         <tr><td>精英</td><td style="color:#ffd860">︾︾ 两道</td><td>+40%</td><td>+40%</td><td>+15%</td><td>每秒自动回复 1% 生命</td></tr>
       </table>
       <div class="gtip">军衔显示在单位头顶左侧（金色 V 形），敌人的老兵也能看到。选中单位后，下方面板会显示当前经验。</div>`,
+  },
+  {
+    id: 'research', title: '研究', html: () => `
+      <h3>军事研究所</h3>
+      <p>有雷达站后可以建造<b>军事研究所</b>（$${BUILDINGS.lab.cost}），然后在建造栏的<b>「研究」</b>页花钱研究永久升级。一次研究一项，研究所越多研究越快，断电时减半。</p>
+      <p>一级项目只要研究所；二级项目还需要<b>科技中心</b>。兵营的步兵升级（防弹衣、穿甲弹、战地急救）仍在「步兵」页。</p>
+      <h3>研究项目</h3>
+      <ul>${Object.values(UPGRADES).filter(d => d.cat === 'research').map(d => `<li><b>${d.name}</b>（${d.req.includes('tech') ? '二级' : '一级'}，$${d.cost}，${d.time} 秒）：${d.desc}</li>`).join('')}</ul>
+      <p>电脑也会建研究所并逐步研究。</p>`,
   },
   {
     id: 'terrain', title: '地形', html: () => `
