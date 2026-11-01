@@ -426,7 +426,7 @@ const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-3.1';
+const GAME_VERSION = 'iron-4.0';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -453,6 +453,8 @@ const WARHEAD = {
   torpedo: [0, 0, 0, 0, 0, 1.0],
   aam:     [0, 0, 0, 0, 1.0, 0],
   bomb:    [0.9, 0.8, 0.7, 1.3, 0, 0.8],
+  fire:    [1.3, 0.55, 0.2, 0.6, 0, 0.3],
+  sniper:  [1.0, 0.06, 0.02, 0.02, 0, 0.02],
 };
 
 // 射程单位：格
@@ -480,32 +482,135 @@ const WEAPONS = {
   aam:        { dmg: 80, range: 7, cd: 0.9, wh: 'aam', proj: 'rocket', speed: 34, air: true, sfx: 'rocket' },
   strikeMsl:  { dmg: 64, range: 6.5, cd: 0.7, wh: 'rocket', proj: 'rocket', speed: 28, ground: true, barrels: 2, sfx: 'rocket' },
   bombs:      { dmg: 120, range: 1.2, cd: 0.12, wh: 'bomb', proj: 'bomb', splash: 1.6, ground: true, sfx: 'arty' },
+  // 北岭
+  rpg:        { dmg: 78, range: 5.5, cd: 2.6, wh: 'rocket', proj: 'rocket', speed: 18, ground: true, sfx: 'rocket' },
+  flamer:     { dmg: 34, range: 3, cd: 0.9, wh: 'fire', proj: 'flame', splash: 1.0, ground: true, sfx: 'flame' },
+  hmg:        { dmg: 14, range: 5.5, cd: 0.35, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  gun125:     { dmg: 62, range: 6.5, cd: 2.0, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannonBig' },
+  quadFlak:   { dmg: 16, range: 7, cd: 0.22, wh: 'flak', proj: 'flak', ground: true, air: true, sfx: 'flak' },
+  how152:     { dmg: 145, range: 14, minRange: 3, cd: 6.2, wh: 'he', proj: 'arty', speed: 17, splash: 2.2, ground: true, sfx: 'arty' },
+  heavyRocket: { dmg: 22, range: 6, cd: 1.2, wh: 'rocket', proj: 'rocket', speed: 24, barrels: 2, ground: true, sfx: 'rocket' },
+  heavyTorpedo: { dmg: 180, range: 6.5, cd: 3.4, wh: 'torpedo', proj: 'torpedo', speed: 15, ground: true, navalOnly: true, sfx: 'rocket' },
+  // 赤砂
+  akRifle:    { dmg: 12, range: 5, cd: 0.7, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'rifle' },
+  atgm:       { dmg: 100, range: 8, cd: 4.2, wh: 'rocket', proj: 'rocket', speed: 18, ground: true, sfx: 'rocket' },
+  sniper:     { dmg: 160, range: 9, cd: 3.2, wh: 'sniper', proj: 'bullet', ground: true, sfx: 'sniper' },
+  dshk:       { dmg: 13, range: 5.5, cd: 0.32, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  gun90:      { dmg: 42, range: 6, cd: 1.6, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannon' },
+  samShort:   { dmg: 55, range: 9, cd: 2.2, wh: 'aam', proj: 'rocket', speed: 30, barrels: 2, air: true, sfx: 'rocket' },
+  tacMsl:     { dmg: 320, range: 22, minRange: 5, cd: 20, wh: 'he', proj: 'salvo', count: 1, speed: 14, splash: 2.6, precise: true, ground: true, sfx: 'salvo' },
+  rocketPod:  { dmg: 34, range: 6.5, cd: 0.5, wh: 'rocket', proj: 'rocket', speed: 26, barrels: 2, ground: true, sfx: 'rocket' },
+  boatMsl:    { dmg: 60, range: 8.5, cd: 2.2, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket' },
+  // 金穗
+  mortar:     { dmg: 42, range: 9, minRange: 2, cd: 3.2, wh: 'he', proj: 'arty', speed: 13, splash: 1.3, ground: true, sfx: 'cannon' },
+  autoCannon: { dmg: 20, range: 6, cd: 0.55, wh: 'ap', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  gunMissile: { dmg: 30, range: 10, cd: 0.5, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
+  gunHow:     { dmg: 110, range: 16, minRange: 3, cd: 5, wh: 'he', proj: 'arty', speed: 19, splash: 1.6, ground: true, sfx: 'arty' },
+  gun105:     { dmg: 48, range: 6.5, cd: 1.8, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannon' },
+  airCruise:  { dmg: 120, range: 12, cd: 1.4, wh: 'he', proj: 'rocket', speed: 26, splash: 1.4, ground: true, sfx: 'rocket' },
+  navalGunHeavy: { dmg: 72, range: 9, cd: 2.0, wh: 'ap', proj: 'shell', speed: 50, ground: true, sfx: 'cannonBig' },
+  // 灰鹰
+  carbine:    { dmg: 17, range: 5.5, cd: 0.75, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'rifle' },
+  javelin:    { dmg: 80, range: 7.5, cd: 3, wh: 'rocket', proj: 'rocket', speed: 22, ground: true, air: true, sfx: 'rocket' },
+  suppressed: { dmg: 20, range: 5, cd: 0.6, wh: 'small', proj: 'bullet', ground: true, sfx: 'rifle' },
+  precGun:    { dmg: 56, range: 7, cd: 1.8, wh: 'ap', proj: 'shell', speed: 55, ground: true, sfx: 'cannon' },
+  samLong:    { dmg: 90, range: 13, cd: 3, wh: 'aam', proj: 'rocket', speed: 34, air: true, sfx: 'rocket' },
+  precArty:   { dmg: 150, range: 15, minRange: 3, cd: 5.5, wh: 'he', proj: 'arty', speed: 18, splash: 1.0, precise: true, ground: true, sfx: 'arty' },
+  multiMsl:   { dmg: 58, range: 7, cd: 0.9, wh: 'rocket', proj: 'rocket', speed: 32, ground: true, air: true, sfx: 'rocket' },
+  precMsl:    { dmg: 74, range: 7, cd: 0.7, wh: 'rocket', proj: 'rocket', speed: 30, barrels: 2, ground: true, sfx: 'rocket' },
+  frigateSam: { dmg: 44, range: 10, cd: 0.9, wh: 'rocket', proj: 'rocket', speed: 30, ground: true, air: true, sfx: 'rocket' },
+  // 各国防御塔
+  hmgTurret:  { dmg: 19, range: 6.5, cd: 0.4, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  atGun100:   { dmg: 82, range: 8, cd: 2.4, wh: 'ap', proj: 'shell', speed: 55, ground: true, sfx: 'cannonBig' },
+  aa57:       { dmg: 46, range: 10, cd: 0.6, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
+  atgmSite:   { dmg: 92, range: 8.5, cd: 3.2, wh: 'rocket', proj: 'rocket', speed: 20, ground: true, sfx: 'rocket' },
+  samSite:    { dmg: 70, range: 13, cd: 2, wh: 'aam', proj: 'rocket', speed: 34, air: true, sfx: 'rocket' },
+  mslTower:   { dmg: 60, range: 8, cd: 2.2, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, air: true, sfx: 'rocket' },
 };
+// 电子干扰下的射程（×0.8）；截击机停机时只找空中目标
+for (const k in WEAPONS) { const w = WEAPONS[k]; w.key = k; w.jammed = { ...w, range: +(w.range * 0.8).toFixed(2), base: w }; }
 
 // 速度单位：世界单位/秒（1 格 = 2）
+// 每国一整套兵种：role 是定位（同定位不同性格），model 是暂时借用的模型
 const UNITS = {
-  rifle:     { name: '步枪兵', cat: 'infantry', cost: 100, time: 5, hp: 150, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '廉价的基础步兵，克制步兵。' },
-  rocketInf: { name: '反坦克兵', cat: 'infantry', cost: 250, time: 8, hp: 120, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
-  engineer:  { name: '工程师', cat: 'infantry', cost: 500, time: 10, hp: 80, armor: 'inf', speed: 2.4, sight: 6, radius: 0.35, inf: true, engineer: true, req: [], desc: '占领油井获得持续收入，或进入己方建筑将其完全修复。' },
-  moto:      { name: '突击摩托兵', cat: 'vehicle', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, nation: 'south', req: ['factory'], desc: '赤砂专属。便宜、极快的机枪摩托，适合骚扰采矿车和步兵。' },
-  harvester: { name: '采矿车', cat: 'vehicle', cost: 1400, time: 18, hp: 1000, armor: 'heavy', speed: 3.0, sight: 5, radius: 1.3, harvester: true, turn: 3, req: ['factory', 'refinery'], desc: '采集矿石运回精炼厂换取资金。' },
-  scout:     { name: '侦察车', cat: 'vehicle', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 10, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
-  tank:      { name: '主战坦克', cat: 'vehicle', cost: 900, time: 13, hp: 520, armor: 'heavy', speed: 4.2, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '主力装甲单位，攻守均衡。' },
-  aa:        { name: '防空车', cat: 'vehicle', cost: 600, time: 10, hp: 300, armor: 'light', speed: 5.0, sight: 9, weapon: 'flak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联高射炮，专门克制空中单位。' },
-  artillery: { name: '自行火炮', cat: 'vehicle', cost: 1000, time: 15, hp: 230, armor: 'light', speed: 3.4, sight: 7, weapon: 'artillery', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '超远射程范围杀伤，无法攻击近处目标。' },
-  heavy:     { name: '“堡垒”重坦', cat: 'vehicle', cost: 1700, time: 22, hp: 1150, armor: 'heavy', speed: 3.0, sight: 8, weapon: 'heavyGun', radius: 1.5, turret: true, turn: 1.8, nation: 'north', req: ['factory', 'tech'], desc: '北岭专属。双管重炮，装甲极厚。' },
-  salvo:     { name: '“沙暴”火箭车', cat: 'vehicle', cost: 1500, time: 20, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, nation: 'south', req: ['factory', 'tech'], desc: '赤砂专属。远程火箭齐射。' },
-  heli:      { name: '武装直升机', cat: 'air', cost: 1400, time: 16, hp: 320, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭，机枪也能造成少量伤害。' },
-  raptor:    { name: '“雷枭”攻击直升机', cat: 'air', cost: 2000, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, nation: 'hawk', req: ['helipad', 'tech'], desc: '灰鹰专属。重装甲攻击直升机，双联反装甲导弹。' },
-  // 海军（只在内海地图出现）
-  pboat:     { name: '巡逻艇', cat: 'naval', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '快速小艇，速射炮能同时打地面和空中，克制步兵和直升机。' },
-  destroyer: { name: '驱逐舰', cat: 'naval', cost: 1300, time: 18, hp: 950, armor: 'naval', speed: 4.6, sight: 9, weapon: 'navalGun', radius: 2.0, turret: true, turn: 1.6, naval: true, req: ['shipyard', 'radar'], desc: '主力战舰，穿甲主炮克制舰船和岸边装甲。' },
-  sub:       { name: '潜艇', cat: 'naval', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.3, sight: 8, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '下潜隐身：敌人在 5 格以内才能发现它（开火后会短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
-  cruiser:   { name: '导弹巡洋舰', cat: 'naval', cost: 2200, time: 26, hp: 1150, armor: 'naval', speed: 3.4, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，克制岸边建筑和防御；近处有盲区。' },
-  // 固定翼飞机（机场生产，弹药打完要回机场补给）
-  fighter:   { name: '截击机', cat: 'air', cost: 1100, time: 14, hp: 260, armor: 'air', speed: 17, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '高速战斗机，空对空导弹只能打空中目标，克制直升机和敌方飞机。停在机场时会自动拦截来袭的敌机。' },
-  striker:   { name: '攻击机', cat: 'air', cost: 1500, time: 18, hp: 380, armor: 'air', speed: 13, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '对地攻击机，反装甲导弹打坦克、舰船和防御塔。弹药 3 轮，打完自动返航。' },
-  bomber:    { name: '轰炸机', cat: 'air', cost: 2600, time: 28, hp: 900, armor: 'air', speed: 9, sight: 9, weapon: 'bombs', radius: 2.2, air: true, plane: true, ammo: 8, turn: 1.0, producer: 'airfield', req: ['airfield', 'tech'], desc: '飞过目标上空投下一串炸弹，大范围杀伤，对建筑特别有效。每次出击投一轮，飞得慢，需要护航。' },
+  // 通用（名字和数值按国家微调，见 NAT_OVERRIDE）
+  engineer:  { name: '工程师', cat: 'infantry', role: 'engineer', cost: 500, time: 10, hp: 80, armor: 'inf', speed: 2.4, sight: 6, radius: 0.35, inf: true, engineer: true, req: [], desc: '占领油井获得持续收入，或进入己方建筑将其完全修复。' },
+  harvester: { name: '采矿车', cat: 'vehicle', role: 'harvester', cost: 1400, time: 18, hp: 1000, armor: 'heavy', speed: 3.0, sight: 5, radius: 1.3, harvester: true, turn: 3, req: ['factory', 'refinery'], desc: '采集矿石运回精炼厂换取资金。' },
+
+  // ---------------- 北岭联邦：钢铁洪流 ----------------
+  n_inf:     { name: '征召兵', cat: 'infantry', role: 'inf', nation: 'north', model: 'rifle', cost: 80, time: 4, hp: 130, armor: 'inf', speed: 2.5, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '便宜、训练快的步枪兵，适合大量堆数量。' },
+  n_at:      { name: '火箭筒兵', cat: 'infantry', role: 'at', nation: 'north', model: 'rocketInf', cost: 220, time: 7, hp: 130, armor: 'inf', speed: 2.2, sight: 7, weapon: 'rpg', radius: 0.35, inf: true, req: [], desc: '火箭筒近距离打装甲伤害很高，但射程短（5.5 格），不能打飞机。' },
+  n_spec:    { name: '喷火兵', cat: 'infantry', role: 'spec', nation: 'north', model: 'rifle', cost: 300, time: 8, hp: 180, armor: 'inf', speed: 2.3, sight: 6, weapon: 'flamer', radius: 0.35, inf: true, req: ['radar'], desc: '3 格内喷火，范围伤害。能直接烧伤碉堡和民房里的步兵。' },
+  n_scout:   { name: '履带装甲侦察车', cat: 'vehicle', role: 'scout', nation: 'north', model: 'scout', cost: 550, time: 8, hp: 320, armor: 'light', speed: 5.8, sight: 10, weapon: 'hmg', radius: 1.0, turret: true, turn: 4.5, req: ['factory'], desc: '比轮式侦察车慢，但装甲更厚，重机枪对步兵很凶。' },
+  n_mbt:     { name: '“冻原”重型坦克', cat: 'vehicle', role: 'mbt', nation: 'north', model: 'tank', scale: 1.08, cost: 1000, time: 14, hp: 650, armor: 'heavy', speed: 3.6, sight: 8, weapon: 'gun125', radius: 1.25, turret: true, turn: 2.3, req: ['factory'], desc: '北岭主力。装甲厚、火炮重，但速度慢。' },
+  n_aa:      { name: '四联装自行高炮', cat: 'vehicle', role: 'aa', nation: 'north', model: 'aa', cost: 650, time: 10, hp: 340, armor: 'light', speed: 4.4, sight: 9, weapon: 'quadFlak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '四门速射炮，射程近（7 格）但火力密集，能打飞机，也能扫地面步兵。' },
+  n_arty:    { name: '152 毫米自行榴弹炮', cat: 'vehicle', role: 'arty', nation: 'north', model: 'artillery', scale: 1.1, cost: 1150, time: 16, hp: 300, armor: 'light', speed: 3.0, sight: 7, weapon: 'how152', radius: 1.3, turret: true, turn: 2, req: ['factory', 'radar'], desc: '射速慢，但每一发都有大范围杀伤。近处 3 格打不到。' },
+  n_elite:   { name: '“堡垒”重坦', cat: 'vehicle', role: 'elite', nation: 'north', model: 'heavy', cost: 1700, time: 22, hp: 1150, armor: 'heavy', speed: 3.0, sight: 8, weapon: 'heavyGun', radius: 1.5, turret: true, turn: 1.8, req: ['factory', 'tech'], desc: '北岭王牌。双管重炮，装甲极厚。' },
+  n_heli:    { name: '重型武装直升机', cat: 'air', role: 'heli', nation: 'north', model: 'heli', scale: 1.15, cost: 1600, time: 18, hp: 480, armor: 'air', speed: 7.5, sight: 9, weapon: 'heavyRocket', radius: 1.6, air: true, turn: 2.6, req: ['helipad'], desc: '机身装甲厚，能扛住几轮防空火力，但飞得慢。' },
+  n_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'north', model: 'fighter', cost: 1150, time: 14, hp: 330, armor: 'air', speed: 15, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 3, turn: 2.2, producer: 'airfield', req: ['airfield'], desc: '机体结实，但只带 3 轮空空导弹。停在机场时会自动拦截来袭的敌机。' },
+  n_striker: { name: '装甲攻击机', cat: 'air', role: 'striker', nation: 'north', model: 'striker', cost: 1600, time: 19, hp: 560, armor: 'air', speed: 11, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 4, turn: 1.7, producer: 'airfield', req: ['airfield'], desc: '装甲很厚的对地攻击机，弹药 4 轮，飞得较慢。' },
+  n_bomber:  { name: '远程重型轰炸机', cat: 'air', role: 'bomber', nation: 'north', model: 'bomber', scale: 1.1, cost: 3000, time: 30, hp: 1150, armor: 'air', speed: 8, sight: 9, weapon: 'bombs', radius: 2.4, air: true, plane: true, ammo: 10, turn: 0.9, producer: 'airfield', req: ['airfield', 'tech'], desc: '载弹量最大的轰炸机（10 枚），非常耐打，但又慢又贵。' },
+  n_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'north', model: 'pboat', cost: 600, time: 9, hp: 400, armor: 'naval', speed: 7.0, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  n_destroyer: { name: '驱逐舰', cat: 'naval', role: 'destroyer', nation: 'north', model: 'destroyer', cost: 1300, time: 18, hp: 1000, armor: 'naval', speed: 4.3, sight: 9, weapon: 'navalGun', radius: 2.0, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '主力战舰，装甲加厚，穿甲主炮克制舰船和岸边装甲。' },
+  n_sub:     { name: '攻击潜艇', cat: 'naval', role: 'sub', nation: 'north', model: 'sub', cost: 1250, time: 17, hp: 720, armor: 'naval', speed: 4.3, sight: 8, weapon: 'heavyTorpedo', radius: 1.7, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '北岭潜艇更大、鱼雷更重（180）。敌人 5 格以内才能发现它，开火后短暂暴露。' },
+  n_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'north', model: 'cruiser', cost: 2200, time: 26, hp: 1250, armor: 'naval', speed: 3.2, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.2, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+
+  // ---------------- 赤砂共和国：机动游击 ----------------
+  s_inf:     { name: '民兵', cat: 'infantry', role: 'inf', nation: 'south', model: 'rifle', cost: 75, time: 4, hp: 115, armor: 'inf', speed: 3.0, sight: 7, weapon: 'akRifle', radius: 0.35, inf: true, ambush: true, req: [], desc: '便宜、跑得快。在林地里开火伤害 +25%（伏击）。' },
+  s_at:      { name: '反坦克导弹组', cat: 'infantry', role: 'at', nation: 'south', model: 'rocketInf', cost: 300, time: 9, hp: 110, armor: 'inf', speed: 2.0, sight: 9, weapon: 'atgm', radius: 0.35, inf: true, camo: true, req: [], desc: '射程 8 格的反坦克导弹，装填慢。静止 3 秒后伪装隐蔽（敌人 4 格内才能发现），开火后暴露。' },
+  s_spec:    { name: '狙击手', cat: 'infantry', role: 'spec', nation: 'south', model: 'rifle', cost: 600, time: 12, hp: 100, armor: 'inf', speed: 2.4, sight: 11, weapon: 'sniper', radius: 0.35, inf: true, camo: true, req: ['radar'], desc: '9 格外一枪打死普通步兵，对车辆和建筑几乎无效。静止 3 秒后伪装隐蔽。' },
+  s_scout:   { name: '武装皮卡', cat: 'vehicle', role: 'scout', nation: 'south', model: 'scout', scale: 0.95, cost: 400, time: 6, hp: 200, armor: 'light', speed: 7.6, sight: 9, weapon: 'dshk', radius: 1.0, turret: true, turn: 5.5, req: ['factory'], desc: '民用皮卡装上重机枪，便宜又快，适合骚扰采矿车和步兵。' },
+  s_scout2:  { name: '突击摩托兵', cat: 'vehicle', role: 'scout2', nation: 'south', model: 'moto', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, req: ['factory'], desc: '便宜、极快的机枪摩托，适合骚扰和侦察。' },
+  s_mbt:     { name: '轻型坦克', cat: 'vehicle', role: 'mbt', nation: 'south', model: 'tank', scale: 0.9, cost: 650, time: 10, hp: 380, armor: 'heavy', speed: 5.4, sight: 8, weapon: 'gun90', radius: 1.1, turret: true, turn: 3.2, req: ['factory'], desc: '速度快、便宜，装甲薄，适合成群包抄。' },
+  s_aa:      { name: '车载防空导弹', cat: 'vehicle', role: 'aa', nation: 'south', model: 'aa', cost: 700, time: 10, hp: 260, armor: 'light', speed: 5.2, sight: 10, weapon: 'samShort', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联防空导弹，一次齐射伤害高，装填慢。只能打飞机。' },
+  s_arty:    { name: '“沙暴”火箭炮', cat: 'vehicle', role: 'arty', nation: 'south', model: 'salvo', cost: 1300, time: 18, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, req: ['factory', 'radar'], desc: '远程火箭齐射，一次 6 枚，覆盖一大片。' },
+  s_elite:   { name: '战术导弹车', cat: 'vehicle', role: 'elite', nation: 'south', model: 'salvo', scale: 1.12, cost: 2000, time: 24, hp: 300, armor: 'light', speed: 3.6, sight: 8, weapon: 'tacMsl', deploy: 3, radius: 1.4, turret: true, turn: 2, req: ['factory', 'tech'], desc: '射程 22 格的战术弹道导弹，威力极大。要停稳 3 秒展开发射架才能发射，装填很慢。' },
+  s_heli:    { name: '轻型武装直升机', cat: 'air', role: 'heli', nation: 'south', model: 'heli', scale: 0.9, cost: 1000, time: 13, hp: 240, armor: 'air', speed: 11, sight: 9, weapon: 'heliRocket', radius: 1.3, air: true, turn: 3.4, req: ['helipad'], desc: '便宜、速度快，装甲薄。' },
+  s_fighter: { name: '老式截击机', cat: 'air', role: 'fighter', nation: 'south', model: 'fighter', cost: 850, time: 12, hp: 220, armor: 'air', speed: 16, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '便宜的老式战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
+  s_striker: { name: '火箭攻击机', cat: 'air', role: 'striker', nation: 'south', model: 'striker', cost: 1200, time: 16, hp: 340, armor: 'air', speed: 13, sight: 9, weapon: 'rocketPod', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '挂火箭巢的对地攻击机，便宜，弹药 3 轮。' },
+  s_bomber:  { name: '中型轰炸机', cat: 'air', role: 'bomber', nation: 'south', model: 'bomber', scale: 0.85, cost: 2100, time: 24, hp: 700, armor: 'air', speed: 10.5, sight: 9, weapon: 'bombs', radius: 2.0, air: true, plane: true, ammo: 6, turn: 1.2, producer: 'airfield', req: ['airfield', 'tech'], desc: '比重轰炸机便宜、快，载弹 6 枚。' },
+  s_boat:    { name: '快速导弹艇', cat: 'naval', role: 'boat', nation: 'south', model: 'pboat', cost: 700, time: 9, hp: 320, armor: 'naval', speed: 9, sight: 9, weapon: 'boatMsl', radius: 1.3, turret: true, turn: 3.4, naval: true, req: ['shipyard'], desc: '比巡逻艇快，反舰导弹射程 8.5 格，但不能打飞机。' },
+  s_destroyer: { name: '护卫舰', cat: 'naval', role: 'destroyer', nation: 'south', model: 'destroyer', scale: 0.9, cost: 1100, time: 15, hp: 800, armor: 'naval', speed: 5.2, sight: 9, weapon: 'navalGun', radius: 1.8, turret: true, turn: 1.8, naval: true, req: ['shipyard', 'radar'], desc: '比驱逐舰小、便宜、快。' },
+  s_sub:     { name: '小型潜艇', cat: 'naval', role: 'sub', nation: 'south', model: 'sub', scale: 0.9, cost: 950, time: 14, hp: 520, armor: 'naval', speed: 4.8, sight: 8, weapon: 'torpedo', radius: 1.5, turn: 2.2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '便宜的近海潜艇。敌人 5 格以内才能发现它，开火后短暂暴露。' },
+  s_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'south', model: 'cruiser', cost: 2000, time: 24, hp: 1000, armor: 'naval', speed: 3.6, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+
+  // ---------------- 金穗联合体：经济与阵地 ----------------
+  g_inf:     { name: '步枪兵', cat: 'infantry', role: 'inf', nation: 'gold', model: 'rifle', cost: 100, time: 5, hp: 150, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '训练有素的标准步兵。进驻碉堡或民房时伤害 +40%（别国 +20%）。' },
+  g_at:      { name: '反坦克兵', cat: 'infantry', role: 'at', nation: 'gold', model: 'rocketInf', cost: 250, time: 8, hp: 130, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
+  g_spec:    { name: '迫击炮组', cat: 'infantry', role: 'spec', nation: 'gold', model: 'rocketInf', cost: 400, time: 10, hp: 120, armor: 'inf', speed: 2.2, sight: 8, weapon: 'mortar', radius: 0.35, inf: true, req: ['radar'], desc: '步兵携带的迫击炮，射程 9 格、范围伤害，近处 2 格打不到。' },
+  g_scout:   { name: '8×8 轮式装甲车', cat: 'vehicle', role: 'scout', nation: 'gold', model: 'scout', scale: 1.12, cost: 650, time: 9, hp: 340, armor: 'light', speed: 6.5, sight: 10, weapon: 'autoCannon', radius: 1.1, turret: true, turn: 4.5, req: ['factory'], desc: '30 毫米机关炮，能打步兵、轻装甲和直升机。' },
+  g_mbt:     { name: '主战坦克', cat: 'vehicle', role: 'mbt', nation: 'gold', model: 'tank', cost: 950, time: 13, hp: 550, armor: 'heavy', speed: 4.1, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '攻守均衡、偏耐打的主力坦克。' },
+  g_aa:      { name: '弹炮合一防空车', cat: 'vehicle', role: 'aa', nation: 'gold', model: 'aa', cost: 750, time: 11, hp: 320, armor: 'light', speed: 4.8, sight: 10, weapon: 'gunMissile', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '机炮加防空导弹，射程 10 格，只能打飞机。' },
+  g_arty:    { name: '自行加榴炮', cat: 'vehicle', role: 'arty', nation: 'gold', model: 'artillery', cost: 1100, time: 15, hp: 260, armor: 'light', speed: 3.3, sight: 7, weapon: 'gunHow', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '射程最远的火炮（16 格），近处 3 格打不到。' },
+  g_elite:   { name: '两栖突击车', cat: 'vehicle', role: 'elite', nation: 'gold', model: 'tank', scale: 1.05, cost: 1300, time: 17, hp: 650, armor: 'light', speed: 4.6, sight: 9, weapon: 'gun105', amph: true, radius: 1.25, turret: true, turn: 2.6, req: ['factory', 'tech'], desc: '能下水，直接渡过河流和海面（水中速度减半），适合绕过桥梁和防线偷袭。' },
+  g_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'gold', model: 'heli', cost: 1400, time: 16, hp: 340, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
+  g_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'gold', model: 'fighter', cost: 1100, time: 14, hp: 260, armor: 'air', speed: 17, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '高速战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
+  g_striker: { name: '攻击机', cat: 'air', role: 'striker', nation: 'gold', model: 'striker', cost: 1500, time: 18, hp: 380, armor: 'air', speed: 13, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '对地攻击机，反装甲导弹打坦克、舰船和防御塔。弹药 3 轮。' },
+  g_bomber:  { name: '巡航导弹载机', cat: 'air', role: 'bomber', nation: 'gold', model: 'bomber', cost: 2800, time: 28, hp: 900, armor: 'air', speed: 9.5, sight: 10, weapon: 'airCruise', radius: 2.2, air: true, plane: true, ammo: 4, turn: 1.1, producer: 'airfield', req: ['airfield', 'tech'], desc: '在 12 格外发射巡航导弹，不用飞到目标头顶，比较安全。弹药 4 轮。' },
+  g_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'gold', model: 'pboat', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  g_destroyer: { name: '导弹驱逐舰', cat: 'naval', role: 'destroyer', nation: 'gold', model: 'destroyer', scale: 1.08, cost: 1500, time: 20, hp: 1150, armor: 'naval', speed: 4.6, sight: 10, weapon: 'navalGunHeavy', radius: 2.1, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '更大的主力战舰，主炮射程 9 格。' },
+  g_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'gold', model: 'sub', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.3, sight: 8, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
+  g_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'gold', model: 'cruiser', cost: 2200, time: 26, hp: 1150, armor: 'naval', speed: 3.4, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+
+  // ---------------- 灰鹰自治区：精锐与空中 ----------------
+  h_inf:     { name: '空降兵', cat: 'infantry', role: 'inf', nation: 'hawk', model: 'rifle', cost: 160, time: 6, hp: 190, armor: 'inf', speed: 2.8, sight: 8, weapon: 'carbine', radius: 0.35, inf: true, req: [], desc: '精锐步兵，生命和火力都更强，价格也贵。' },
+  h_at:      { name: '标枪导弹兵', cat: 'infantry', role: 'at', nation: 'hawk', model: 'rocketInf', cost: 350, time: 9, hp: 130, armor: 'inf', speed: 2.4, sight: 9, weapon: 'javelin', radius: 0.35, inf: true, req: [], desc: '射程 7.5 格的发射后不管导弹，地面和空中目标都能打。' },
+  h_spec:    { name: '特种侦察兵', cat: 'infantry', role: 'spec', nation: 'hawk', model: 'rifle', cost: 500, time: 10, hp: 140, armor: 'inf', speed: 3.0, sight: 12, weapon: 'suppressed', radius: 0.35, inf: true, stealth: true, req: ['radar'], desc: '一直隐蔽，敌人 4 格以内才能发现（开火后暴露 2 秒）。视野 12 格，适合侦察。' },
+  h_scout:   { name: '侦察车', cat: 'vehicle', role: 'scout', nation: 'hawk', model: 'scout', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 11, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
+  h_scout2:  { name: '侦察无人机', cat: 'air', role: 'scout2', nation: 'hawk', model: 'heli', scale: 0.5, cost: 400, time: 7, hp: 120, armor: 'air', speed: 10, sight: 14, radius: 0.9, air: true, turn: 4, pop: 1, req: ['helipad'], desc: '没有武器，视野 14 格，便宜。跟着部队飞，给火炮看清目标。' },
+  h_mbt:     { name: '中型坦克', cat: 'vehicle', role: 'mbt', nation: 'hawk', model: 'tank', cost: 1100, time: 14, hp: 540, armor: 'heavy', speed: 4.5, sight: 9, weapon: 'precGun', radius: 1.2, turret: true, turn: 2.8, req: ['factory'], desc: '火控先进，射程 7 格（别国坦克 6~6.5 格），速度快，价格高。' },
+  h_aa:      { name: '远程防空导弹车', cat: 'vehicle', role: 'aa', nation: 'hawk', model: 'aa', cost: 900, time: 12, hp: 280, armor: 'light', speed: 4.6, sight: 11, weapon: 'samLong', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '射程 13 格的防空导弹，只能打飞机。' },
+  h_arty:    { name: '精确制导炮', cat: 'vehicle', role: 'arty', nation: 'hawk', model: 'artillery', cost: 1200, time: 16, hp: 250, armor: 'light', speed: 3.6, sight: 8, weapon: 'precArty', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '制导炮弹不散布，伤害集中在目标上，溅射范围小。近处 3 格打不到。' },
+  h_elite:   { name: '电子战车', cat: 'vehicle', role: 'elite', nation: 'hawk', model: 'scout', scale: 1.15, cost: 1400, time: 16, hp: 350, armor: 'light', speed: 5.0, sight: 11, weapon: 'scoutMg', jam: true, radius: 1.1, turret: true, turn: 4, req: ['factory', 'tech'], desc: '电子干扰：周围 6 格内敌方单位和防御塔的射程 -20%。自带一挺机枪自卫。' },
+  h_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'hawk', model: 'heli', cost: 1250, time: 15, hp: 340, armor: 'air', speed: 9.5, sight: 10, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
+  h_heli2:   { name: '“雷枭”攻击直升机', cat: 'air', role: 'heli2', nation: 'hawk', model: 'raptor', cost: 1900, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, req: ['helipad', 'tech'], desc: '灰鹰王牌。重装甲攻击直升机，双联反装甲导弹。' },
+  h_fighter: { name: '多用途战斗机', cat: 'air', role: 'fighter', nation: 'hawk', model: 'fighter', cost: 1000, time: 13, hp: 300, armor: 'air', speed: 17, sight: 10, weapon: 'multiMsl', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.5, producer: 'airfield', req: ['airfield'], desc: '空空、空地都能打。停在机场时会自动拦截来袭的敌机。' },
+  h_striker: { name: '精确攻击机', cat: 'air', role: 'striker', nation: 'hawk', model: 'striker', cost: 1300, time: 16, hp: 400, armor: 'air', speed: 14, sight: 10, weapon: 'precMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 2, producer: 'airfield', req: ['airfield'], desc: '精确制导导弹伤害高，弹药 3 轮。' },
+  h_bomber:  { name: '轰炸机', cat: 'air', role: 'bomber', nation: 'hawk', model: 'bomber', cost: 2300, time: 26, hp: 950, armor: 'air', speed: 9.5, sight: 9, weapon: 'bombs', radius: 2.2, air: true, plane: true, ammo: 8, turn: 1.0, producer: 'airfield', req: ['airfield', 'tech'], desc: '飞过目标上空投下一串炸弹，对建筑特别有效。需要护航。' },
+  h_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'hawk', model: 'pboat', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 10, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  h_destroyer: { name: '防空护卫舰', cat: 'naval', role: 'destroyer', nation: 'hawk', model: 'destroyer', cost: 1300, time: 18, hp: 900, armor: 'naval', speed: 4.8, sight: 10, weapon: 'frigateSam', radius: 2.0, turret: true, turn: 1.6, naval: true, req: ['shipyard', 'radar'], desc: '导弹射程 10 格，舰船、岸上和空中目标都能打。' },
+  h_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'hawk', model: 'sub', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.5, sight: 9, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
+  h_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'hawk', model: 'cruiser', cost: 2300, time: 26, hp: 1100, armor: 'naval', speed: 3.6, sight: 11, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
 };
 
 const BUILDINGS = {
@@ -528,6 +633,7 @@ const BUILDINGS = {
   subhq:    { name: '副部', cat: 'building', w: 3, h: 3, hp: 2500, power: 0, cost: 2500, time: 25, sight: 9, max: 1, weapon: 'hqFlak', reach: 14, req: ['factory'], desc: '前线指挥所：可以建在离己方建筑 14 格以内的地方（普通建筑只能 4 格），建好后周围就能继续造建筑，用来占领远处的矿区和油井。提供 20 人口，自带防空炮。最多 1 座，被摧毁不会战败。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
+  camoNet:  { name: '伪装网阵地', cat: 'building', w: 2, h: 2, hp: 600, power: -10, cost: 800, time: 10, sight: 6, nation: 'south', req: ['barracks'], desc: '赤砂专属。给周围 5 格内的己方建筑盖上伪装网：敌人除非有单位或建筑靠近到 6 格以内，否则在战场和小地图上都看不到它们。' },
   airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
   bridge:   { name: '桥', w: 3, h: 6, hp: 1500, power: 0, cost: 0, time: 0, sight: 0, desc: '河上的公路桥。可以用炮弹、火箭、炸弹炸断（右键下令攻击），断了以后谁都过不去；派工程师右键断桥可以修好。' },
   house:    { name: '民房', w: 2, h: 2, hp: 1200, power: 0, cost: 0, time: 0, sight: 6, garrison: 4, desc: '小镇里的民房。最多进驻 4 名步兵（射程 +1 格、伤害 +20%），有人进驻后算作那一方的据点。被打爆后变成废墟。' },
@@ -538,11 +644,11 @@ const BUILDINGS = {
 for (const k in UNITS) UNITS[k].type = k;
 // 人口：单位占用 / 建筑提供（总上限 POP_MAX）
 const POP_MAX = 150;
-const UNIT_POP = {
-  rifle: 1, rocketInf: 1, engineer: 1, moto: 2, scout: 2, harvester: 0, aa: 3, artillery: 3, tank: 3, salvo: 3, heavy: 4,
-  heli: 3, raptor: 4, fighter: 3, striker: 3, bomber: 5, pboat: 2, sub: 3, destroyer: 4, cruiser: 5,
+const ROLE_POP = {
+  inf: 1, at: 1, spec: 1, engineer: 1, scout: 2, scout2: 2, harvester: 0, mbt: 3, aa: 3, arty: 3, elite: 4,
+  heli: 3, heli2: 4, fighter: 3, striker: 3, bomber: 5, boat: 2, destroyer: 4, sub: 3, cruiser: 5,
 };
-for (const k in UNITS) UNITS[k].pop = UNIT_POP[k] ?? 2;
+for (const k in UNITS) UNITS[k].pop = UNITS[k].pop ?? ROLE_POP[UNITS[k].role] ?? 2;
 for (const k in BUILDINGS) { BUILDINGS[k].type = k; BUILDINGS[k].armor = 'bld'; BUILDINGS[k].isBuilding = true; }
 const BLD_POP = { hq: 40, subhq: 20, barracks: 10, airBarracks: 10, factory: 10, helipad: 10, airfield: 10, shipyard: 10 };
 for (const k in BLD_POP) BUILDINGS[k].popCap = BLD_POP[k];
@@ -574,19 +680,75 @@ const ARMOR_UPG = 1.35, VARMOR_UPG = 1.25;
 // 国家：数值特性 + 专属 + 迷彩
 const NATION_KEYS = ['north', 'south', 'gold', 'hawk'];
 const NATIONS = {
-  north: { name: '北岭联邦', short: '北岭', tag: '重装甲', hpMul: 1.1, speedMul: 0.95, dmgMul: 1.0, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
-    unique: 'heavy', uniques: ['heavy', 'repairDepot'], ability: 'fieldRepair',
-    traits: ['全体生命 +10%', '移动速度 -5%'], camo: { base: 0x58623a, dark: 0x3c4429, uni: 0x5a6440 } },
-  south: { name: '赤砂共和国', short: '赤砂', tag: '机动火力', hpMul: 0.95, speedMul: 1.12, dmgMul: 1.08, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
-    unique: 'salvo', uniques: ['salvo', 'moto'], ability: 'barrage',
-    traits: ['移动速度 +12%', '伤害 +8%', '全体生命 -5%'], camo: { base: 0xa18a5a, dark: 0x76643f, uni: 0x9a8458 } },
-  gold: { name: '金穗联合体', short: '金穗', tag: '经济与防御', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1.2, bldCostMul: 0.85, airCostMul: 1, airHpMul: 1,
-    unique: 'fortress', uniques: ['fortress', 'minePlatform'], ability: 'grant',
-    traits: ['采矿收入 +20%', '建筑造价 -15%'], camo: { base: 0x63676a, dark: 0x45484a, uni: 0x5c6062 } },
-  hawk: { name: '灰鹰自治区', short: '灰鹰', tag: '空中优势', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 0.85, airHpMul: 1.1,
-    unique: 'raptor', uniques: ['raptor', 'airBarracks'], ability: 'airdrop',
-    traits: ['飞行器造价 -15%', '飞行器生命 +10%'], camo: { base: 0x9a9c94, dark: 0x6c6e68, uni: 0x8c8e86 } },
+  north: { name: '北岭联邦', short: '北岭', tag: '钢铁洪流', region: '寒带', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
+    unique: 'n_elite', uniques: ['n_elite', 'n_spec', 'repairDepot'], ability: 'fieldRepair',
+    traits: ['坦克装甲厚、火力猛，但速度慢', '征召兵便宜量大，喷火兵专烧碉堡', '建筑生命 +20%，燃煤电厂产电 +20%'], camo: { base: 0x58623a, dark: 0x3c4429, uni: 0x5a6440 } },
+  south: { name: '赤砂共和国', short: '赤砂', tag: '机动游击', region: '沙漠', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
+    unique: 's_elite', uniques: ['s_elite', 's_spec', 'camoNet'], ability: 'barrage',
+    traits: ['单位快而便宜、装甲薄', '狙击手和反坦克导弹组静止时伪装', '建筑便宜 15%、建得快，生命 -15%'], camo: { base: 0xa18a5a, dark: 0x76643f, uni: 0x9a8458 } },
+  gold: { name: '金穗联合体', short: '金穗', tag: '经济与阵地', region: '东方', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1.2, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
+    unique: 'fortress', uniques: ['g_elite', 'fortress', 'minePlatform'], ability: 'grant',
+    traits: ['矿石收入 +20%', '防御建筑便宜 15%、生命 +15%', '步兵进驻伤害更高，火炮射程最远'], camo: { base: 0x63676a, dark: 0x45484a, uni: 0x5c6062 } },
+  hawk: { name: '灰鹰自治区', short: '灰鹰', tag: '精锐与空中', region: '山地', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
+    unique: 'h_heli2', uniques: ['h_heli2', 'h_elite', 'airBarracks'], ability: 'airdrop',
+    traits: ['单位贵但精准、射程远', '直升机坪和机场便宜 20%', '有侦察无人机和电子战车'], camo: { base: 0x9a9c94, dark: 0x6c6e68, uni: 0x8c8e86 } },
 };
+// 各国建筑、工程师、采矿车的名字和数值（mul 作用于所有建筑，defMul 只作用于防御建筑）
+const NAT_OVERRIDE = {
+  north: {
+    mul: { hp: 1.2, time: 1.1 },
+    hq: { name: '指挥要塞' }, power: { name: '燃煤电厂', power: 120, desc: '提供 120 电力（燃煤，比别国多 20%）。' },
+    refinery: { name: '矿石处理厂' }, barracks: { name: '征兵站' }, factory: { name: '重型战车厂' },
+    mgTurret: { name: '重机枪堡', weapon: 'hmgTurret', hp: 600, desc: '重机枪火力更猛，克制步兵。' },
+    atTurret: { name: '100 毫米反坦克炮', weapon: 'atGun100', cost: 900, desc: '射程 8 格的重型反坦克炮，克制装甲。' },
+    aaGun: { name: '57 毫米高炮', weapon: 'aa57', desc: '大口径高炮，只能攻击空中单位。' },
+    bunker: { name: '混凝土碉堡', hp: 1800, cost: 700 },
+    engineer: { name: '工兵', hp: 100 }, harvester: { name: '重型采矿车', hp: 1300, speed: 2.7 },
+  },
+  south: {
+    mul: { hp: 0.85, cost: 0.85, time: 0.85 },
+    hq: { name: '前线指挥部' }, power: { name: '柴油发电站', power: 90, desc: '提供 90 电力。便宜但产电少。' },
+    refinery: { name: '矿石集散站' }, barracks: { name: '民兵营地' }, factory: { name: '车辆改装厂' },
+    mgTurret: { name: '沙袋机枪阵地', cost: 300, hp: 380, desc: '便宜的机枪阵地，克制步兵。' },
+    atTurret: { name: '反坦克导弹阵地', weapon: 'atgmSite', desc: '射程 8.5 格的反坦克导弹，克制装甲。' },
+    aaGun: { name: '双管高射炮' }, bunker: { name: '隐蔽碉堡' },
+    engineer: { name: '技工', speed: 2.8 }, harvester: { name: '轻型采矿车', hp: 800, speed: 3.6, cost: 1200 },
+  },
+  gold: {
+    defMul: { hp: 1.15, cost: 0.85 },
+    hq: { name: '总指挥部' }, power: { name: '水力发电站' }, refinery: { desc: '处理矿石，附送一辆采矿车。金穗的矿石收入 +20%。' },
+    barracks: { name: '练兵场' }, factory: { name: '战车总厂' },
+    aaGun: { name: '防空导弹阵地', weapon: 'samSite', cost: 700, desc: '射程 13 格的防空导弹，只能攻击空中单位。' },
+  },
+  hawk: {
+    mul: { cost: 1.05 },
+    hq: { name: '山地指挥所' }, power: { name: '燃气轮机电站' }, barracks: { name: '训练营' }, factory: { name: '装甲车间' },
+    helipad: { costMul: 0.8 }, airfield: { costMul: 0.8 },
+    atTurret: { name: '导弹塔', weapon: 'mslTower', desc: '反装甲导弹，地面和空中都能打。' },
+    aaGun: { name: '防空导弹塔', weapon: 'samSite', cost: 750, desc: '射程 13 格的防空导弹，只能攻击空中单位。' },
+    engineer: { name: '战斗工兵', hp: 110 },
+  },
+};
+// 合并成每国一份完整定义：NAT_DEFS[nation][type]
+const NAT_DEFS = {};
+for (const n in NAT_OVERRIDE) {
+  const o = NAT_OVERRIDE[n], out = NAT_DEFS[n] = {};
+  for (const k in BUILDINGS) {
+    const d = BUILDINGS[k];
+    if (!d.cat && k !== 'hq') continue;   // 中立建筑（桥、民房、油井）不按国家变
+    const m = o.mul || {}, dm = d.cat === 'defense' ? (o.defMul || {}) : {}, ov = o[k] || {};
+    const nd = { ...d, ...ov };
+    nd.hp = Math.round((ov.hp || d.hp) * (m.hp || 1) * (dm.hp || 1));
+    nd.cost = Math.round((ov.cost ?? d.cost) * (m.cost || 1) * (dm.cost || 1) * (ov.costMul || 1) / 10) * 10;
+    nd.time = Math.round((ov.time || d.time) * (m.time || 1));
+    out[k] = nd;
+  }
+  for (const k of ['engineer', 'harvester']) if (o[k]) out[k] = { ...UNITS[k], ...o[k] };
+}
+const baseDef = type => UNITS[type] || BUILDINGS[type] || UPGRADES[type];
+const natDef = (nation, type) => (nation && NAT_DEFS[nation] && NAT_DEFS[nation][type]) || baseDef(type);
+// 按定位找某国的单位
+const unitFor = (nation, role) => { for (const k in UNITS) { const d = UNITS[k]; if (d.role === role && (!d.nation || d.nation === nation)) return k; } return null; };
 // 国家技能（冷却单位：秒；开局先冷却一轮）
 const ABILITIES = {
   fieldRepair: { name: '战地抢修', cd: 180, target: true, radius: 6, desc: '指定区域内（半径 6 格）己方单位和建筑在 5 秒内回复 40% 生命。' },
@@ -603,7 +765,7 @@ const teamColor = team => team < 0 ? '#bbbbaa' : SLOT_COLORS[slotOf(team)].css;
 const countOf = (T, type) => (T.counts[type] || 0) + (type === 'barracks' ? (T.counts.airBarracks || 0) : 0);
 const natOf = team => team >= 0 ? NATIONS[nationKeyOf(team)] : NEUTRAL_NATION;
 function costOf(team, type) {
-  const d = UNITS[type] || BUILDINGS[type] || UPGRADES[type], n = natOf(team);
+  const d = defOf(type, team), n = natOf(team);
   return Math.round(d.cost * (d.isBuilding ? n.bldCostMul : 1) * (d.air ? n.airCostMul : 1));
 }
 function hpOf(team, d) { const n = natOf(team); return d.hp * n.hpMul * (d.air ? n.airHpMul : 1) * (d.inf && hasUpg(team, 'upArmor') ? ARMOR_UPG : 1) * (d.cat === 'vehicle' && hasUpg(team, 'upVArmor') ? VARMOR_UPG : 1); }
@@ -813,7 +975,10 @@ const clampPlay = v => clamp(v, PLAY.lo * TILE + 1, PLAY.hi * TILE - 1);
 const CORNERS_BY_COUNT = { 2: [0, 2], 3: [0, 1, 2], 4: [0, 1, 2, 3] };
 
 // nav = true 时判断舰船能否通行（水面），否则判断陆地
-const walkable = (tx, tz, nav = false) => tx >= 0 && tz >= 0 && tx < MAP && tz < MAP && (nav ? navigable : passable)[tz * MAP + tx] === 1 && bldGrid[tz * MAP + tx] === 0;
+// nav = 'amph' 时是两栖车辆（陆地和水面都能走）
+const walkable = (tx, tz, nav = false) => tx >= 0 && tz >= 0 && tx < MAP && tz < MAP && bldGrid[tz * MAP + tx] === 0 &&
+  (nav === 'amph' ? passable[tz * MAP + tx] === 1 || terrain[tz * MAP + tx] === T_WATER : (nav ? navigable : passable)[tz * MAP + tx] === 1);
+const navOf = u => u.def.naval ? true : u.def.amph ? 'amph' : false;
 
 function generateMap(seed, mapType = 'land', size = 'large') {
   const sea = mapType === 'sea';
@@ -1366,18 +1531,19 @@ function getUnitModel(type, team, nation = nationKeyOf(team)) {
   const p = teamPal(team, nation);
   const m = { body: null, turret: null, rotor: null, tailRotor: null, cargo: null, muzzle: { y: 1, z: 1 } };
   const L = [], T = [];
-  switch (type) {
+  const mt = (UNITS[type] && UNITS[type].model) || type;   // 新单位先借用相近的模型
+  switch (mt) {
     case 'rifle': case 'rocketInf': case 'engineer': {
       L.push(B(0.12, 0.46, 0.14, p.dark, -0.08, 0.23, 0), B(0.12, 0.46, 0.14, p.dark, 0.08, 0.23, 0));
-      L.push(B(0.34, 0.4, 0.22, type === 'engineer' ? C.yellow : p.uni, 0, 0.66, 0));
+      L.push(B(0.34, 0.4, 0.22, mt === 'engineer' ? C.yellow : p.uni, 0, 0.66, 0));
       L.push(B(0.26, 0.28, 0.12, p.dark, 0, 0.68, -0.16));
       L.push(B(0.08, 0.34, 0.1, p.uni, -0.21, 0.66, 0.04), B(0.08, 0.34, 0.1, p.uni, 0.21, 0.66, 0.06));
       L.push(SP(0.1, C.skin, 0, 0.95, 0, 8, 6));
       L.push(SP(0.125, p.dark, 0, 0.99, 0, 8, 4, 0.75, Math.PI / 2));
       L.push(B(0.07, 0.08, 0.23, p.accent, 0.22, 0.76, 0));
-      if (type === 'rifle') L.push(B(0.05, 0.07, 0.62, C.dark, 0.14, 0.66, 0.26));
-      if (type === 'rocketInf') { L.push(CY(0.07, 0.07, 0.9, p.dark, 0.17, 0.9, 0.08, 8, Math.PI / 2)); L.push(CY(0.09, 0.07, 0.12, C.steel, 0.17, 0.9, 0.55, 8, Math.PI / 2)); }
-      if (type === 'engineer') { L.push(B(0.24, 0.14, 0.12, 0xa03020, 0.24, 0.42, 0)); L.push(B(0.3, 0.06, 0.06, C.steelLt, 0, 1.04, 0.08)); }
+      if (mt === 'rifle') L.push(B(0.05, 0.07, 0.62, C.dark, 0.14, 0.66, 0.26));
+      if (mt === 'rocketInf') { L.push(CY(0.07, 0.07, 0.9, p.dark, 0.17, 0.9, 0.08, 8, Math.PI / 2)); L.push(CY(0.09, 0.07, 0.12, C.steel, 0.17, 0.9, 0.55, 8, Math.PI / 2)); }
+      if (mt === 'engineer') { L.push(B(0.24, 0.14, 0.12, 0xa03020, 0.24, 0.42, 0)); L.push(B(0.3, 0.06, 0.06, C.steelLt, 0, 1.04, 0.08)); }
       m.muzzle = { y: 0.7, z: 0.55 };
       break;
     }
@@ -1701,6 +1867,19 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(SP(0.85, C.white, -0.6, 1.74, -0.1, 14, 8, 1, Math.PI / 2), CY(0.1, 0.1, 0.4, C.steel, -0.6, 2.7, -0.1, 6));
       L.push(B(0.9, 0.7, 0.9, C.concrete, 0.9, 2.0, -0.3), CY(0.02, 0.02, 1.6, C.steel, 1.1, 3.1, -0.5, 4), CY(0.02, 0.02, 1.2, C.steel, 0.7, 2.9, -0.6, 4));
       L.push(B(2.4, 0.3, 0.05, C.glass, 0, 0.9, 1.51), B(2.4, 0.3, 0.05, C.glass, 0, 1.3, 1.51));
+      break;
+    }
+    case 'camoNet': {
+      // 伪装网阵地：撑杆上盖着斑驳的网，下面是沙袋和器材箱
+      plinth();
+      for (const [x, z] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4], [0, 0]]) L.push(CY(0.05, 0.06, x || z ? 1.5 : 2.0, C.rust, x, x || z ? 0.95 : 1.2, z, 6));
+      const net = [0x6a6a3a, 0x8a7a4a, 0x5a5a34, 0x7a6a40];
+      for (let i = 0; i < 16; i++) {
+        const x = -1.5 + (i % 4), z = -1.5 + ((i / 4) | 0), mid = Math.abs(x) + Math.abs(z) < 1.2, edge = Math.abs(x) > 1.2 || Math.abs(z) > 1.2;
+        L.push(B(1.05, 0.05, 1.05, net[(i * 7) % 4], x, 1.75 + (mid ? 0.25 : 0) - (edge ? 0.1 : 0), z, (i % 3) * 0.08));
+      }
+      sandbagRing(L, 1.2, 0.4, 10, true);
+      L.push(B(0.6, 0.4, 0.4, p.base, -0.5, 0.44, 0.2), B(0.5, 0.35, 0.35, p.dark, 0.4, 0.42, -0.3));
       break;
     }
     case 'lab': {
@@ -2328,6 +2507,8 @@ const Sound = {
     this.last[type] = now;
     switch (type) {
       case 'rifle': this.burst(0.25 * v, 0.08, 'bandpass', 1800, 0, 1.2); break;
+      case 'sniper': this.burst(0.5 * v, 0.18, 'bandpass', 2600, 0, 1.4); break;
+      case 'flame': this.burst(0.3 * v, 0.6, 'lowpass', 600, 250, 0.9); break;
       case 'mg': for (let i = 0; i < 3; i++) this.burst(0.22 * v, 0.05, 'bandpass', 1500, 0, 1, i * 0.07); break;
       case 'cannon': this.burst(0.7 * v, 0.45, 'lowpass', 900, 120, 0.8); this.tone(0.4 * v, 0.25, 'sine', 90, 40); break;
       case 'cannonBig': this.burst(0.85 * v, 0.6, 'lowpass', 700, 90, 0.8); this.tone(0.5 * v, 0.35, 'sine', 70, 30); break;
@@ -2390,13 +2571,14 @@ function makeTeam(id, isAI, nation, slot = id, corner = id, name = '') {
     lastAlert: -9999, lastHarvAlert: -9999, lastMoney: -9999, lastReady: -9999,
   };
 }
-const defOf = type => UNITS[type] || BUILDINGS[type] || UPGRADES[type];
+// 不带 team 时返回基础定义；带 team 时返回那一方国家的定义
+const defOf = (type, team) => team === undefined ? baseDef(type) : natDef(nationKeyOf(team), type);
 
 // =====================================================================
 // 实体：单位
 // =====================================================================
 function createUnit(type, team, x, z, forcedId) {
-  const def = UNITS[type], fm = natOf(team), hp = hpOf(team, def);
+  const def = defOf(type, team), fm = natOf(team), hp = hpOf(team, def);
   const u = {
     id: forcedId || nextId++, kind: 'u', type, def, team, x, z, px: x, pz: z, y: def.plane ? PLANE_Y : def.air ? AIR_Y : 0,
     rank: 0, xp: 0, ammo: def.ammo || 0, pst: 'fly', pad: null, parked: false, lastFire: -999,
@@ -2405,8 +2587,9 @@ function createUnit(type, team, x, z, forcedId) {
     weapon: def.weapon ? WEAPONS[def.weapon] : null, cd: 0, order: { type: 'idle' }, target: null,
     path: null, pathIdx: 0, dest: null, inQueue: false, guardX: x, guardZ: z,
     stuckT: 0, bestD: 1e9, repaths: 0, nextRepath: 0, moving: false, lastHit: -999,
-    cargo: 0, hstate: 'seek', oreT: -1, waitT: 0, mineT: 0, recoil: 0, dustT: 0, walkT: Math.random() * 6,
+    cargo: 0, hstate: 'seek', oreT: -1, waitT: 0, mineT: 0, recoil: 0, dustT: 0, walkT: Math.random() * 6, movedT: 0,
   };
+  u.baseW = u.weapon;
   u.pangle = u.angle; u.turretAngle = u.angle; u.pturret = u.angle;
   u.hasTurret = !!def.turret;
   buildUnitMesh(u);
@@ -2426,7 +2609,7 @@ function buildUnitMesh(u) {
   }
   if (m.cargo) { const c = new THREE.Mesh(m.cargo, matVehicle); c.position.set(0, m.cargoY, m.cargoZ); c.visible = false; g.add(c); u.cargoMesh = c; }
   u.muzzle = m.muzzle;
-  const sc = u.def.inf ? 1.25 : 1;
+  const sc = (u.def.inf ? 1.25 : 1) * (u.def.scale || 1);
   g.scale.setScalar(sc);
   const ring = new THREE.Mesh(ringGeo, ringMats[u.team === PLAYER ? 0 : 1]);
   ring.scale.setScalar((u.radius + 0.25) / sc);
@@ -2442,7 +2625,7 @@ function buildUnitMesh(u) {
 // 实体：建筑
 // =====================================================================
 function createBuilding(type, team, tx, tz, opts = {}) {
-  const def = BUILDINGS[type];
+  const def = defOf(type, team);
   const hpMul = natOf(team).hpMul;
   // 桥的长宽和朝向来自地图生成的桥址
   let w = def.w, h = def.h;
@@ -2455,7 +2638,7 @@ function createBuilding(type, team, tx, tz, opts = {}) {
     buildAnim: opts.instant ? 1 : 0, lastHit: -999, seen: team === PLAYER, radius: Math.max(w, h) * TILE / 2,
     smokeT: 0, doorOpen: 0, angle: 0, abmReady: type === 'abm', abmCharge: 0,
   };
-  b.hasTurret = !!def.weapon;
+  b.hasTurret = !!def.weapon; b.baseW = b.weapon;
   // 桥不占格子（桥面本身就是可通行的地块）
   if (type !== 'bridge') for (let z = tz; z < tz + h; z++) for (let x = tx; x < tx + w; x++) bldGrid[z * MAP + x] = b.id;
   buildBuildingMesh(b);
@@ -2754,7 +2937,7 @@ function requestPath(u, x, z) {
   x = clampPlay(x); z = clampPlay(z);
   u.dest = { x, z }; u.stuckT = 0; u.bestD = 1e9;
   if (u.def.air) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
-  const nav = !!u.def.naval;
+  const nav = navOf(u);
   if (walkable(tileOf(x), tileOf(z), nav) && Math.hypot(x - u.x, z - u.z) < 40 && losClear(u.x, u.z, x, z, nav, kindOf(u))) { u.path = [{ x, z }]; u.pathIdx = 0; return; }
   u.path = null;
   if (!u.inQueue) { u.inQueue = true; pathQueue.push(u); }
@@ -2769,7 +2952,7 @@ function processPathQueue() {
   }
 }
 function computePath(u) {
-  const sx = tileOf(u.x), sz = tileOf(u.z), nav = !!u.def.naval;
+  const sx = tileOf(u.x), sz = tileOf(u.z), nav = navOf(u);
   let gx = tileOf(u.dest.x), gz = tileOf(u.dest.z), exact = true;
   if (!walkable(gx, gz, nav)) {
     const n = nearestWalkable(gx, gz, nav ? 24 : 14, sx, sz, nav);
@@ -2795,7 +2978,7 @@ function computePath(u) {
 // =====================================================================
 function walkableFor(u, x, z) {
   const tx = tileOf(x), tz = tileOf(z);
-  return walkable(tx, tz, !!u.def.naval) || (tx === tileOf(u.x) && tz === tileOf(u.z) && !bldGrid[tz * MAP + tx]);
+  return walkable(tx, tz, navOf(u)) || (tx === tileOf(u.x) && tz === tileOf(u.z) && !bldGrid[tz * MAP + tx]);
 }
 function moveToward(u, tx, tz, d) {
   const want = Math.atan2(tx - u.x, tz - u.z);
@@ -2885,8 +3068,9 @@ function heightAdv(s, t) {
 const HIGH_GROUND = 1.5;   // 站在这个高度以上算高地（视野 +2 格）
 // 有效射程：居高临下 +1 格
 const rangeTo = (s, t) => s.weapon.range * TILE + (heightAdv(s, t) > 0 ? TILE : 0);
-// 林地隐蔽：林地里静止、最近 2 秒没开火的步兵
-const concealed = u => u.kind === 'u' && u.def.inf && !u.moving && !u.inside && terrainAt(u.x, u.z) === T_TREE && G.tick - u.lastFire > 2 * TPS;
+// 隐蔽（最近 2 秒没开火）：林地里静止的步兵；伪装单位静止 3 秒后；特种侦察兵一直隐蔽
+const concealed = u => u.kind === 'u' && !u.inside && G.tick - u.lastFire > 2 * TPS &&
+  (u.def.stealth || (!u.moving && ((u.def.inf && terrainAt(u.x, u.z) === T_TREE) || (u.def.camo && G.tick - u.movedT > 3 * TPS))));
 // 某一方有没有单位或建筑在 4 格内（发现隐蔽的步兵）
 function spottedBy(team, u) {
   if (u._spT === G.tick && u._spTeam === team) return u._spV;
@@ -2898,6 +3082,24 @@ function spottedBy(team, u) {
   return v;
 }
 const hiddenFrom = (team, u) => concealed(u) && !spottedBy(team, u);
+// 电子干扰：电子战车周围 6 格内的敌方单位和防御塔射程 ×0.8（只在房主端计算）
+function jamTick() {
+  const J = units.filter(u => u.alive && u.def.jam && !u.inside), R = 6 * TILE;
+  const near = e => e.team >= 0 && J.some(j => j.team !== e.team && Math.abs(j.x - e.x) < R && Math.abs(j.z - e.z) < R && Math.hypot(j.x - e.x, j.z - e.z) < R);
+  for (const e of units) if (e.alive && e.baseW) { e.jammed = J.length > 0 && near(e); e.weapon = e.jammed ? e.baseW.jammed : e.baseW; }
+  for (const b of buildings) if (b.alive && b.baseW) { b.jammed = J.length > 0 && near(b); b.weapon = b.jammed ? b.baseW.jammed : b.baseW; }
+}
+// 伪装网：周围 5 格内的己方建筑（总部除外），对方 6 格内没有单位或建筑就看不到
+function camoHidden(b, team) {
+  if (b.team < 0 || b.team === team || b.type === 'hq') return false;
+  let net = false;
+  for (const c of buildings) if (c.alive && c.type === 'camoNet' && c.team === b.team && c.buildAnim >= 1 && Math.hypot(c.x - b.x, c.z - b.z) <= 5 * TILE + c.radius) { net = true; break; }
+  if (!net) return false;
+  const R = 6 * TILE;
+  for (const o of units) if (o.alive && o.team === team && !o.inside && rectDist(o.x, o.z, b) <= R) return false;
+  for (const o of buildings) if (o.alive && o.team === team && Math.hypot(o.x - b.x, o.z - b.z) <= R + o.radius + b.radius) return false;
+  return true;
+}
 // 能不能把 e 当成敌方目标（民房看里面是谁）
 const hostileTeam = e => e.kind === 'b' && e.def.garrison && e.team < 0 ? (e.garTeam ?? -1) : e.team;
 // 能不能攻击：敌方单位/建筑、敌人占着的民房、没断的桥（只能手动下令）
@@ -2979,6 +3181,7 @@ function aimAndFire(u, t) {
   if (aimed && u.cd <= 0) {
     const w = u.weapon;
     if (w.minRange && distTo(u, t) < w.minRange * TILE) return;
+    if (u.def.deploy && G.tick - u.movedT < u.def.deploy * TPS) return;   // 还没展开发射架
     fireWeapon(u, t);
     u.cd = Math.round(w.cd * TPS / RANKS[rankOf(u)].rof);
   }
@@ -2987,13 +3190,14 @@ function fireWeapon(s, t) {
   const w = s.weapon;
   if (Net.isHost) Net.event({ k: 'f', s: s.id, t: t.id });
   let dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
-  if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
+  if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? s.def.garBonus || 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
+  if (s.kind === 'u' && s.def.ambush && !s.inside && terrainAt(s.x, s.z) === T_TREE) dmgMul *= 1.25;   // 民兵林地伏击
   if (s.kind === 'u' && s.def.cat === 'vehicle' && w.wh !== 'he' && hasUpg(s.team, 'upFire')) dmgMul *= 1.15;
   if (s.kind === 'u' && (s.def.air || w.wh === 'he') && hasUpg(s.team, 'upGuide')) dmgMul *= 1.2;
   { const adv = heightAdv(s, t); if (adv) dmgMul *= adv > 0 ? 1.15 : 0.85; }   // 居高临下 +15%，仰攻 -15%
   s.lastFire = G.tick;
   const aim = s.hasTurret ? s.turretAngle : s.angle;
-  const mz = s.muzzle || { y: 1, z: 1 }, sc = s.def.inf ? 1.25 : 1;
+  const mz = s.muzzle || { y: 1, z: 1 }, sc = (s.def.inf ? 1.25 : 1) * (s.def.scale || 1);
   const sin = Math.sin(aim), cos = Math.cos(aim);
   const sx = s.x + sin * mz.z * sc, sz = s.z + cos * mz.z * sc, sy = (s.y || 0) + (s.def.naval ? 0 : groundH(s.x, s.z)) + mz.y * sc;
   const tp = targetPoint(t);
@@ -3035,13 +3239,26 @@ function fireWeapon(s, t) {
       break;
     }
     case 'arty': {
-      spawnBallistic('arty', sx, sy, sz, tp.x + rnd(-1.2, 1.2), tp.z + rnd(-1.2, 1.2), w, s, dmgMul, 0);
+      const sp = w.precise ? 0.15 : 1.2;
+      spawnBallistic('arty', sx, sy, sz, tp.x + rnd(-sp, sp), tp.z + rnd(-sp, sp), w, s, dmgMul, 0);
       fxMuzzle(sx, sy, sz, aim, true);
       shake = Math.max(shake, visibleAt(s.x, s.z) ? 0.1 : 0);
       break;
     }
     case 'salvo': {
-      for (let i = 0; i < w.count; i++) spawnBallistic('rocket', sx + rnd(-0.3, 0.3), sy, sz + rnd(-0.3, 0.3), tp.x + rnd(-2.5, 2.5), tp.z + rnd(-2.5, 2.5), w, s, dmgMul, i * 0.15);
+      const sp = w.precise ? 0.6 : 2.5;
+      for (let i = 0; i < w.count; i++) spawnBallistic('rocket', sx + rnd(-0.3, 0.3), sy, sz + rnd(-0.3, 0.3), tp.x + rnd(-sp, sp), tp.z + rnd(-sp, sp), w, s, dmgMul, i * 0.15);
+      break;
+    }
+    case 'flame': {
+      // 喷火：一串火焰扑向目标，命中点周围也会烧到
+      if (seen) for (let i = 0; i < 10; i++) {
+        const f = i / 10;
+        pFire.spawn(lerp(sx, tp.x, f) + rnd(-0.15, 0.15), lerp(sy, tp.y, f) + rnd(-0.1, 0.2), lerp(sz, tp.z, f) + rnd(-0.15, 0.15),
+          (tp.x - sx) * 0.8, rnd(0.2, 0.8), (tp.z - sz) * 0.8, rnd(0.25, 0.45), 0.3 + f * 0.5, 0.8 + f * 0.6, 1, rnd(0.45, 0.7), 0.15, 1);
+      }
+      damage(t, w.dmg * dmgMul, w.wh, s);
+      if (w.splash) splashDamage(tp.x, tp.z, w.splash * TILE, w.dmg * dmgMul * 0.6, w.wh, s.team, s);
       break;
     }
     case 'torpedo': {
@@ -3150,6 +3367,8 @@ function damage(t, amount, wh, src, splash = false) {
   if (t.inside) return;   // 碉堡里的步兵不会被打到
   // 桥：只有爆炸类武器能打坏，断了就不再受伤
   if (t.type === 'bridge' && (t.broken || !BRIDGE_WH.has(wh))) return;
+  // 喷火：直接烧伤碉堡、民房里的步兵
+  if (wh === 'fire' && t.kind === 'b' && t.def.garrison) for (const u of units) if (u.alive && u.inside === t) { u.hp -= amount * 0.5; u.lastHit = G.tick; if (u.hp <= 0) kill(u, src); }
   let mult = WARHEAD[wh][ARMOR_IDX[t.def.armor]];
   // 穿甲弹升级：步兵轻武器打载具和建筑伤害翻倍
   if (wh === 'small' && !t.def.inf && src && src.kind === 'u' && src.def.inf && hasUpg(src.team, 'upAP')) mult *= 2;
@@ -3326,7 +3545,7 @@ function planeTick(u) {
     if (u.ammo < u.def.ammo && (G.tick + u.id) % (2 * TPS) === 0) u.ammo++;
     // 截击机：自动起飞拦截附近的敌方空中单位
     if (o.type === 'idle' && w.air && u.ammo > 0 && (G.tick + u.id) % 10 === 0) {
-      const t = findTarget(u, 12 * TILE);
+      const t = findTarget(u, 12 * TILE, w.ground ? (w.airOnly || (w.airOnly = { ...w, ground: false })) : w);
       if (t) u.order = { type: 'attack', target: t };
     }
     const go = u.order.type === 'move' || u.order.type === 'attackMove' || (u.order.type === 'attack' && u.ammo > 0);
@@ -3592,7 +3811,7 @@ function commandMove(list, x, z, attackMove = false) {
   const sslots = slots.slice().sort((a, b) => (a.x - x) * 3 + (a.z - z) - ((b.x - x) * 3 + (b.z - z)));
   sorted.forEach((u, i) => {
     let s = sslots[i];
-    const nav = !!u.def.naval;
+    const nav = navOf(u);
     if (!u.def.air && !walkable(tileOf(s.x), tileOf(s.z), nav)) { const n = nearestWalkable(tileOf(s.x), tileOf(s.z), nav ? 16 : 6, tileOf(x), tileOf(z), nav); if (n) s = { x: tc(n.x), z: tc(n.z) }; }
     u.repaths = 0;
     if (u.def.harvester) { u.hstate = 'manual'; requestPath(u, s.x, s.z); return; }
@@ -3688,7 +3907,7 @@ function planeCount(T) {
 }
 const planeCap = T => (T.counts.airfield || 0) * PADS.length;
 function isUnlocked(T, type) {
-  const d = defOf(type);
+  const d = defOf(type, T.id);
   if (d.nation && d.nation !== T.nation) return false;
   if (d.naval && G.mapType !== 'sea') return false;
   if (!(countOf(T, prodOf(d)) > 0)) return false;
@@ -3707,15 +3926,15 @@ function applyUpgrade(T, k) {
   if (T.human) tnotify(T.id, '研究完成：' + UPGRADES[k].name, 'good', 'ready');
 }
 function missingReq(T, type) {
-  const d = defOf(type), out = [];
+  const d = defOf(type, T.id), out = [];
   const p = prodOf(d);
-  if (!(countOf(T, p) > 0)) out.push(BUILDINGS[p].name);
-  for (const r of d.req || []) if (!(countOf(T, r) > 0) && r !== p) out.push(BUILDINGS[r].name);
+  if (!(countOf(T, p) > 0)) out.push(defOf(p, T.id).name);
+  for (const r of d.req || []) if (!(countOf(T, r) > 0) && r !== p) out.push(defOf(r, T.id).name);
   if (d.plane && !out.length && planeCount(T) >= planeCap(T)) out.push('空停机位（每个机场 4 个，停机位已满）');
   return out;
 }
 function enqueue(T, type, n = 1) {
-  const d = defOf(type), q = T.queues[d.cat];
+  const d = defOf(type, T.id), q = T.queues[d.cat];
   if (d.isBuilding) {
     if (q.length) return false;
     if (!isUnlocked(T, type)) return false;
@@ -3743,7 +3962,7 @@ function productionTick(T) {
     if (!q.length) continue;
     const it = q[0];
     if (it.ready) continue;
-    const d = defOf(it.type);
+    const d = defOf(it.type, T.id);
     const nProd = countOf(T, prodOf(d));
     if (!nProd) continue;
     let rate = 1 / (d.time * TPS) * (1 + 0.5 * (nProd - 1)) * (T.lowPower ? 0.5 : 1);
@@ -3776,7 +3995,7 @@ function pickProducer(T, type) {
   return buildings.find(b => b.alive && b.team === T.id && (b.type === type || (type === 'barracks' && b.type === 'airBarracks')));
 }
 function spawnProduced(T, type) {
-  const d = UNITS[type];
+  const d = defOf(type, T.id);
   const prod = pickProducer(T, prodOf(d));
   if (!prod) return;
   let x, z, pad = null;
@@ -4040,7 +4259,8 @@ function abilityEffect(team, key, x, z) {
   }
   if (key === 'airdrop') {
     if (!sim) return;
-    const list = ['rifle', 'rifle', 'rifle', 'rifle', 'rifle', 'rifle', 'rocketInf', 'rocketInf'];
+    const nk = teams[team].nation, inf = unitFor(nk, 'inf'), at = unitFor(nk, 'at');
+    const list = [inf, inf, inf, inf, inf, inf, at, at];
     list.forEach((type, i) => {
       const a = i / list.length * Math.PI * 2, d = 2 + Math.random() * 2.5;
       let px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
@@ -4093,7 +4313,7 @@ function updateFog() {
     fogData[i * 4] = revealAll || vis[i] ? 255 : explored[i] ? 100 : 0;
   }
   fogTex.needsUpdate = true;
-  for (const b of buildings) if (b.alive && !b.seen && visibleTile(tileOf(b.x), tileOf(b.z))) b.seen = true;
+  for (const b of buildings) if (b.alive && !b.seen && visibleTile(tileOf(b.x), tileOf(b.z)) && !camoHidden(b, PLAYER)) b.seen = true;
 }
 
 // =====================================================================
@@ -4105,7 +4325,8 @@ function gameTick() {
   for (const u of units) { u.px = u.x; u.pz = u.z; u.py = u.y; u.pangle = u.angle; u.pturret = u.turretAngle; }
   rebuildHash();
   processPathQueue();
-  for (let i = 0; i < units.length; i++) { const u = units[i]; if (u.alive) unitTick(u); }
+  for (let i = 0; i < units.length; i++) { const u = units[i]; if (u.alive) { unitTick(u); if (u.moving) u.movedT = G.tick; } }
+  if (G.tick % 10 === 5) jamTick();
   separation();
   for (let i = 0; i < buildings.length; i++) { const b = buildings[i]; if (b.alive) buildingTick(b); }
   for (const T of teams) { productionTick(T); superTick(T); abilityTick(T); }
@@ -4161,8 +4382,8 @@ const AI_PLAN = [
   ['shipyard', 1, 470], ['airfield', 1, 640], ['power', 8, 900],
   // 人口：副部和第二座兵营、工厂都会提高人口上限
   ['subhq', 1, 700], ['barracks', 2, 800], ['factory', 3, 1300],
-  // 研究所
-  ['lab', 1, 620],
+  // 研究所；赤砂的伪装网阵地
+  ['lab', 1, 620], ['camoNet', 1, 520],
 ];
 const AI_DEF_PLAN = [
   ['mgTurret', 1, 160], ['bunker', 1, 200], ['atTurret', 1, 260], ['bunker', 2, 600], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
@@ -4336,7 +4557,7 @@ class AIController {
           teams.some(o => this.isEnemy(o.id) && o.counts.silo > 0)) { if (T.credits > 800) enqueue(T, 'abm'); }
       else for (const [type, n, at] of AI_DEF_PLAN) {
         if (time < at || (this.skip[type] || 0) > time) continue;
-        const need = Math.max(1, Math.round(n * dif.defMul * (T.nation === 'gold' ? 1.3 : 1)));
+        const need = Math.max(1, Math.round(n * dif.defMul * (T.nation === 'gold' ? 1.15 : 1)));
         if (this.count(type) < need && isUnlocked(T, type)) { if (T.credits > 600 + reserve) enqueue(T, type); break; }
       }
     }
@@ -4375,14 +4596,17 @@ class AIController {
     const all = units.filter(u => u.alive && u.team === this.team && u.weapon && !u.chute && !u.inside && u.order.type !== 'garrison');
     const planes = all.filter(u => u.def.plane), ships = all.filter(u => u.def.naval);
     const army = all.filter(u => !u.def.plane && !u.def.naval);
-    const comp = time < 420 ? { rifle: 4, rocketInf: 2, scout: 2, tank: 3 }
-      : time < 960 ? { rifle: 2, rocketInf: 3, scout: 1, tank: 5, aa: 1, artillery: 1, heli: 1, pboat: 2, destroyer: 3, sub: 2, fighter: 1, striker: 2 }
-        : { rifle: 2, rocketInf: 2, tank: 5, aa: 1, artillery: 2, heli: 2, pboat: 1, destroyer: 3, sub: 2, cruiser: 2, fighter: 1, striker: 2, bomber: 1 };
-    for (const uq of NATIONS[T.nation].uniques) if (UNITS[uq]) comp[uq] = uq === 'moto' ? 3 : time >= 420 ? 2 : 0;
-    if (T.nation === 'hawk' && comp.heli) comp.heli += 2;
+    // 按定位写配比，再换成本国的单位；各国按性格加权
+    const roleW = time < 420 ? { inf: 4, at: 2, scout: 2, scout2: 1, mbt: 3 }
+      : time < 960 ? { inf: 2, at: 3, spec: 1, scout: 1, scout2: 1, mbt: 5, aa: 1, arty: 1, elite: 1, heli: 1, boat: 2, destroyer: 3, sub: 2, fighter: 1, striker: 2 }
+        : { inf: 2, at: 2, spec: 1, mbt: 5, aa: 1, arty: 2, elite: 2, heli: 2, heli2: 2, scout2: 1, boat: 1, destroyer: 3, sub: 2, cruiser: 2, fighter: 1, striker: 2, bomber: 1 };
+    const NAT_W = { north: { mbt: 1.4, elite: 1.3, inf: 1.3, scout2: 0 }, south: { scout: 1.6, scout2: 2, mbt: 1.2, arty: 1.3, heli: 1.2 },
+      gold: { arty: 1.5, spec: 1.3, aa: 1.2 }, hawk: { heli: 2, heli2: 1.5, striker: 1.4, fighter: 1.3, scout2: 1, inf: 0.7 } }[T.nation];
+    const comp = {};
+    for (const r in roleW) { const k = unitFor(T.nation, r); if (k) comp[k] = (comp[k] || 0) + roleW[r] * (NAT_W[r] ?? 1); }
     // 敌方空中力量多时多造截击机
     const enemyAir = units.filter(u => u.alive && u.def.air && this.isEnemy(u.team)).length;
-    if (comp.fighter && enemyAir > 4) comp.fighter += 3;
+    { const fk = unitFor(T.nation, 'fighter'); if (comp[fk] && enemyAir > 4) comp[fk] += 3; }
     const airCap = T.nation === 'hawk' ? 7 : 4, navalCap = 6;
     const heliN = army.filter(u => u.def.air).length;
     if (all.length < 80) {
@@ -4397,6 +4621,17 @@ class AIController {
         for (const k of opts) { r -= comp[k]; if (r <= 0) { pick = k; break; } }
         enqueue(T, pick);
       }
+    }
+    // --- 部署型导弹车：射程内有敌方建筑就点名打 ---
+    for (const u of army) if (u.def.deploy && !u.target && u.order.type === 'idle' && (G.tick + u.id) % 60 < 20) {
+      const r = u.weapon.range * TILE, mr = (u.weapon.minRange || 0) * TILE;
+      const tg = buildings.find(b => b.alive && this.isEnemy(b.team) && rectDist(u.x, u.z, b) <= r && rectDist(u.x, u.z, b) > mr);
+      if (tg) commandAttack([u], tg);
+    }
+    // --- 无人机：跟着进攻部队飞，没有进攻时在集结点盘旋 ---
+    {
+      const lead = army.find(u => u.wave && u.wave < 99), g = lead || this.rally();
+      for (const d of units) if (d.alive && d.team === this.team && d.def.air && !d.weapon && Math.hypot(g.x - d.x, g.z - d.z) > 12 && d.order.type === 'idle') commandMove([d], g.x + rnd(-3, 3), g.z + rnd(-3, 3));
     }
     // --- 维修 ---
     if (T.credits > 800) for (const b of buildings) if (b.alive && b.team === this.team && !b.def.derrick && b.hp < b.maxHp * 0.6) b.repairing = true;
@@ -4436,7 +4671,7 @@ class AIController {
     // --- 骚扰（直升机/侦察车/摩托袭击采矿车）---
     if (G.difficulty !== 'easy' && time > this.nextHarass) {
       this.nextHarass = time + (G.difficulty === 'hard' ? 120 : 180);
-      const raiders = home.filter(u => (u.def.air || u.type === 'scout' || u.type === 'moto') && u.order.type === 'idle').slice(0, 4);
+      const raiders = home.filter(u => (u.def.air || u.def.role === 'scout' || u.def.role === 'scout2') && u.order.type === 'idle').slice(0, 4);
       const eh = units.filter(u => u.alive && this.isEnemy(u.team) && u.def.harvester)
         .sort((a, b) => Math.hypot(a.x - this.base.x, a.z - this.base.z) - Math.hypot(b.x - this.base.x, b.z - this.base.z));
       if (raiders.length >= 2 && eh.length) {
@@ -4468,7 +4703,7 @@ class AIController {
     // --- 飞机出击：攻击机打装甲和防御，轰炸机炸建筑密集处（截击机自动拦截）---
     if (planes.length && time >= this.nextAir) {
       const ready = planes.filter(u => u.parked && u.ammo >= u.def.ammo && u.order.type === 'idle');
-      const strikers = ready.filter(u => u.type === 'striker'), bombers = ready.filter(u => u.type === 'bomber');
+      const strikers = ready.filter(u => u.def.role === 'striker'), bombers = ready.filter(u => u.def.role === 'bomber');
       if (strikers.length >= 2) {
         const tg = units.filter(u => u.alive && this.isEnemy(u.team) && !u.def.air && !u.def.inf && (!u.def.sub))
           .sort((a, b) => Math.hypot(a.x - this.base.x, a.z - this.base.z) - Math.hypot(b.x - this.base.x, b.z - this.base.z))[0]
@@ -4779,7 +5014,7 @@ function setMode(m) {
 }
 function updateHint() {
   const h = document.getElementById('hint');
-  const txt = placing ? '左键放置 ' + BUILDINGS[placing.type].name + '，右键取消' :
+  const txt = placing ? '左键放置 ' + defOf(placing.type, PLAYER).name + '，右键取消' :
     mode === 'attackMove' ? '攻击移动：左键选择目标地点，右键取消' :
       mode === 'nuke' ? '选择战略导弹打击目标，右键取消' :
         mode === 'ability' ? '国家技能「' + ABILITIES[NATIONS[teams[PLAYER].nation].ability].name + '」：左键选择地点，右键取消' :
@@ -5313,15 +5548,15 @@ function renderTab() {
   buildItems = [];
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === curTab));
   const types = [];
-  const mine = d => d.cat === curTab && (!d.nation || d.nation === teams[PLAYER].nation) && (!d.naval || G.mapType === 'sea');
+  const nat = teams[PLAYER].nation, mine = d => d.cat === curTab && (!d.nation || d.nation === nat) && (!d.naval || G.mapType === 'sea');
   for (const k in BUILDINGS) if (mine(BUILDINGS[k])) types.push(k);
   for (const k in UNITS) if (mine(UNITS[k])) types.push(k);
   for (const k in UPGRADES) if (mine(UPGRADES[k])) types.push(k);
   for (const type of types) {
-    const d = defOf(type);
+    const d = defOf(type, PLAYER);
     const el = document.createElement('div');
     el.className = 'bitem';
-    el.innerHTML = `<img src="${ICONS[type] || ''}"><div class="nm">${d.nation ? '★' : ''}${d.name}</div><div class="cost">$${costOf(PLAYER, type)}</div><div class="prog" style="height:0"></div><div class="st"></div><div class="cnt" style="display:none"></div>`;
+    el.innerHTML = `<img src="${ICONS[type] || ''}"><div class="nm">${NATIONS[nat].uniques.includes(type) ? '★' : ''}${d.name}</div><div class="cost">$${costOf(PLAYER, type)}</div><div class="prog" style="height:0"></div><div class="st"></div><div class="cnt" style="display:none"></div>`;
     el.addEventListener('mousedown', (e) => { e.preventDefault(); onBuildClick(type, e); });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('mouseenter', () => showTip(type, el));
@@ -5332,7 +5567,7 @@ function renderTab() {
   updateBuildGrid();
 }
 function showTip(type, el) {
-  const d = defOf(type), T = teams[PLAYER];
+  const d = defOf(type, PLAYER), T = teams[PLAYER];
   const miss = T ? missingReq(T, type) : [];
   const cost = costOf(PLAYER, type);
   let html = `<b>${d.name}</b>　$${cost}${cost < d.cost ? `<span style="color:#8a9080;text-decoration:line-through;margin-left:4px">$${d.cost}</span>` : ''}<br>${d.desc || ''}`;
@@ -5354,7 +5589,7 @@ function showTip(type, el) {
 function onBuildClick(type, e) {
   if (G.state !== 'playing' || G.over) return;
   Sound.init();
-  const T = teams[PLAYER], d = defOf(type), q = T.queues[d.cat];
+  const T = teams[PLAYER], d = defOf(type, PLAYER), q = T.queues[d.cat];
   if (e.button === 2) {
     if (placing && placing.type === type) { placing = null; setGhost(null); }
     if (T.queues[d.cat].some(i => i.type === type)) { issueCommand({ c: 'cancel', cat: d.cat, type }); if (!Net.isClient) cancelItem(T, d.cat, type); Sound.play('click'); }
@@ -5376,7 +5611,7 @@ function updateBuildGrid() {
   const T = teams[PLAYER];
   if (!T) return;
   for (const it of buildItems) {
-    const d = defOf(it.type), q = T.queues[d.cat];
+    const d = defOf(it.type, PLAYER), q = T.queues[d.cat];
     const unlocked = isUnlocked(T, it.type);
     const mine = q.filter(i => i.type === it.type);
     const head = q[0] && q[0].type === it.type ? q[0] : null;
@@ -5440,7 +5675,7 @@ function renderSelPanel() {
     const counts = {};
     for (const e of selection) counts[e.type] = (counts[e.type] || 0) + 1;
     let html = '<div class="multi">';
-    for (const t in counts) html += `<div class="mi" data-t="${t}" title="${defOf(t).name}"><img src="${ICONS[t] || ''}"><span>${counts[t]}</span></div>`;
+    for (const t in counts) html += `<div class="mi" data-t="${t}" title="${defOf(t, PLAYER).name}"><img src="${ICONS[t] || ''}"><span>${counts[t]}</span></div>`;
     html += `</div><div class="sub" style="margin-top:4px">已选择 ${selection.length} 个单位（点击图标只选该类）</div>`;
     html += `<div class="cmds"><button data-c="stop">停止 (S)</button><button data-c="amove">攻击移动 (A)</button></div>`;
     p.innerHTML = html;
@@ -5542,14 +5777,45 @@ $('btnResume').addEventListener('click', () => togglePauseMenu());
 // 游戏指南（问号按钮 / F1）
 // =====================================================================
 const ARMOR_NAME = { inf: '步兵', light: '轻甲', heavy: '重甲', bld: '建筑', air: '空中', naval: '舰船' };
-const WARHEAD_NAME = { small: '机枪', ap: '穿甲炮弹', he: '高爆炮弹', rocket: '火箭', flak: '高射炮', torpedo: '鱼雷', aam: '空空导弹', bomb: '航空炸弹' };
+const WARHEAD_NAME = { small: '机枪', ap: '穿甲炮弹', he: '高爆炮弹', rocket: '火箭/导弹', flak: '高射炮', torpedo: '鱼雷', aam: '防空导弹', bomb: '航空炸弹', fire: '火焰', sniper: '狙击' };
+// 指南里的“我的国家”（没开局时按北岭显示）
+const gNat = () => (teams[PLAYER] && teams[PLAYER].nation) || 'north';
+const ROLE_NAME = { inf: '基础步兵', at: '反坦克步兵', spec: '特种步兵', scout: '侦察车', scout2: '侦察（二）', mbt: '主战坦克', aa: '防空', arty: '火炮', elite: '科技中心单位',
+  heli: '直升机', heli2: '王牌直升机', fighter: '截击机', striker: '攻击机', bomber: '轰炸机', boat: '小艇', destroyer: '驱逐舰', sub: '潜艇', cruiser: '巡洋舰' };
+// 一个单位的擅长目标说明
+function unitGood(d) {
+  const w = d.weapon ? WEAPONS[d.weapon] : null;
+  if (!w) return '没有武器';
+  const m = WARHEAD[w.wh], best = [];
+  ['inf', 'light', 'heavy', 'bld', 'air', 'naval'].forEach(a => { if (m[ARMOR_IDX[a]] >= 0.9 && (a !== 'air' || w.air) && (a === 'air' || w.ground) && (!w.navalOnly || a === 'naval')) best.push(ARMOR_NAME[a]); });
+  let g = best.length ? `擅长打：${best.join('、')}` : '';
+  if (w.navalOnly) g += '　只能打舰船'; else if (!w.ground) g += '　只能打空中'; else if (!w.air) g += '　不能打空中';
+  return g;
+}
+const unitCard = (k, d) => `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}</div>
+  <div class="gm">$${d.cost}　生命 ${d.hp}　速度 ${d.speed}　护甲 ${ARMOR_NAME[d.armor]}${d.weapon ? '　射程 ' + WEAPONS[d.weapon].range + ' 格' : ''}${d.ammo ? '　弹药 ' + d.ammo : ''}　人口 ${d.pop}</div>
+  <div class="gm">需要：${d.req.map(r => BUILDINGS[r].name).join('、') || '兵营'}</div>
+  <div class="gd">${d.desc}<br>${unitGood(d)}</div></div></div>`;
+// 定位 × 国家 对照表
+function roleTable(roles) {
+  let h = '<table class="gtable"><tr><th>定位</th>' + NATION_KEYS.map(n => `<th>${NATIONS[n].short}</th>`).join('') + '</tr>';
+  for (const r of roles) {
+    h += `<tr><td>${ROLE_NAME[r]}</td>`;
+    for (const n of NATION_KEYS) {
+      const k = unitFor(n, r), d = k && UNITS[k];
+      h += d ? `<td style="text-align:left"><b>${d.name}</b><br><span style="color:var(--ui-dim)">$${d.cost} · 生命 ${d.hp}${d.weapon ? ' · 射程 ' + WEAPONS[d.weapon].range : ''}</span></td>` : '<td style="color:#666">—</td>';
+    }
+    h += '</tr>';
+  }
+  return h + '</table>';
+}
 const GUIDE = [
   {
     id: 'start', title: '快速上手', html: () => `
       <h3>胜利目标</h3>
       <p><b>攻陷敌方的总部</b>就能获胜；你的总部被摧毁就立即战败，剩下的建筑会全部自毁。</p>
       <p>总部生命很厚（${BUILDINGS.hq.hp}），而且<b>战略导弹对总部无效</b>，只能派部队攻下来。记得在总部周围布置防御。</p>
-      <p>开局前在菜单里选择你的国家（电脑的国家可以指定或随机）。四个国家各有数值特性和一个专属单位/建筑，详见“国家特性”页。</p>
+      <p>开局前在菜单里选择你的国家（电脑的国家可以指定或随机）。四个国家的步兵、坦克、飞机、舰船和防御塔<b>各不相同</b>，建筑数值也不一样，详见“国家特性”和“单位一览”页。</p>
       <h3>推荐开局顺序</h3>
       <ol>
         <li><b>发电站</b>：其他建筑都要用电。</li>
@@ -5595,13 +5861,13 @@ const GUIDE = [
       </ul>
       <h3>电力</h3>
       <ul>
-        <li>发电站提供 <b>+100</b> 电力，其他建筑大多耗电。顶栏电力条里，绿色是发电量，白线是用电量。</li>
+        <li>发电站提供 <b>+100</b> 电力（北岭燃煤电厂 +120，赤砂柴油发电站 +90），其他建筑大多耗电。顶栏电力条里，绿色是发电量，白线是用电量。</li>
         <li><b>电力不足</b>（白线超过绿色）时：所有生产速度减半，<b>防御塔和雷达停止工作</b>，导弹井停止充能。被敌人炸掉发电站时尤其要注意！</li>
         <li>多造一两座发电站留余量，比较安全。</li>
       </ul>
       <h3>人口</h3>
       <ul>
-        <li>每个单位占用人口：步兵 1，侦察车 2，坦克、防空车、火炮 3，重坦 4，直升机 3–4，飞机 3–5，舰船 2–5。<b>采矿车不占人口</b>。</li>
+        <li>每个单位占用人口：步兵 1，侦察车 2，坦克、防空车、火炮 3，科技中心单位 4，直升机 3–4，飞机 3–5，舰船 2–5，无人机 1。<b>采矿车不占人口</b>。</li>
         <li>人口由建筑提供：<b>总部 40</b>、<b>副部 20</b>，兵营、战车工厂、直升机坪、机场、船厂<b>每座 +10</b>，总上限 <b>${POP_MAX}</b>。顶栏显示“人口 已用/上限”。</li>
         <li>人口满了，还没开工的单位会暂停（不扣钱），已经开工的照常完成。</li>
         <li><b>副部</b>（$${BUILDINGS.subhq.cost}，最多 1 座）可以建在离己方建筑 14 格以内的地方，建好后它周围就能继续造建筑，适合去占领远处的矿区和油井。被摧毁不会战败。</li>
@@ -5609,12 +5875,12 @@ const GUIDE = [
   },
   {
     id: 'nation', title: '国家特性', html: () => {
-      let h = '<p>每个国家有数值特性、两个专属（单位或建筑）和一个国家技能。标识色按出生位置区分（蓝 / 红 / 黄 / 青），车身迷彩颜色代表国家。专属内容在建造栏里带 ★ 标记。</p>';
+      let h = '<p>四个国家的兵种、防御塔和建筑数值都不一样：定位相同（每国都有步兵、反坦克、坦克、防空、火炮、空军、海军），但性格不同。标识色按出生位置区分（蓝 / 红 / 黄 / 青），车身迷彩颜色代表国家。下面是每国的王牌和专属建筑（建造栏里带 ★ 标记）。</p>';
       for (const k of NATION_KEYS) {
         const n = NATIONS[k], ab = ABILITIES[n.ability];
-        h += `<h3><span class="sw" style="display:inline-block;width:12px;height:12px;margin-right:6px;background:#${n.camo.base.toString(16).padStart(6, '0')}"></span>${n.name}　<span style="font-weight:normal;font-size:13px;color:var(--ui-text)">${n.tag} · ${n.traits.join('，')}</span></h3><div class="gcards">`;
+        h += `<h3><span class="sw" style="display:inline-block;width:12px;height:12px;margin-right:6px;background:#${n.camo.base.toString(16).padStart(6, '0')}"></span>${n.name}　<span style="font-weight:normal;font-size:13px;color:var(--ui-text)">${n.region} · ${n.tag} · ${n.traits.join('，')}</span></h3><div class="gcards">`;
         for (const uk of n.uniques) {
-          const u = defOf(uk), req = (u.req || []).map(r => BUILDINGS[r].name).join('、');
+          const u = natDef(k, uk), req = (u.req || []).map(r => natDef(k, r).name).join('、');
           h += `<div class="gcard"><img src="${ICONS[uk] || ''}"><div><div class="gt">${u.name}</div><div class="gm">$${u.cost}${req ? '　需要：' + req : ''}</div><div class="gd">${u.desc}</div></div></div>`;
         }
         h += `<div class="gcard"><div><div class="gt" style="color:#f0dc80">技能：${ab.name}</div><div class="gm">冷却 ${fmtTime(ab.cd)}（开局先冷却一轮）</div><div class="gd">${ab.desc}</div></div></div></div>`;
@@ -5622,10 +5888,10 @@ const GUIDE = [
       return h + `
         <h3>打法建议</h3>
         <ul>
-          <li><b>北岭联邦</b>：部队耐打，用坦克和“堡垒”重坦正面推进；维修站放在前线附近，战地抢修可以扭转一场大战。</li>
-          <li><b>赤砂共和国</b>：跑得快、打得狠；用突击摩托兵骚扰采矿车，“沙暴”和火箭炮覆盖轰炸敌人的防线。</li>
-          <li><b>金穗联合体</b>：钱多、建筑便宜；自动采矿平台不怕骚扰，“长城”要塞炮守家，再用紧急拨款一口气爆兵。</li>
-          <li><b>灰鹰自治区</b>：直升机便宜又耐打；空降步兵营配合集结点可以把步兵直接投到前线，伞兵空投偷袭敌人后方。</li>
+          <li><b>北岭联邦</b>：征召兵便宜量大，“冻原”重型坦克和“堡垒”重坦正面推进；喷火兵专门清碉堡和民房，维修站放在前线附近。</li>
+          <li><b>赤砂共和国</b>：皮卡、摩托、轻型坦克跑得快，骚扰采矿车；狙击手和反坦克导弹组埋伏在路边，战术导弹车在 22 格外拔掉敌人的关键建筑；伪装网让敌人摸不清你的基地。</li>
+          <li><b>金穗联合体</b>：钱多、防御便宜耐打，步兵进驻碉堡更强；加榴炮射程最远，两栖突击车可以直接渡河、渡海偷袭。</li>
+          <li><b>灰鹰自治区</b>：单位少而精，坦克射程更远；无人机和特种侦察兵提供视野，电子战车削弱敌人射程，“雷枭”和多用途战斗机掌握空中。</li>
         </ul>
         <h3>国家技能怎么用</h3>
         <p>侧栏“导弹井”按钮下面是国家技能按钮，冷却好了会变绿闪烁。点它，再点地图选择地点（紧急拨款点一下就生效）。</p>`;
@@ -5636,38 +5902,45 @@ const GUIDE = [
       let h = '<p>点击建造栏造建筑；新建筑只能放在已有建筑附近（4 格以内）。</p><div class="gcards">';
       for (const k in BUILDINGS) {
         const d = BUILDINGS[k];
-        const req = k === 'hq' ? '开局自带' : k === 'derrick' ? '地图上的中立建筑' : (d.req.length ? d.req.map(r => BUILDINGS[r].name).join('、') : '总部');
+        const req = k === 'hq' ? '开局自带' : !d.cat ? '地图上的中立建筑' : (d.req.length ? d.req.map(r => BUILDINGS[r].name).join('、') : '总部');
         const extra = d.weapon ? `　射程 ${WEAPONS[d.weapon].range} 格` : '';
         const only = d.nation ? `<span style="font-weight:normal;font-size:12px;color:var(--ui-accent)">（${NATIONS[d.nation].short}专属）</span>` : '';
         h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}${only}</div>
           <div class="gm">${d.cost ? '$' + d.cost + '　' : ''}${d.power ? '电力 ' + (d.power > 0 ? '+' : '') + d.power + '　' : ''}生命 ${d.hp}${extra}</div>
           <div class="gm">前置：${req}</div><div class="gd">${d.desc}</div></div></div>`;
       }
-      return h + '</div>';
+      h += '</div><h3>各国建筑对照</h3><p>上面是基础数值。各国建筑的名字、造价、生命和防御塔的武器不同：北岭建筑生命 +20%、建得慢 10%；赤砂便宜 15%、建得快、生命 -15%；金穗防御建筑便宜 15%、生命 +15%；灰鹰直升机坪和机场便宜 20%，其他略贵。</p>';
+      h += '<table class="gtable"><tr><th>建筑</th>' + NATION_KEYS.map(n => `<th>${NATIONS[n].short}</th>`).join('') + '</tr>';
+      for (const k in BUILDINGS) {
+        const d = BUILDINGS[k];
+        if (!d.cat || d.nation) continue;
+        h += `<tr><td>${d.name}</td>` + NATION_KEYS.map(n => { const e = natDef(n, k); return `<td style="text-align:left">${e.name !== d.name ? '<b>' + e.name + '</b><br>' : ''}<span style="color:var(--ui-dim)">$${e.cost} · 生命 ${e.hp}${e.power > 0 ? ' · 电力 +' + e.power : ''}${e.weapon ? ' · 射程 ' + WEAPONS[e.weapon].range : ''}</span></td>`; }).join('') + '</tr>';
+      }
+      return h + '</table>';
     },
   },
   {
     id: 'unit', title: '单位一览', html: () => {
-      let h = '<p>下面是基础数值，实际生命、速度、伤害和造价会受国家特性影响（见“国家特性”页）。</p><div class="gcards">';
-      for (const k in UNITS) {
-        const d = UNITS[k];
-        const fac = d.nation ? `（${NATIONS[d.nation].short}专属）` : '';
-        const w = d.weapon ? WEAPONS[d.weapon] : null;
-        let good = '';
-        if (w) {
-          const m = WARHEAD[w.wh], best = [];
-          ['inf', 'light', 'heavy', 'bld', 'air', 'naval'].forEach(a => { if (m[ARMOR_IDX[a]] >= 0.9 && (a !== 'air' || w.air) && (a === 'air' || w.ground) && (!w.navalOnly || a === 'naval')) best.push(ARMOR_NAME[a]); });
-          good = best.length ? `擅长打：${best.join('、')}` : '';
-          if (w.navalOnly) good += '　只能打舰船';
-          else if (!w.ground) good += '　只能打空中';
-          else if (!w.air) good += '　不能打空中';
-        }
-        h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}<span style="font-weight:normal;font-size:12px;color:var(--ui-dim)">${fac}</span></div>
-          <div class="gm">$${d.cost}　生命 ${d.hp}　护甲 ${ARMOR_NAME[d.armor]}${w ? '　射程 ' + w.range + ' 格' : ''}　人口 ${d.pop}</div>
-          <div class="gm">需要：${d.req.map(r => BUILDINGS[r].name).join('、')}</div>
-          <div class="gd">${d.desc}${good ? '<br>' + good : ''}</div></div></div>`;
+      const me = gNat();
+      let h = '<p>四个国家的单位定位相同、性格不同。先看对照表，再看各国的详细数值。</p><h3>陆军对照</h3>' + roleTable(['inf', 'at', 'spec', 'scout', 'scout2', 'mbt', 'aa', 'arty', 'elite']);
+      for (const n of [me, ...NATION_KEYS.filter(k => k !== me)]) {
+        h += `<h3>${NATIONS[n].name}${n === me && teams[PLAYER] ? '（你的国家）' : ''}</h3><div class="gcards">`;
+        for (const k in UNITS) { const d = UNITS[k]; if (d.nation === n && !d.naval) h += unitCard(k, d); }
+        h += '</div>';
       }
-      h += `</div><h3>步兵生存</h3><p>步兵会卧倒，只受 <b>60%</b> 的爆炸溅射伤害。把步兵放进<b>步兵碉堡</b>（选中步兵，右键点自己的碉堡）：最多 5 人，射程 +1 格、伤害 +20%，敌人只能先拆碉堡。</p>
+      h += '<h3>通用</h3><div class="gcards">';
+      for (const k of ['engineer', 'harvester']) h += unitCard(k, UNITS[k]);
+      h += `<p style="color:var(--ui-dim)">工程师和采矿车每国都有，名字和数值略有不同（例如北岭的重型采矿车更耐打、赤砂的轻型采矿车更快更便宜）。</p>`;
+      h += `</div><h3>步兵生存</h3><p>步兵会卧倒，只受 <b>60%</b> 的爆炸溅射伤害。把步兵放进<b>步兵碉堡</b>（选中步兵，右键点自己的碉堡）：最多 5 人，射程 +1 格、伤害 +20%（金穗 +40%），敌人只能先拆碉堡——但<b>喷火兵</b>的火焰能直接烧到里面的人。</p>
+        <h3>特殊能力</h3><ul>
+          <li><b>伪装</b>（赤砂狙击手、反坦克导弹组）：静止 3 秒后隐蔽，敌人 4 格以内才能发现，开火后暴露 2 秒。</li>
+          <li><b>隐蔽</b>（灰鹰特种侦察兵）：移动中也隐蔽，敌人 4 格以内才能发现。研究<b>热成像</b>后，发现距离变成 8 格。</li>
+          <li><b>伏击</b>（赤砂民兵）：在林地里开火伤害 +25%。</li>
+          <li><b>部署</b>（赤砂战术导弹车）：停稳 3 秒展开发射架后才能发射。</li>
+          <li><b>电子干扰</b>（灰鹰电子战车）：周围 6 格内敌方单位和防御塔射程 -20%。</li>
+          <li><b>两栖</b>（金穗两栖突击车）：能开进河里和海里，水中速度减半。</li>
+          <li><b>伪装网</b>（赤砂专属建筑）：周围 5 格内的己方建筑，敌人 6 格以内才看得到。</li>
+        </ul>
         <h3>兵营升级</h3><p>在步兵栏研究，研究期间该兵营暂停生产步兵。研究一次永久生效。</p><div class="gcards">`;
       for (const k in UPGRADES) {
         const d = UPGRADES[k];
@@ -5681,26 +5954,28 @@ const GUIDE = [
   {
     id: 'counter', title: '克制关系', html: () => {
       const users = {};
-      for (const [k, d] of Object.entries(UNITS).concat(Object.entries(BUILDINGS))) {
-        if (!d.weapon) continue;
+      const me = gNat();
+      for (const [k, d0] of Object.entries(UNITS).concat(Object.entries(BUILDINGS))) {
+        const d = natDef(me, k);
+        if (!d.weapon || (d.nation && d.nation !== me) || (!d.cat && !d.nation && UNITS[k] === undefined && k !== 'hq')) continue;
         const wh = WEAPONS[d.weapon].wh;
         (users[wh] = users[wh] || []).push(d.name);
       }
       const cell = v => { const p = Math.round(v * 100); const c = p >= 90 ? '#7fe07a' : p >= 50 ? '#e8d070' : p > 0 ? '#e08060' : '#666'; return `<td style="color:${c}">${p ? p + '%' : '无效'}</td>`; };
-      let h = `<p>每种武器对不同护甲造成的伤害倍率不同。<b>用对兵种比数量更重要。</b></p>
+      let h = `<p>每种武器对不同护甲造成的伤害倍率不同。<b>用对兵种比数量更重要。</b>“谁在用”一栏列的是${NATIONS[me].short}的单位和防御塔。</p>
         <table class="gtable"><tr><th>武器</th><th>步兵</th><th>轻甲</th><th>重甲</th><th>建筑</th><th>空中</th><th>舰船</th><th>谁在用</th></tr>`;
-      for (const wh of ['small', 'ap', 'he', 'rocket', 'flak', 'torpedo', 'aam', 'bomb']) {
+      for (const wh of ['small', 'ap', 'he', 'rocket', 'flak', 'torpedo', 'aam', 'bomb', 'fire', 'sniper']) {
         const m = WARHEAD[wh];
         h += `<tr><td>${WARHEAD_NAME[wh]}</td>${[0, 1, 2, 3, 4, 5].map(i => cell(m[i])).join('')}<td style="text-align:left;color:var(--ui-dim)">${(users[wh] || []).join('、')}</td></tr>`;
       }
       h += `</table>
         <h3>实战建议</h3>
         <ul>
-          <li>敌人步兵多：用<b>步枪兵</b>、<b>侦察车</b>、<b>机枪塔</b>、<b>自行火炮</b>。</li>
-          <li>敌人坦克多：用<b>主战坦克</b>、<b>反坦克兵</b>、<b>反装甲炮塔</b>。</li>
-          <li>敌人直升机来了：用<b>防空车</b>、<b>防空炮</b>、<b>反坦克兵</b>（火箭可以打飞机）。步枪兵、机枪塔也能对直升机造成少量伤害，总部自带一门防空炮。</li>
+          <li>敌人步兵多：用步兵、侦察车、机枪塔、火炮；北岭的喷火兵、赤砂的狙击手、金穗的迫击炮专门对付步兵。</li>
+          <li>敌人坦克多：用主战坦克、反坦克步兵、反装甲防御塔。</li>
+          <li>敌人直升机来了：用防空车、防空塔、能打空中的反坦克武器（反坦克兵、标枪导弹兵）。机枪类也能对直升机造成少量伤害，总部自带一门防空炮。</li>
           <li>敌人造了<b>战略导弹井</b>：在雷达站之后建<b>反导系统</b>，它会自动拦下落在 13 格内的战略导弹。拦一次要装填几分钟，被多家围攻时多建几座。</li>
-          <li><b>自行火炮</b>和<b>沙暴火箭车</b>射程很远但很脆，躲在坦克后面用；它们打不到太近的目标。</li>
+          <li>火炮射程很远但很脆，躲在坦克后面用；它们打不到太近的目标。</li>
           <li>拆基地：坦克、火炮、反坦克兵对建筑伤害都不错，机枪基本打不动建筑（研究<b>穿甲弹</b>后步枪兵打建筑和载具伤害翻倍）。</li>
           <li>守家：<b>步兵碉堡</b>里塞满步枪兵和反坦克兵，便宜又耐打；敌人要用坦克、火炮把碉堡拆掉。后期研究<b>防弹衣</b>、<b>穿甲弹</b>、<b>战地急救</b>，步兵也能顶上去。</li>
           <li>敌人舰队靠岸：<b>反装甲炮塔</b>、坦克、<b>攻击机</b>都能打舰船；潜艇只能用<b>驱逐舰</b>、<b>潜艇</b>对付。</li>
@@ -5794,10 +6069,8 @@ const GUIDE = [
         <li>建造栏会出现“海军”页签，在这里生产舰船。舰船只能在水上行驶。</li>
       </ol>
       <h3>舰船</h3><div class="gcards">`;
-      for (const k of ['pboat', 'destroyer', 'sub', 'cruiser']) {
-        const d = UNITS[k], w = WEAPONS[d.weapon];
-        h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}</div><div class="gm">$${d.cost}　生命 ${d.hp}　射程 ${w.range} 格</div><div class="gd">${d.desc}</div></div></div>`;
-      }
+      h += '</div>' + roleTable(['boat', 'destroyer', 'sub', 'cruiser']) + '<div class="gcards">';
+      for (const k in UNITS) { const d = UNITS[k]; if (d.naval && d.nation === gNat()) h += unitCard(k, d); }
       return h + `</div>
       <h3>要点</h3>
       <ul>
@@ -5818,11 +6091,8 @@ const GUIDE = [
         <li>机场被摧毁时，飞机会去别的机场；没有机场就只能在空中盘旋。</li>
       </ul>
       <h3>飞机</h3><div class="gcards">`;
-      for (const k of ['fighter', 'striker', 'bomber']) {
-        const d = UNITS[k], w = WEAPONS[d.weapon];
-        h += `<div class="gcard"><img src="${ICONS[k] || ''}"><div><div class="gt">${d.name}</div><div class="gm">$${d.cost}　生命 ${d.hp}　弹药 ${d.ammo}　射程 ${w.range} 格</div><div class="gd">${d.desc}</div></div></div>`;
-      }
-      return h + `</div><div class="gtip">截击机停在机场时，附近 12 格内出现敌方空中单位会自动起飞拦截，是很好的防空手段。灰鹰的空军特性对飞机同样有效。</div>`;
+      h += '</div>' + roleTable(['heli', 'heli2', 'scout2', 'fighter', 'striker', 'bomber']);
+      return h + `<div class="gtip">截击机（灰鹰是多用途战斗机）停在机场时，附近 12 格内出现敌方空中单位会自动起飞拦截，是很好的防空手段。</div>`;
     },
   },
   {
@@ -6084,10 +6354,11 @@ function startGame(cfg) {
       const dx = WORLD / 2 - cx0, dz = WORLD / 2 - cz0, dl = Math.hypot(dx, dz);
       const fx = dx / dl, fz = dz / dl, sx = -fz, sz = fx;
       const at = (f, s) => [cx0 + fx * f + sx * s, cz0 + fz * f + sz * s];
-      for (let i = 0; i < 4; i++) createUnit('rifle', T.id, ...at(9, -3 + i * 1.5));
-      createUnit('rocketInf', T.id, ...at(9, 3.5));
-      createUnit('tank', T.id, ...at(12.5, -2));
-      createUnit('scout', T.id, ...at(12.5, 2));
+      const uf = r => unitFor(T.nation, r);
+      for (let i = 0; i < 4; i++) createUnit(uf('inf'), T.id, ...at(9, -3 + i * 1.5));
+      createUnit(uf('at'), T.id, ...at(9, 3.5));
+      createUnit(uf('mbt'), T.id, ...at(12.5, -2));
+      createUnit(uf('scout'), T.id, ...at(12.5, 2));
       if (T.isAI) T.ai = new AIController(T.id);
     }
     for (const s of derrickSites) {
@@ -6458,7 +6729,7 @@ function applySnapshot(m) {
     u.x = x; u.z = z; u.y = ud[o + 4] / 50; u.angle = ud[o + 5] / 10000; u.turretAngle = ud[o + 6] / 10000;
     const fl = ud[o + 8], rk = (fl >> 2) & 3;
     if (rk !== u.rank) { u.maxHp *= RANKS[rk].hp / RANKS[u.rank].hp; u.rank = rk; }
-    u.hp = ud[o + 7]; u.moving = !!(fl & 1); u.chute = !!(fl & 2); u.parked = !!(fl & 16);
+    u.hp = ud[o + 7]; u.moving = !!(fl & 1); if (u.moving) u.movedT = G.tick; u.chute = !!(fl & 2); u.parked = !!(fl & 16);
     const inB = (fl & 32) ? entById.get(bldGrid[tileOf(z) * MAP + tileOf(x)]) : null;
     if (inB && !u.inside) { const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); } }
     u.inside = inB || null;
@@ -6552,7 +6823,7 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 resize();
 try {
   makeIcons('north');
