@@ -298,7 +298,7 @@ button { font-family: inherit; }
   <div class="tb-item"><span class="tb-label">资金</span><span id="credits">$0</span></div>
   <div class="tb-item"><span class="tb-label">电力</span><div id="powerBar"><div id="powerFill"></div><div id="powerUseMark"></div></div><span id="powerText">0/0</span></div>
   <div class="spacer"></div>
-  <div class="tb-item" id="envItem" title="战场时间与天气：夜晚和恶劣天气会缩短视野"><span id="envInfo" style="font-size:12px;white-space:nowrap"></span></div>
+  <div class="tb-item" id="envItem" title="战场时间与天气（只影响画面氛围）"><span id="envInfo" style="font-size:12px;white-space:nowrap"></span></div>
   <div class="tb-item"><span class="tb-label">时间</span><span id="timer">00:00</span></div>
   <div class="tb-item" id="speedBtns">
     <button class="tbtn active" data-speed="1">1x</button><button class="tbtn" data-speed="2">2x</button><button class="tbtn" data-speed="3">3x</button>
@@ -412,7 +412,7 @@ const T_GRASS = 0, T_DIRT = 1, T_ROCK = 2, T_WATER = 3, T_TREE = 4, T_VOID = 5; 
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-2.6';
+const GAME_VERSION = 'iron-2.7';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -694,13 +694,8 @@ function weatherAt(t = G.time) {
 }
 // 天亮程度：0 深夜 / 1 白天
 const daylight = h => clamp((Math.sin((h - 6) / 12 * Math.PI) + 0.15) / 0.45, 0, 1);
-function sightMul() {
-  if (!ENV.on) return 1;
-  const wt = weatherAt();
-  let m = 0.65 + 0.35 * daylight(timeOfDay());
-  if (wt.kind === 'rain') m *= 1 - 0.15 * wt.w; else if (wt.kind === 'fog') m *= 1 - 0.35 * wt.w;
-  return Math.max(0.5, m);
-}
+// 天气与昼夜只改变画面氛围，不影响视野
+function sightMul() { return 1; }
 
 // =====================================================================
 // 战争迷雾（着色器注入）
@@ -1837,12 +1832,12 @@ function envNotify() {
   if (!ENV.on || G.state !== 'playing') return;
   const ph = envPhase(ENV.hour, ENV.light);
   if (ph !== ENV.phase) {
-    if (ENV.phase) notify({ dusk: '天色渐暗，视野开始缩短', night: '夜幕降临：视野降低，注意夜袭', dawn: '东方发白，天快亮了', day: '天亮了，视野恢复正常' }[ph], ph === 'night' ? 'bad' : '');
+    if (ENV.phase) notify({ dusk: '天色渐暗', night: '夜幕降临', dawn: '东方发白，天快亮了', day: '天亮了' }[ph]);
     ENV.phase = ph;
   }
   const wt = weatherAt(), kind = wt.w > 0.5 ? wt.kind : wt.w > 0 ? ENV.kind : 'clear';
   if (kind !== ENV.kind) {
-    notify(kind === 'rain' ? '开始下雨：视野略微降低' : kind === 'fog' ? '大雾来袭：能见度大幅降低' : ENV.kind === 'rain' ? '雨停了' : '雾散了', kind === 'clear' ? 'good' : 'bad');
+    notify(kind === 'rain' ? '开始下雨' : kind === 'fog' ? '起雾了' : ENV.kind === 'rain' ? '雨停了' : '雾散了');
     ENV.kind = kind;
   }
 }
@@ -1861,9 +1856,11 @@ function updateEnvironment(rdt) {
     SUN_OFFSET.set(lerp(-40, sx, l), lerp(80, sy, l), 35);
   } else SUN_OFFSET.set(-45, 85, 35);
   const e = Math.sin((h - 6) / 12 * Math.PI), dusk = ENV.on ? clamp(1 - Math.abs(e - 0.08) / 0.3, 0, 1) : 0;
-  const murk = rain * 0.5 + fogW * 0.6;
-  mixHex(0x9db4e8, 0xfff0d6, l, sun.color).lerp(_cb.set(0xff9a50), dusk * 0.75).lerp(_cb.set(0xb8c0c8), murk);
-  sun.intensity = lerp(1.3, 2.7, l) * (1 - 0.4 * rain - 0.35 * fogW);
+  // 光照用的亮度：深夜也保留约黄昏的亮度，画面不会太暗
+  const lv = 0.55 + 0.45 * l;
+  const murk = (rain * 0.5 + fogW * 0.6) * 0.5;
+  mixHex(0xb8c8f0, 0xfff0d6, lv, sun.color).lerp(_cb.set(0xff9a50), dusk * 0.75).lerp(_cb.set(0xb8c0c8), murk);
+  sun.intensity = lerp(1.3, 2.7, lv) * (1 - 0.2 * rain - 0.15 * fogW);
   // 闪电
   if (rain > 0.6) {
     ENV.boltT -= rdt;
@@ -1872,15 +1869,13 @@ function updateEnvironment(rdt) {
   if (ENV.thunderT > 0 && (ENV.thunderT -= rdt) <= 0) Sound.play('thunder');
   const fl = ENV.flash > 0 ? ENV.flash * (0.6 + 0.4 * Math.sin(ENV.flash * 40)) : 0;
   ENV.flash = Math.max(0, ENV.flash - rdt * 3.5);
-  mixHex(0x6a7cb0, 0xc8d2dc, l, hemi.color).lerp(_cb.set(0x8a929a), murk);
-  mixHex(0x2a2e3a, 0x4a4030, l, hemi.groundColor);
-  hemi.intensity = lerp(1.05, 1.15, l) * (1 - 0.2 * rain) + fl * 2.2;
-  renderer.toneMappingExposure = lerp(1.2, 1.12, l);
-  // 远景雾：雾天浓、雨天淡
-  const f = Math.max(fogW, rain * 0.45);
-  mixHex(0x161a22, 0x8c949a, l, scene.fog.color).multiplyScalar(1 - rain * 0.3);
-  if (f < 0.01) { scene.fog.near = 1e4; scene.fog.far = 2e4; }
-  else { scene.fog.near = cam.h * lerp(4.5, 0.7, f); scene.fog.far = cam.h * lerp(9, 2.3, f); }
+  mixHex(0x8a9ac8, 0xc8d2dc, lv, hemi.color).lerp(_cb.set(0x8a929a), murk);
+  mixHex(0x3c4050, 0x4a4030, lv, hemi.groundColor);
+  hemi.intensity = lerp(1.05, 1.15, lv) * (1 - 0.1 * rain) + fl * 2.2;
+  renderer.toneMappingExposure = lerp(1.2, 1.12, lv);
+  // 不再用远景雾遮挡画面，雾天只是色调偏灰（见上面的 murk）
+  mixHex(0x161a22, 0x8c949a, lv, scene.fog.color);
+  scene.fog.near = 1e4; scene.fog.far = 2e4;
   // 雨丝：跟随镜头的斜线
   const nRain = Math.floor(RAIN_N * rain);
   rainLines.visible = nRain > 0;
@@ -2121,6 +2116,7 @@ const entById = new Map();
 let selection = [];
 let groups = {};
 let wrecks = [], corpses = [], delayed = [], pings = [], markers = [], reveals = [];
+const WRECK_MAX = 40;   // 残骸 5 秒消失，同时最多保留 40 个
 const oreClaim = new Int32Array(MAP * MAP);
 
 function makeTeam(id, isAI, nation, slot = id, corner = id, name = '') {
@@ -2584,7 +2580,7 @@ function updateTarget(u) {
     }
   }
   if (!u.target && (G.tick + u.id) % 6 === 0) {
-    // 夜晚和恶劣天气下视野缩短，自动索敌的距离也随之缩短（但不小于武器射程的 70%）
+    // 自动索敌距离：视野范围（SIGHT 目前恒为 1，天气不影响视野）
     const r = o.type === 'move' ? (u.hasTurret || u.def.air ? w.range * TILE : 0) : Math.max(u.def.sight * SIGHT, Math.min(u.def.sight, w.range * 0.7)) * TILE;
     if (r > 0) { const nt = findTarget(u, r); if (nt) u.target = nt; }
   }
@@ -2841,7 +2837,8 @@ function deathFx(e) {
       if (sink) { wm.position.y = -0.1; fxSplash(e.x, e.z, 1.5); }
       wm.castShadow = true; scene.add(wm);
       if (e.turretMesh) { const tm = new THREE.Mesh(e.turretMesh.geometry, matWreck); tm.rotation.y = e.turretAngle - e.angle + rnd(-0.5, 0.5); tm.position.set(rnd(-0.2, 0.2), -0.1, rnd(-0.2, 0.2)); wm.add(tm); }
-      wrecks.push({ mesh: wm, t: sink ? 22 : 0, x: e.x, z: e.z, sink });
+      if (wrecks.length >= WRECK_MAX) scene.remove(wrecks.shift().mesh);   // 大混战时先清掉最早的残骸
+      wrecks.push({ mesh: wm, t: sink ? 3.5 : 0, x: e.x, z: e.z, sink });
     }
   } else {
     const W = e.w * TILE, D = e.h * TILE;
@@ -4558,9 +4555,9 @@ function syncMeshes(alpha, rdt, gdt) {
     const w = wrecks[i];
     w.t += gdt;
     w.mesh.visible = exploredAt(w.x, w.z);
-    if (w.t < 6 && Math.random() < gdt * 6 && visibleAt(w.x, w.z)) pSmoke.spawn(w.x + rnd(-0.5, 0.5), 1, w.z + rnd(-0.5, 0.5), 0, rnd(1, 2), 0, 2.5, 0.8, 2.6, 0.15, 0.14, 0.13, 0.55, -0.2, 0.3);
-    if (w.t > 25) w.mesh.position.y -= gdt * (w.sink ? 0.6 : 0.3);
-    if (w.t > 30) { scene.remove(w.mesh); wrecks.splice(i, 1); }
+    if (w.t < 3 && Math.random() < gdt * 6 && visibleAt(w.x, w.z)) pSmoke.spawn(w.x + rnd(-0.5, 0.5), 1, w.z + rnd(-0.5, 0.5), 0, rnd(1, 2), 0, 2.5, 0.8, 2.6, 0.15, 0.14, 0.13, 0.55, -0.2, 0.3);
+    if (w.t > 3.5) w.mesh.position.y -= gdt * (w.sink ? 1.5 : 1.2);
+    if (w.t > 5) { scene.remove(w.mesh); wrecks.splice(i, 1); }
   }
 }
 function updateDelayed(dt) {
@@ -5237,26 +5234,20 @@ const GUIDE = [
   },
   {
     id: 'env', title: '天气与昼夜', html: () => `
-      <p>战场有昼夜交替和天气变化（开局选项“天气与昼夜”可以关闭）。顶栏会显示当前时间、天气和<b>视野倍率</b>。</p>
+      <p>战场有昼夜交替和天气变化（开局选项“天气与昼夜”可以关闭）。顶栏会显示当前时间和天气。</p>
+      <p><b>天气和昼夜只改变画面和音效，不影响视野、射程和战斗。</b></p>
       <h3>昼夜</h3>
       <ul>
         <li>游戏里一天等于实际 <b>20 分钟</b>，从早上 7 点开始。大约 13 分钟后入夜，夜晚持续约 6 分钟。</li>
-        <li>夜里所有单位和建筑的视野降到 <b>65%</b>，单位也要靠得更近才会自动开火（武器射程不变）。</li>
-        <li>夜里建筑亮灯、车辆开车灯、飞机闪航行灯，炮火和爆炸会照亮周围。</li>
+        <li>夜里画面会暗一些，建筑亮灯、车辆开车灯、飞机闪航行灯，炮火和爆炸会照亮周围。</li>
       </ul>
       <h3>天气</h3>
-      <table class="gtable"><tr><th>天气</th><th>出现概率</th><th>视野</th><th>效果</th></tr>
-        <tr><td>晴</td><td>约 55%</td><td>不变</td><td>—</td></tr>
-        <tr><td>雨</td><td>约 25%</td><td>−15%</td><td>天色变暗，大雨时有闪电雷声</td></tr>
-        <tr><td>雾</td><td>约 20%</td><td>−35%</td><td>远处朦胧一片</td></tr>
+      <table class="gtable"><tr><th>天气</th><th>出现概率</th><th>效果</th></tr>
+        <tr><td>晴</td><td>约 55%</td><td>—</td></tr>
+        <tr><td>雨</td><td>约 25%</td><td>下雨、天色稍暗，大雨时有闪电雷声</td></tr>
+        <tr><td>雾</td><td>约 20%</td><td>画面偏灰白</td></tr>
       </table>
-      <p>夜晚和天气的效果会叠加，视野最低降到 50%（例如雾夜）。每段天气持续 4–7 分钟。</p>
-      <h3>战术建议</h3>
-      <ul>
-        <li>夜里和雾天适合偷袭：敌人看不远，基地防御塔会更晚发现你。</li>
-        <li>反过来，入夜前多造防御塔、派侦察车在外围放哨，避免被摸进基地。</li>
-        <li>远程单位（自行火炮、巡洋舰）在夜里需要侦察车或其他单位帮忙照亮目标。</li>
-      </ul>`,
+      <p>每段天气持续 4–7 分钟。</p>`,
   },
   {
     id: 'navy', title: '海战', html: () => {
