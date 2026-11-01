@@ -18,6 +18,14 @@
   --good: #6fcf5a;
   --warn: #e0a040;
 }
+/* 军绿风格滚动条（所有可滚动面板通用） */
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: #5a6a44 #12160f; } }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #12160f; border-left: 1px solid #2a3322; }
+::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #4a5a3a, #5e7046); border: 1px solid #2a3322; }
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #6a7c4e, #c8b46a); }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-corner { background: #12160f; }
 * { box-sizing: border-box; }
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: #0b0d0a; color: var(--ui-text);
