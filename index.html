@@ -426,7 +426,7 @@ const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.1';
+const GAME_VERSION = 'iron-4.2';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -1758,6 +1758,730 @@ function getUnitModel(type, team, nation = nationKeyOf(team)) {
   return m;
 }
 
+// =====================================================================
+// 四国地域建筑风格
+//   北岭：寒带。厚石砌墙、石砌层线和隅石、陡坡石板屋顶、红砖大烟囱、城堡式雉堞
+//   赤砂：沙漠。收分的黄泥土坯墙、平顶女儿墙、圆顶、伸出墙外的木梁头、捕风塔、帆布遮阳
+//   金穗：东方。青砖墙裙 + 白墙、红柱、额枋、青瓦歇山飞檐（主体仍是现代结构）、红灯笼
+//   灰鹰：山地。浅灰金属墙板和竖肋、拱形波纹钢机库、混凝土基座、桁架天线塔、雷达罩、蓝色信标
+// 队伍颜色只用在色带、门框和旗帜上
+// =====================================================================
+const NPAL = {
+  north: { wall: 0x8c8a84, wallDk: 0x5f5e59, wallLt: 0xaba9a1, roof: 0x4c555b, roofDk: 0x2c3134, brick: 0x8a3c2b, brickDk: 0x642a1f, wood: 0x4a3a2a, metal: 0x5a5e60 },
+  south: { wall: 0xc4a272, wallDk: 0x9e7e50, wallLt: 0xd8c096, earth: 0xa48a62, dome: 0xd2c4a4, wood: 0x5a3e26, canvas: 0xbca67c, canvasDk: 0x958058, metal: 0x6a6a62, rust: 0x7a5232 },
+  gold: { wall: 0xdcd6c6, wallDk: 0x6b6a66, stone: 0x9a9890, tile: 0x46525a, ridge: 0x262c30, red: 0x8c2a22, wood: 0x5c2a1e, gilt: 0xb8913c, metal: 0x5a5e60 },
+  hawk: { wall: 0x8e969a, wallDk: 0x5f676b, wallLt: 0xbcc3c6, roof: 0x9aa2a6, white: 0xe0e2e0, blue: 0x3a7ad0, metal: 0x5c6468, conc: 0x9a9890 },
+};
+// 多边形几何体：每个面独立顶点（硬边光照），法线自动朝外（适用于凸体）
+function polyGeo(faces, hex) {
+  let cx = 0, cy = 0, cz = 0, n = 0;
+  for (const f of faces) for (const q of f) { cx += q[0]; cy += q[1]; cz += q[2]; n++; }
+  cx /= n; cy /= n; cz /= n;
+  const pos = [], nor = [], uv = [], idx = [];
+  for (let f of faces) {
+    const [a, b, c] = f;
+    let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const l = Math.hypot(nx, ny, nz);
+    if (l < 1e-9) continue;
+    let fx = 0, fy = 0, fz = 0;
+    for (const q of f) { fx += q[0]; fy += q[1]; fz += q[2]; }
+    fx /= f.length; fy /= f.length; fz /= f.length;
+    if (nx * (fx - cx) + ny * (fy - cy) + nz * (fz - cz) < 0) { f = f.slice().reverse(); nx = -nx; ny = -ny; nz = -nz; }
+    nx /= l; ny /= l; nz /= l;
+    const s = pos.length / 3, top = Math.abs(ny) > 0.6, side = Math.abs(nx) > Math.abs(nz);
+    for (const q of f) { pos.push(q[0], q[1], q[2]); nor.push(nx, ny, nz); uv.push((top || !side ? q[0] : q[2]) * 0.35, (top ? q[2] : q[1]) * 0.35); }
+    for (let i = 1; i < f.length - 1; i++) idx.push(s, s + i, s + i + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return colorGeo(g, hex);
+}
+function beam(a, b, t, hex) {
+  const A = new THREE.Vector3(...a), Bv = new THREE.Vector3(...b), len = A.distanceTo(Bv);
+  const g = new THREE.BoxGeometry(t, t, len);
+  g.applyMatrix4(new THREE.Matrix4().lookAt(A, Bv, Math.abs(Bv.y - A.y) > len * 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)).setPosition(A.add(Bv).multiplyScalar(0.5)));
+  return colorGeo(g, hex);
+}
+const xfFaces = (F, x, y, z, ry) => { const c = Math.cos(ry), s = Math.sin(ry); return F.map(f => f.map(([a, b, d]) => [x + a * c + d * s, y + b, z - a * s + d * c])); };
+// 截头四棱台：底面 w0×d0（在 y），顶面 w1×d1，高 h
+function frustum(w0, d0, w1, d1, h, hex, x = 0, y = 0, z = 0, ry = 0) {
+  const b = [[-w0 / 2, 0, -d0 / 2], [w0 / 2, 0, -d0 / 2], [w0 / 2, 0, d0 / 2], [-w0 / 2, 0, d0 / 2]], t = [[-w1 / 2, h, -d1 / 2], [w1 / 2, h, -d1 / 2], [w1 / 2, h, d1 / 2], [-w1 / 2, h, d1 / 2]];
+  return polyGeo(xfFaces([b, t, [b[0], b[1], t[1], t[0]], [b[1], b[2], t[2], t[1]], [b[2], b[3], t[3], t[2]], [b[3], b[0], t[0], t[3]]], x, y, z, ry), hex);
+}
+// 坡屋顶：底面 w×d，屋脊沿 x、长 ridge（ridge = w 为双坡，ridge < w 为四坡，0 为攒尖）
+function roofGeo(w, d, h, ridge, hex, x = 0, y = 0, z = 0, ry = 0) {
+  const a = w / 2, b = d / 2, r = ridge / 2;
+  const p0 = [-a, 0, -b], p1 = [a, 0, -b], p2 = [a, 0, b], p3 = [-a, 0, b], R0 = [-r, h, 0], R1 = [r, h, 0];
+  return polyGeo(xfFaces([[p0, p1, p2, p3], [p3, p2, R1, R0], [p1, p0, R0, R1], [p0, p3, R0], [p2, p1, R1]], x, y, z, ry), hex);
+}
+// 半圆拱顶（沿 x，ry 可转向），ribs > 0 时加加强肋
+function vault(L, len, r, hex, x, y, z, ry = 0, ribs = 0, ribHex = hex) {
+  const mk = (rr, l, ox) => { const g = new THREE.CylinderGeometry(rr, rr, l, 18, 1, false, 0, Math.PI); g.rotateZ(Math.PI / 2); g.translate(ox, 0, 0); if (ry) g.rotateY(ry); g.translate(x, y, z); return g; };
+  L.push(colorGeo(mk(r, len, 0), hex));
+  for (let i = 0; i < ribs; i++) L.push(colorGeo(mk(r + 0.035, 0.07, -len / 2 + 0.15 + i * (len - 0.3) / Math.max(1, ribs - 1)), ribHex));
+}
+// 竖直的半圆（拱门顶）
+function archTop(r, hex, x, y, z, t = 0.06) {
+  const g = new THREE.CylinderGeometry(r, r, t, 12, 1, false, 0, Math.PI);
+  g.rotateX(Math.PI / 2); g.rotateZ(Math.PI / 2); g.translate(x, y, z);
+  return colorGeo(g, hex);
+}
+const radarDish = (r = 0.75) => { const d = new THREE.CylinderGeometry(r, r * 0.2, r * 0.47, 14, 1, true); d.rotateX(-1.0); return MG([colorGeo(d, C.white), CY(0.03, 0.03, r, C.steel, 0, 0.1, r * 0.27, 4, -1.0), CY(0.1, 0.12, 0.3, C.steel, 0, -0.18, 0, 8)]); };
+
+// 风格工具：每个方法往 L 里加部件
+function styleKit(N, p, L, m) {
+  const P = NPAL[N], S = { N, P };
+  // 地基，返回地基顶面高度
+  S.base = (W, D) => {
+    if (N === 'north') { L.push(frustum(W - 0.1, D - 0.1, W - 0.36, D - 0.36, 0.34, P.wallDk)); return 0.34; }
+    if (N === 'south') { L.push(B(W - 0.15, 0.14, D - 0.15, P.earth, 0, 0.07, 0)); return 0.14; }
+    if (N === 'gold') { L.push(B(W - 0.15, 0.3, D - 0.15, P.wallDk, 0, 0.15, 0), B(W - 0.05, 0.06, D - 0.05, P.stone, 0, 0.33, 0)); return 0.36; }
+    L.push(B(W - 0.15, 0.2, D - 0.15, P.conc, 0, 0.1, 0));
+    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) L.push(B(0.16, 0.02, 0.1, i % 2 ? C.dark : C.yellow, s * (W / 2 - 0.3 - i * 0.16), 0.21, D / 2 - 0.13));
+    return 0.2;
+  };
+  // 墙体块（前面朝 +z），返回顶面高度；opt.colX 指定金穗前廊红柱的位置
+  S.block = (w, h, d, x, z, y0, opt = {}) => {
+    if (N === 'north') {
+      L.push(B(w, h, d, P.wall, x, y0 + h / 2, z));
+      for (let y = y0 + 0.55; y < y0 + h - 0.25; y += 0.55) L.push(B(w + 0.04, 0.05, d + 0.04, P.wallDk, x, y, z));
+      L.push(B(w + 0.14, 0.14, d + 0.14, P.wallDk, x, y0 + h - 0.07, z));
+      if (h > 0.8) for (const s of [-1, 1]) for (let y = y0 + 0.12; y < y0 + h - 0.35; y += 0.5) L.push(B(0.22, 0.22, 0.22, P.wallLt, x + s * (w / 2 - 0.09), y + 0.11, z + d / 2 - 0.09));
+    } else if (N === 'south') {
+      L.push(frustum(w, d, w - 0.12, d - 0.12, h, P.wall, x, y0, z), frustum(w + 0.03, d + 0.03, w + 0.01, d + 0.01, Math.min(0.28, h * 0.3), P.wallDk, x, y0, z));
+      if (h > 0.7) { const nv = Math.max(2, Math.round(w / 0.5)); for (let i = 0; i < nv; i++) L.push(CY(0.045, 0.045, 0.32, P.wood, x - w / 2 + (i + 0.5) * w / nv, y0 + h - 0.2, z + d / 2 - 0.05, 5, Math.PI / 2)); }
+    } else if (N === 'gold') {
+      const sk = Math.min(0.45, h * 0.3);
+      L.push(B(w + 0.04, sk, d + 0.04, P.wallDk, x, y0 + sk / 2, z), B(w, h - sk, d, P.wall, x, y0 + sk + (h - sk) / 2, z));
+      L.push(B(w + 0.08, 0.16, d + 0.08, P.wood, x, y0 + h - 0.08, z), B(w + 0.09, 0.04, d + 0.09, P.gilt, x, y0 + h - 0.19, z));
+      if (opt.cols !== false && h > 0.8) {
+        const nc = Math.max(2, Math.round(w / 1.1) + 1), xs = opt.colX || Array.from({ length: nc }, (_, i) => -w / 2 + 0.1 + i * (w - 0.2) / (nc - 1));
+        for (const cx of xs) L.push(CY(0.075, 0.085, h - 0.06, P.red, x + cx, y0 + (h - 0.06) / 2, z + d / 2 + 0.13, 8), B(0.2, 0.06, 0.2, P.stone, x + cx, y0 + 0.03, z + d / 2 + 0.13));
+      }
+    } else {
+      L.push(B(w, h, d, P.wallLt, x, y0 + h / 2, z), B(w + 0.03, 0.26, d + 0.03, P.wallDk, x, y0 + 0.13, z), B(w + 0.04, 0.08, d + 0.04, P.wall, x, y0 + h - 0.04, z));
+      if (h > 0.6) { const nr = Math.max(2, Math.round(w / 0.42)); for (let i = 1; i < nr; i++) for (const s of [-1, 1]) L.push(B(0.05, h - 0.34, 0.04, P.wall, x - w / 2 + i * w / nr, y0 + 0.26 + (h - 0.34) / 2, z + s * (d / 2 + 0.015))); }
+    }
+    return y0 + h;
+  };
+  // 队伍色带
+  S.trim = (w, d, x, y, z) => L.push(B(w + 0.05, 0.1, d + 0.05, p.accent, x, y, z));
+  // 屋顶（放在墙体顶面 y 上），返回最高点
+  S.roof = (w, d, x, y, z, opt = {}) => {
+    if (N === 'north') {
+      // 陡坡双坡顶：山墙 + 两片外伸的石板屋面 + 屋脊
+      const alongX = opt.ridgeZ ? false : w >= d, len = alongX ? w : d, span = alongX ? d : w, h = span * (opt.pitch || 0.5);
+      const ry = alongX ? 0 : Math.PI / 2;
+      L.push(roofGeo(len, span, h, len, opt.gable || P.wall, x, y, z, ry));
+      const a = span / 2 + 0.2, th = Math.atan2(h, span / 2), sl = a / Math.cos(th) + 0.04, cy = y + h - (a / 2) * Math.tan(th) + 0.05;
+      for (const s of [-1, 1]) {
+        const off = (a / 2) * s;
+        if (alongX) L.push(B(len + 0.3, 0.1, sl, P.roof, x, cy, z + off, 0, s * th, 0));
+        else L.push(B(sl, 0.1, len + 0.3, P.roof, x + off, cy, z, 0, 0, -s * th));
+        for (const u of [-0.25, 0.05, 0.32]) {
+          const du = u * sl, hz = du * Math.cos(th) * s, hy = -du * Math.sin(th) + 0.055;
+          if (alongX) L.push(B(len + 0.3, 0.03, 0.05, P.roofDk, x, cy + hy, z + off + hz, 0, s * th, 0));
+          else L.push(B(0.05, 0.03, len + 0.3, P.roofDk, x + off + hz, cy + hy, z, 0, 0, -s * th));
+        }
+      }
+      L.push(alongX ? B(len + 0.34, 0.12, 0.16, P.roofDk, x, y + h + 0.04, z) : B(0.16, 0.12, len + 0.34, P.roofDk, x, y + h + 0.04, z));
+      return y + h + 0.1;
+    }
+    if (N === 'south') {
+      // 平顶 + 女儿墙（四角加高），可加圆顶
+      const w2 = w - 0.12, d2 = d - 0.12, t = 0.12, ph = 0.24;
+      L.push(B(w2 - 0.1, 0.08, d2 - 0.1, P.wallLt, x, y + 0.04, z));
+      L.push(B(w2, ph, t, P.wall, x, y + ph / 2, z - d2 / 2 + t / 2), B(w2, ph, t, P.wall, x, y + ph / 2, z + d2 / 2 - t / 2), B(t, ph, d2, P.wall, x - w2 / 2 + t / 2, y + ph / 2, z), B(t, ph, d2, P.wall, x + w2 / 2 - t / 2, y + ph / 2, z));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) L.push(B(0.22, ph + 0.14, 0.22, P.wall, x + sx * (w2 / 2 - 0.11), y + (ph + 0.14) / 2, z + sz * (d2 / 2 - 0.11)));
+      let top = y + ph + 0.14;
+      if (opt.dome) {
+        const r = opt.dome, dx = opt.dx ?? x, dz = opt.dz ?? z;
+        L.push(CY(r * 1.04, r * 1.08, 0.32, P.wall, dx, y + 0.16, dz, 18), SP(r, P.dome, dx, y + 0.32, dz, 18, 8), CY(0.025, 0.04, 0.42, P.wood, dx, y + 0.32 + r + 0.16, dz, 6), SP(0.07, P.dome, dx, y + 0.32 + r + 0.38, dz, 8, 6, 1, Math.PI));
+        top = y + 0.32 + r + 0.45;
+      }
+      return top;
+    }
+    if (N === 'gold') return eaveRoof(L, w, d, x, y, z, P, opt);
+    if (opt.vault) { vault(L, w + 0.1, d / 2 + 0.05, P.roof, x, y, z, 0, Math.max(2, Math.round(w / 0.7)), P.wall); return y + d / 2 + 0.05; }
+    const h = (d + 0.2) * 0.16;
+    L.push(roofGeo(w + 0.2, d + 0.2, h, w + 0.2, P.roof, x, y, z), B(w * 0.5, 0.1, 0.24, P.wallDk, x, y + h + 0.04, z));
+    return y + h + 0.1;
+  };
+  // 标志性塔：北岭红砖烟囱 / 赤砂捕风塔 / 金穗小楼阁 / 灰鹰桁架天线塔；返回塔顶点 [x, y, z]
+  S.tower = (x, z, y0, h) => {
+    if (N === 'north') {
+      L.push(CY(0.3, 0.4, h, P.brick, x, y0 + h / 2, z, 10));
+      for (const f of [0.35, 0.7]) L.push(CY(0.42 - f * 0.1, 0.42 - f * 0.1, 0.1, P.brickDk, x, y0 + h * f, z, 10));
+      L.push(CY(0.36, 0.32, 0.22, P.brickDk, x, y0 + h - 0.06, z, 10));
+      return [x, y0 + h + 0.1, z];
+    }
+    if (N === 'south') {
+      L.push(B(0.62, h, 0.62, P.wall, x, y0 + h / 2, z), B(0.74, 0.12, 0.74, P.wallLt, x, y0 + h + 0.06, z), B(0.66, 0.2, 0.66, P.wallDk, x, y0 + 0.1, z));
+      for (const s of [-1, 1]) for (const o of [-0.14, 0.14]) L.push(B(0.09, 0.55, 0.02, C.dark, x + o, y0 + h - 0.38, z + s * 0.315), B(0.02, 0.55, 0.09, C.dark, x + s * 0.315, y0 + h - 0.38, z + o));
+      L.push(CY(0.035, 0.035, 0.9, P.wood, x, y0 + h - 0.75, z, 5, Math.PI / 2), CY(0.035, 0.035, 0.9, P.wood, x, y0 + h - 0.75, z, 5, 0, Math.PI / 2));
+      return [x, y0 + h + 0.15, z];
+    }
+    if (N === 'gold') {
+      L.push(B(0.6, h, 0.6, P.wallDk, x, y0 + h / 2, z), B(0.5, h * 0.35, 0.02, P.wall, x, y0 + h * 0.72, z + 0.3));
+      eaveRoof(L, 0.62, 0.62, x, y0 + h * 0.5, z, P, { skirt: true });
+      const t = eaveRoof(L, 0.66, 0.66, x, y0 + h, z, P);
+      L.push(CY(0.02, 0.05, 0.36, P.gilt, x, t + 0.14, z, 6), SP(0.06, P.gilt, x, t + 0.34, z, 8, 6, 1, Math.PI));
+      return [x, t + 0.4, z];
+    }
+    const r = 0.2;
+    for (const [ax, az] of [[-r, -r * 0.6], [r, -r * 0.6], [0, r]]) L.push(CY(0.025, 0.03, h, P.metal, x + ax, y0 + h / 2, z + az, 4));
+    for (let y = y0 + 0.45; y < y0 + h - 0.1; y += 0.5) L.push(CY(0.25, 0.25, 0.03, P.metal, x, y, z, 3));
+    L.push(CY(0.012, 0.012, 0.8, C.steelLt, x, y0 + h + 0.4, z, 4));
+    return [x, y0 + h + 0.8, z];
+  };
+  // 冒烟的烟囱 / 排气管，返回烟口
+  S.stack = (x, z, y0, h) => {
+    if (N === 'north') return S.tower(x, z, y0, h);
+    if (N === 'south') { L.push(CY(0.08, 0.09, h, P.rust, x, y0 + h / 2, z, 8), CY(0.16, 0.1, 0.08, P.metal, x, y0 + h + 0.06, z, 8), B(0.3, 0.05, 0.05, P.metal, x, y0 + h * 0.6, z)); return [x, y0 + h + 0.1, z]; }
+    if (N === 'gold') { L.push(CY(0.24, 0.32, h, P.stone, x, y0 + h / 2, z, 12)); for (const f of [0.62, 0.86]) L.push(CY(0.27 - f * 0.08, 0.27 - f * 0.08, 0.14, P.red, x, y0 + h * f, z, 12)); return [x, y0 + h + 0.1, z]; }
+    L.push(CY(0.2, 0.24, h, P.wallLt, x, y0 + h / 2, z, 12), CY(0.22, 0.22, 0.08, P.blue, x, y0 + h * 0.8, z, 12), CY(0.21, 0.2, 0.12, P.wallDk, x, y0 + h - 0.06, z, 12));
+    return [x, y0 + h + 0.1, z];
+  };
+  // 门脸（装饰，门板另做成活动部件），门洞底边在 y0，前面在 z
+  S.door = (w, h, x, y0, z) => {
+    L.push(B(w, h, 0.06, C.dark, x, y0 + h / 2, z + 0.01));
+    if (N === 'north') L.push(B(0.16, h + 0.1, 0.12, P.wallLt, x - w / 2 - 0.08, y0 + h / 2, z + 0.03), B(0.16, h + 0.1, 0.12, P.wallLt, x + w / 2 + 0.08, y0 + h / 2, z + 0.03), B(w + 0.5, 0.22, 0.18, P.wallLt, x, y0 + h + 0.11, z + 0.04));
+    else if (N === 'south') L.push(B(w + 0.24, h + 0.1, 0.05, P.wallLt, x, y0 + h / 2, z - 0.01), archTop(w / 2 + 0.12, P.wallLt, x, y0 + h, z - 0.01, 0.05), archTop(w / 2, C.dark, x, y0 + h, z + 0.01), B(w + 0.4, 0.1, 0.14, P.wood, x, y0 + h + w / 2 + 0.18, z + 0.03));
+    else if (N === 'gold') { L.push(B(0.12, h + 0.12, 0.12, P.red, x - w / 2 - 0.06, y0 + h / 2, z + 0.04), B(0.12, h + 0.12, 0.12, P.red, x + w / 2 + 0.06, y0 + h / 2, z + 0.04), B(w + 0.3, 0.14, 0.14, P.red, x, y0 + h + 0.07, z + 0.04), B(w + 0.32, 0.04, 0.15, P.gilt, x, y0 + h + 0.15, z + 0.04)); }
+    else L.push(B(w + 0.16, h + 0.08, 0.05, P.wallDk, x, y0 + h / 2, z - 0.005), B(w * 0.7, 0.05, 0.04, P.blue, x, y0 + h + 0.12, z + 0.03));
+  };
+  // 一排窗户（前面），xs 为各窗中心
+  S.wins = (xs, y, z, h = 0.5) => {
+    if (N === 'hawk') { const x0 = Math.min(...xs) - 0.25, x1 = Math.max(...xs) + 0.25; L.push(B(x1 - x0, h * 0.7, 0.04, C.glass, (x0 + x1) / 2, y, z), B(x1 - x0 + 0.08, 0.05, 0.06, P.wallDk, (x0 + x1) / 2, y - h * 0.38, z)); return; }
+    for (const x of xs) {
+      if (N === 'north') L.push(B(0.3, h, 0.04, C.glass, x, y, z), B(0.42, 0.06, 0.1, P.wallLt, x, y - h / 2 - 0.03, z + 0.02), B(0.42, 0.08, 0.08, P.wallLt, x, y + h / 2 + 0.04, z + 0.01));
+      else if (N === 'south') L.push(B(0.28, 0.28, 0.04, C.dark, x, y, z), B(0.4, 0.06, 0.07, P.wood, x, y + 0.17, z + 0.02));
+      else L.push(B(0.56, h + 0.08, 0.03, P.red, x, y, z - 0.005), B(0.48, h, 0.04, C.glass, x, y, z), B(0.03, h, 0.05, P.gilt, x, y, z + 0.01), B(0.48, 0.03, 0.05, P.gilt, x, y, z + 0.01));
+    }
+  };
+  // 飘动的队伍旗帜（旗杆底在 y0）
+  S.flag = (x, z, y0, h) => {
+    L.push(CY(0.022, 0.03, h, N === 'gold' ? P.red : C.steelLt, x, y0 + h / 2, z, 5), SP(0.045, N === 'gold' ? P.gilt : C.steelLt, x, y0 + h + 0.02, z, 6, 4, 1, Math.PI));
+    m.parts.flag = { geo: B(0.3, 0.34, 0.015, p.accent, 0.15, 0, 0), x: x + 0.02, y: y0 + h - 0.2, z, wave: 1 };
+    m.parts.flag2 = { geo: B(0.3, 0.32, 0.015, p.accent, 0.15, 0, 0), x: x + 0.32, y: y0 + h - 0.2, z, wave: 2, chain: 'flag', len: 0.3 };
+  };
+  // 红灯笼（金穗）
+  S.lantern = (x, y, z) => L.push(CY(0.008, 0.008, 0.18, C.dark, x, y + 0.2, z, 3), SP(0.12, P.red || 0x9a2a20, x, y, z, 10, 6, 1.25, Math.PI), CY(0.06, 0.06, 0.04, P.gilt || C.yellow, x, y + 0.15, z, 8), CY(0.06, 0.06, 0.04, P.gilt || C.yellow, x, y - 0.15, z, 8));
+  // 一排沙袋
+  S.bags = (x, z, n, ry = 0, y = 0.13, col = C.sand) => { for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 0.5; L.push(B(0.48, 0.24, 0.28, col, x + Math.cos(ry) * o, y, z - Math.sin(ry) * o, ry + rnd(-0.06, 0.06))); } };
+  // 各国的地面杂物
+  S.clutter = (x, z, y0 = 0) => {
+    if (N === 'north') { for (let i = 0; i < 3; i++) L.push(CY(0.09, 0.09, 0.8, P.wood, x, y0 + 0.09 + (i > 1 ? 0.15 : 0), z + (i > 1 ? 0 : i * 0.19 - 0.1), 6, Math.PI / 2, 0, Math.PI / 2)); L.push(CY(0.15, 0.15, 0.4, C.rust, x + 0.5, y0 + 0.2, z + 0.1, 8)); }
+    else if (N === 'south') { L.push(CY(0.15, 0.15, 0.42, 0x4a5a3a, x, y0 + 0.21, z, 8), CY(0.15, 0.15, 0.42, P.rust, x + 0.32, y0 + 0.21, z + 0.05, 8), B(0.14, 0.22, 0.24, 0x55603e, x - 0.3, y0 + 0.11, z + 0.15), B(0.14, 0.22, 0.24, 0x55603e, x - 0.3, y0 + 0.11, z - 0.12)); }
+    else if (N === 'gold') { L.push(B(0.5, 0.3, 0.4, 0x5a5a3c, x, y0 + 0.15, z), B(0.4, 0.25, 0.35, 0x5a5a3c, x + 0.05, y0 + 0.42, z, 0.3), B(0.18, 0.5, 0.18, P.stone, x + 0.5, y0 + 0.25, z)); }
+    else { L.push(B(0.5, 0.4, 0.5, 0x6a6e5a, x, y0 + 0.2, z), B(0.45, 0.35, 0.45, 0x6a6e5a, x + 0.05, y0 + 0.58, z, 0.4), B(0.4, 0.3, 0.4, P.wallDk, x + 0.55, y0 + 0.15, z + 0.1)); }
+  };
+  S.beacon = (k, x, y, z, ph = 0) => { if (N === 'hawk') m.parts[k] = { geo: B(0.12, 0.1, 0.12, 0x5aa0ff), x, y, z, blink: ph, glow: [0.3, 0.55, 1] }; else beacon(m, k, x, y, z, ph); };
+  return S;
+}
+// 金穗歇山飞檐：平缓外伸的檐口 + 较陡的屋面 + 屋脊和鸱吻 + 四角起翘；opt.skirt 只做一圈腰檐（重檐的下层）
+function eaveRoof(L, w, d, x, y, z, P, opt = {}) {
+  const ow = w + Math.min(0.7, w * 0.5), od = d + Math.min(0.7, d * 0.5), eh = Math.min(0.26, w * 0.2);
+  L.push(B(ow - 0.08, 0.05, od - 0.08, P.wood, x, y - 0.02, z));
+  L.push(frustum(ow, od, w * 0.86, d * 0.86, eh, P.tile, x, y, z), frustum(ow + 0.04, od + 0.04, ow - 0.02, od - 0.02, 0.05, P.ridge, x, y - 0.01, z));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const len = Math.min(0.55, w * 0.35);
+    L.push(B(len, 0.07, 0.14, P.tile, x + sx * (ow / 2 - len * 0.2), y + 0.07, z + sz * (od / 2 - len * 0.2), Math.atan2(-sz, sx), 0, 0.5));
+  }
+  if (opt.skirt) return y + eh;
+  const w1 = w * 0.86, d1 = d * 0.86, hh = Math.min(w1, d1) * 0.42, rl = Math.max(0.1, w1 - d1 * 0.62);
+  L.push(roofGeo(w1, d1, hh, rl, P.tile, x, y + eh, z));
+  const ry = y + eh + hh;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) L.push(beam([x + sx * (ow / 2 - 0.05), y + 0.06, z + sz * (od / 2 - 0.05)], [x + sx * rl / 2, ry + 0.02, z], Math.min(0.08, w * 0.06), P.ridge));
+  L.push(B(rl + 0.16, 0.1, 0.12, P.ridge, x, ry + 0.03, z));
+  for (const s of [-1, 1]) L.push(B(0.1, 0.24, 0.12, P.ridge, x + s * (rl / 2 + 0.06), ry + 0.12, z, 0, 0, -s * 0.35));
+  return ry + 0.2;
+}
+
+// 按国家生成建筑；返回 false 时用通用模型（民房、油井、桥、伪装网阵地）
+function styledBuilding(type, team, N, p, L, m, W, D) {
+  if (team < 0 || !NPAL[N]) return false;
+  const S = styleKit(N, p, L, m), P = S.P;
+  const n = N === 'north', s = N === 'south', g = N === 'gold', h = N === 'hawk';
+  switch (type) {
+    case 'hq': {
+      const y = S.base(W, D);
+      if (n) {
+        // 指挥要塞：石砌大厅 + 城堡式主塔（雉堞、雷达、旗）+ 红砖烟囱
+        const t = S.block(4.2, 2.0, 2.8, 0.5, -0.4, y); S.trim(4.2, 2.8, 0.5, t - 0.3, -0.4); S.roof(4.2, 2.8, 0.5, t, -0.4);
+        const kx = -1.75, kz = -1.3, kh = 3.3, kt = S.block(1.7, kh, 1.7, kx, kz, y);
+        for (const o of [-0.68, -0.23, 0.23, 0.68]) for (const sz of [-1, 1]) L.push(B(0.3, 0.3, 0.3, P.wall, kx + o, kt + 0.15, kz + sz * 0.78));
+        for (const o of [-0.23, 0.23]) for (const sx of [-1, 1]) L.push(B(0.3, 0.3, 0.3, P.wall, kx + sx * 0.78, kt + 0.15, kz + o));
+        m.parts.dish = { geo: radarDish(0.7), x: kx, y: kt + 0.45, z: kz, spin: 0.6 };
+        S.flag(kx + 0.68, kz + 0.68, kt + 0.3, 1.4);
+        m.smoke.push(S.tower(2.25, -1.45, y, 4.4));
+        S.door(1.0, 1.3, 0.5, y, 1.0); S.wins([-0.9, -0.2, 1.2, 1.9], y + 1.2, 1.02, 0.55);
+        L.push(B(1.6, 0.17, 0.5, P.wallLt, 0.5, 0.09, 1.55), B(1.6, 0.17, 0.3, P.wallLt, 0.5, 0.26, 1.2));
+        S.bags(-2.0, 2.4, 3); S.bags(2.2, 2.4, 3); S.clutter(-2.2, 1.3, y);
+        m.muzzle = { y: kt + 0.4, z: 0 };
+      } else if (s) {
+        // 前线指挥部：土坯大屋 + 大圆顶 + 捕风塔 + 侧厢 + 帆布遮阳棚
+        const t = S.block(4.0, 1.9, 2.9, 0.4, -0.6, y); S.trim(4.0, 2.9, 0.4, y + 0.42, -0.6);
+        const rt = S.roof(4.0, 2.9, 0.4, t, -0.6, { dome: 0.85, dx: -0.3, dz: -0.7 });
+        const tt = S.tower(2.05, -1.75, y, 3.5); S.flag(tt[0], tt[2], tt[1] - 0.1, 1.1);
+        const wt = S.block(1.5, 1.2, 1.8, -2.05, 0.7, y); S.roof(1.5, 1.8, -2.05, wt, 0.7);
+        S.door(0.9, 1.15, 0.4, y, 0.85);
+        L.push(B(2.3, 0.04, 1.1, P.canvas, 0.4, y + 1.75, 1.4, 0, -0.22), B(2.3, 0.18, 0.02, P.canvasDk, 0.4, y + 1.56, 1.95));
+        for (const sx of [-0.7, 1.5]) L.push(CY(0.04, 0.04, 1.65, P.wood, sx, y + 0.82, 1.9, 5));
+        S.wins([-0.9, 1.6], y + 1.2, 0.86); m.parts.dish = { geo: radarDish(0.6), x: 1.5, y: t + 0.55, z: -1.2, spin: 0.7 };
+        S.bags(-1.1, 2.55, 4); S.bags(1.9, 2.55, 3); S.clutter(-2.2, 2.2, y);
+        m.muzzle = { y: rt - 0.5, z: 0 };
+      } else if (g) {
+        // 总指挥部：青砖台基 + 白墙红柱大殿 + 重檐飞檐 + 现代侧楼（雷达）+ 灯笼
+        L.push(B(1.6, 0.12, 0.3, P.stone, 0, 0.06, 2.8), B(1.6, 0.12, 0.3, P.stone, 0, 0.18, 2.55));
+        const t = S.block(4.2, 1.8, 2.5, -0.2, -0.5, y);
+        const sk = S.roof(4.2, 2.5, -0.2, t, -0.5, { skirt: true });
+        const ut = S.block(2.5, 0.85, 1.4, -0.2, -0.5, sk, { cols: false }); S.roof(2.5, 1.4, -0.2, ut, -0.5);
+        L.push(B(1.3, 2.5, 1.5, P.stone, 2.1, y + 1.25, -1.9), B(1.32, 0.12, 1.52, p.accent, 2.1, y + 2.3, -1.9), B(1.0, 0.25, 0.04, C.glass, 2.1, y + 1.7, -1.13), B(1.0, 0.25, 0.04, C.glass, 2.1, y + 1.1, -1.13));
+        m.parts.dish = { geo: radarDish(0.6), x: 2.1, y: y + 2.75, z: -1.9, spin: 0.6 };
+        S.door(1.0, 1.25, -0.2, y, 0.76); S.wins([-1.45, 1.05], y + 1.0, 0.77, 0.6);
+        S.lantern(-0.82, y + 1.5, 0.95); S.lantern(0.42, y + 1.5, 0.95);
+        S.flag(-2.45, 2.35, y, 2.5); S.clutter(2.0, 1.9, y);
+        m.muzzle = { y: 3.6, z: 0 };
+      } else {
+        // 山地指挥所：混凝土掩体基座 + 金属指挥舱（带状窗）+ 雷达罩 + 桁架天线塔
+        L.push(frustum(5.0, 3.8, 4.5, 3.3, 1.3, P.conc, 0, y, -0.4)); S.trim(4.6, 3.4, 0, y + 1.2, -0.4);
+        const t = S.block(3.0, 1.1, 2.0, 0.3, -0.6, y + 1.3); S.wins([-0.8, 0.3, 1.4], t - 0.5, 0.42, 0.45); const rt = S.roof(3.0, 2.0, 0.3, t, -0.6);
+        L.push(CY(0.42, 0.5, 0.55, P.conc, -1.75, y + 1.57, -1.45, 10), SP(0.72, P.white, -1.75, y + 1.85, -1.45, 16, 10, 1, Math.PI * 0.62));
+        const tt = S.tower(2.15, -1.75, y + 1.3, 2.8); S.beacon('bcn', tt[0], tt[1] - 0.82, tt[2]);
+        m.parts.dish = { geo: radarDish(0.55), x: 1.1, y: rt + 0.25, z: -0.9, spin: 0.7 };
+        L.push(B(1.5, 1.05, 0.1, C.dark, 0, y + 0.52, 1.45), B(1.7, 0.1, 0.12, P.wallDk, 0, y + 1.1, 1.46), B(1.0, 0.05, 0.04, P.blue, 0, y + 1.2, 1.48));
+        S.flag(-2.45, 2.3, y, 2.4); S.clutter(1.9, 2.0, y);
+        m.muzzle = { y: rt, z: 0 };
+      }
+      break;
+    }
+    case 'subhq': {
+      const y = S.base(W, D);
+      const t = S.block(3.4, 1.5, 2.6, 0.2, -0.4, y); S.trim(3.4, 2.6, 0.2, y + (g ? 1.2 : 1.0), -0.4);
+      const rt = S.roof(3.4, 2.6, 0.2, t, -0.4, s ? { dome: 0.65, dx: -0.4, dz: -0.5 } : {});
+      if (h) { const tt = S.tower(-1.9, -1.7, y, 3.0); S.beacon('bcn', tt[0], tt[1] - 0.82, tt[2]); }
+      else if (n) m.smoke.push(S.tower(-1.85, -1.6, y, 3.4)); else S.tower(-1.9, -1.7, y, s ? 2.8 : 2.6);
+      m.parts.dish = { geo: radarDish(0.55), x: 1.6, y: t + 0.5, z: -1.2, spin: 0.7 };
+      S.door(0.9, 1.1, 0.2, y, 0.9 + (s ? 0 : 0.02)); S.wins([-0.9, 1.3], y + 0.95, 0.92, 0.45);
+      S.flag(-2.4, 2.3, y, 2.2); S.bags(0.8, 2.5, 4); S.clutter(2.1, 2.0, y);
+      if (g) S.lantern(0.75, y + 1.3, 1.1);
+      m.muzzle = { y: rt - 0.3, z: 0 };
+      break;
+    }
+    case 'power': {
+      const y = S.base(W, D);
+      if (n) {
+        // 燃煤电厂：锅炉房 + 两根红砖大烟囱 + 煤堆和输煤皮带
+        const t = S.block(2.3, 1.7, 2.6, 0.6, 0.1, y); S.trim(2.3, 2.6, 0.6, t - 0.28, 0.1); S.roof(2.3, 2.6, 0.6, t, 0.1, { ridgeZ: true });
+        const a = S.tower(-1.2, -1.2, y, 3.6), b = S.tower(-1.25, 0.25, y, 2.9); m.smoke.push(a, b);
+        beacon(m, 'bcn', a[0] + 0.33, a[1] - 0.15, a[2]); beacon(m, 'bcn2', b[0] + 0.33, b[1] - 0.15, b[2], 0.6);
+        L.push(frustum(1.2, 0.8, 0.25, 0.2, 0.55, 0x23211f, -1.2, y, 1.35), B(1.5, 0.1, 0.32, P.metal, -0.45, y + 0.82, 1.15, 0, 0, 0.5), B(0.1, 0.7, 0.1, P.metal, -0.2, y + 0.35, 1.15));
+        S.wins([0.15, 0.6, 1.05], y + 0.95, 1.42, 0.7);
+        L.push(B(0.5, 0.6, 0.4, P.metal, 1.5, y + 0.3, 1.65), CY(0.04, 0.05, 0.3, C.white, 1.4, y + 0.75, 1.65, 6), CY(0.04, 0.05, 0.3, C.white, 1.6, y + 0.75, 1.65, 6));
+      } else if (s) {
+        // 柴油发电站：帆布顶棚下两台柴油机组 + 排气管 + 卧式油罐 + 汽油桶 + 小土坯值班室
+        for (const [x, z] of [[-1.6, -1.75], [1.6, -1.75], [-1.6, -0.55], [1.6, -0.55]]) L.push(CY(0.05, 0.06, 1.5, P.wood, x, y + 0.75, z, 5));
+        L.push(B(3.5, 0.05, 1.5, P.canvas, 0, y + 1.52, -1.15, 0, 0.18), B(3.5, 0.18, 0.02, P.canvasDk, 0, y + 1.33, -0.42), B(0.9, 0.051, 1.3, P.canvasDk, -0.9, y + 1.53, -1.15, 0, 0.18));
+        for (const x of [-0.7, 0.75]) {
+          L.push(B(1.1, 0.65, 0.66, p.base, x, y + 0.33, 0.45), B(0.06, 0.5, 0.56, C.dark, x - 0.58, y + 0.33, 0.45), B(1.12, 0.06, 0.68, p.dark, x, y + 0.68, 0.45), B(0.3, 0.12, 0.3, C.dark, x + 0.25, y + 0.77, 0.45));
+          L.push(CY(0.06, 0.06, 1.2, P.rust, x + 0.3, y + 1.25, 0.3, 6), CY(0.12, 0.07, 0.07, P.metal, x + 0.3, y + 1.87, 0.3, 6)); m.smoke.push([x + 0.3, y + 1.9, 0.3]);
+        }
+        L.push(CY(0.03, 0.03, 1.4, C.dark, 0.0, y + 0.08, 0.95, 4, 0, Math.PI / 2));
+        for (const x of [-0.8, 0.8]) L.push(CY(0.3, 0.3, 1.3, x < 0 ? 0x5e6a4a : 0x6a5a40, x, y + 0.42, -1.2, 12, 0, Math.PI / 2), B(0.2, 0.2, 0.5, P.wood, x - 0.45, y + 0.1, -1.2), B(0.2, 0.2, 0.5, P.wood, x + 0.45, y + 0.1, -1.2));
+        const t = S.block(1.0, 1.05, 0.9, -1.35, 1.35, y); S.roof(1.0, 0.9, -1.35, t, 1.35); S.trim(1.0, 0.9, -1.35, y + 0.35, 1.35);
+        S.clutter(0.9, 1.5, y); S.bags(0.2, 1.85, 2, 0.2);
+        beacon(m, 'bcn', 1.6, y + 1.55, -0.55);
+      } else if (g) {
+        // 水力发电站：混凝土坝 + 泄洪水流 + 压力水管 + 白墙飞檐厂房 + 变压器
+        L.push(frustum(3.8, 1.3, 3.8, 0.6, 2.3, P.stone, 0, y, -1.25), B(3.9, 0.12, 0.7, P.wallDk, 0, y + 2.36, -1.25));
+        for (const x of [-1.6, -0.55, 0.55, 1.6]) L.push(CY(0.03, 0.03, 0.4, P.red, x, y + 2.62, -1.0, 4), SP(0.06, 0xfff2b0, x, y + 2.85, -1.0, 6, 4, 1, Math.PI));
+        L.push(B(1.0, 2.4, 0.03, 0x8fb8c8, 0, y + 1.18, -0.75, 0, -0.15), B(1.3, 0.05, 0.75, 0x7aa4b4, 0, y + 0.03, -0.25), B(1.1, 0.12, 0.25, 0xe2ecef, 0, y + 0.08, -0.5));
+        for (const x of [-1.25, 1.25]) L.push(CY(0.17, 0.17, 1.7, P.metal, x, y + 1.05, -0.35, 10, 0.95), CY(0.22, 0.22, 0.12, P.wallDk, x, y + 0.45, 0.05, 10, 0.95));
+        const t = S.block(2.8, 1.15, 1.2, 0, 0.95, y, { colX: [-1.3, -0.45, 0.45, 1.3] }); S.roof(2.8, 1.2, 0, t, 0.95);
+        S.wins([-0.85, 0, 0.85], y + 0.7, 1.56, 0.4);
+        L.push(B(0.5, 0.5, 0.35, P.metal, 1.45, y + 0.25, 1.85), CY(0.04, 0.05, 0.3, C.white, 1.35, y + 0.65, 1.85, 6), CY(0.04, 0.05, 0.3, C.white, 1.55, y + 0.65, 1.85, 6));
+        S.lantern(-1.3, y + 1.0, 1.75);
+        beacon(m, 'bcn', 1.85, y + 2.5, -1.25);
+      } else {
+        // 燃气轮机电站：拱顶涡轮机房 + 两根排气烟囱 + 球形燃气罐 + 管道 + 变压器
+        const t = S.block(2.6, 0.5, 2.0, 0.4, -0.3, y); S.trim(2.6, 2.0, 0.4, y + 0.36, -0.3);
+        vault(L, 2.6, 1.0, P.roof, 0.4, t, -0.3, 0, 5, P.wall);
+        L.push(B(0.8, 0.9, 0.06, P.wallDk, 0.4, t + 0.3, 0.74), B(0.5, 0.05, 0.04, P.blue, 0.4, t + 0.82, 0.76));
+        const a = S.stack(-1.4, -1.15, y, 2.9), b = S.stack(-1.4, 0.25, y, 2.4); m.smoke.push(a, b);
+        L.push(SP(0.55, P.white, 1.25, y + 1.05, 1.35, 14, 10, 1, Math.PI));
+        for (const [dx, dz] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) L.push(CY(0.04, 0.04, 0.8, P.metal, 1.25 + dx, y + 0.4, 1.35 + dz, 5));
+        L.push(CY(0.07, 0.07, 1.6, P.metal, 0.3, y + 0.5, 1.2, 6, 0, Math.PI / 2), CY(0.07, 0.07, 0.6, P.metal, -0.5, y + 0.5, 0.95, 6, Math.PI / 2));
+        S.beacon('bcn', a[0] + 0.25, a[1] - 0.2, a[2]); S.beacon('bcn2', b[0] + 0.25, b[1] - 0.2, b[2], 0.6);
+      }
+      break;
+    }
+    case 'refinery': {
+      const y = S.base(W, D);
+      // 共用：卸矿区和传送带（矿石部件沿着它运动）
+      L.push(B(3.0, 0.06, 1.5, C.dark, -0.2, y + 0.03, 2.15), B(3.0, 0.03, 0.12, C.yellow, -0.2, y + 0.07, 1.45), B(3.0, 0.03, 0.12, C.yellow, -0.2, y + 0.07, 2.85));
+      L.push(B(0.4, 0.2, 2.8, P.metal || C.steel, -0.9, 1.4, 0.3, 0, 0.45), B(0.6, 0.9, 0.6, P.metal || C.steel, -0.9, 0.7, 1.2));
+      for (let i = 0; i < 5; i++) m.parts['ore' + i] = { geo: B(0.24, 0.12, 0.22, i % 2 ? C.ore : 0xa88a34, 0, 0, 0, 0, 0.45), x: -0.9, y: 1.4, z: 0.3, conv: { i, n: 5, a: [-0.9, 0.94, 1.63], b: [-0.9, 2.16, -0.89] } };
+      if (n) {
+        const t = S.block(2.3, 1.9, 2.4, 1.7, -0.6, y); S.trim(2.3, 2.4, 1.7, t - 0.3, -0.6); S.roof(2.3, 2.4, 1.7, t, -0.6, { ridgeZ: true });
+        for (const x of [-2.05, 0.25]) { L.push(CY(0.62, 0.62, 2.3, P.wall, x, y + 1.15, -1.75, 14)); for (const f of [0.3, 0.65]) L.push(CY(0.65, 0.65, 0.1, P.wallDk, x, y + 2.3 * f, -1.75, 14)); L.push(CY(0.1, 0.68, 0.5, P.roof, x, y + 2.55, -1.75, 14)); }
+        const rt = S.block(0.9, 2.3, 0.9, -0.9, -1.55, y); S.roof(0.9, 0.9, -0.9, rt, -1.55);
+        m.smoke.push(S.tower(2.5, -2.35, y, 3.6)); S.wins([1.2, 2.2], y + 1.1, 0.62, 0.6); S.clutter(1.9, 1.6, y);
+      } else if (s) {
+        L.push(frustum(1.7, 1.5, 0.3, 0.3, 0.9, C.ore, -2.0, y, -1.9), frustum(1.4, 1.3, 0.25, 0.2, 0.7, 0xa88a34, 1.95, y, -2.1));
+        for (const [x, z] of [[-1.25, -1.95], [-0.55, -1.95], [-1.25, -1.2], [-0.55, -1.2]]) L.push(CY(0.05, 0.06, 2.5, P.wood, x, y + 1.25, z, 5));
+        L.push(B(1.0, 0.7, 0.9, P.wood, -0.9, y + 2.35, -1.55), frustum(0.9, 0.8, 0.3, 0.3, 0.45, P.wood, -0.9, y + 1.55, -1.55), B(0.04, 1.2, 0.04, P.wood, -0.9, y + 1.0, -1.95, 0, 0, 0.6));
+        const t = S.block(1.7, 1.4, 1.7, 1.75, -0.2, y); S.trim(1.7, 1.7, 1.75, y + 0.4, -0.2); S.roof(1.7, 1.7, 1.75, t, -0.2, { dome: 0.45, dx: 1.75, dz: -0.2 });
+        for (const [x, z] of [[0.0, -0.4], [0.0, 0.6], [1.0, 1.25]]) L.push(CY(0.04, 0.05, 1.5, P.wood, x, y + 0.75, z, 5));
+        L.push(B(1.3, 0.04, 1.5, P.canvas, 0.45, y + 1.5, 0.2, 0, 0, 0.12));
+        m.smoke.push(S.stack(2.45, -1.35, y, 2.2)); S.door(0.6, 0.9, 1.75, y, 0.65); S.clutter(2.2, 1.8, y);
+      } else if (g) {
+        for (const x of [-1.95, 0.15]) { L.push(CY(0.7, 0.7, 2.5, P.wall, x, y + 1.25, -1.7, 16), CY(0.72, 0.72, 0.16, P.red, x, y + 1.9, -1.7, 16), CY(0.72, 0.72, 0.04, P.gilt, x, y + 2.0, -1.7, 16), CY(0.1, 0.9, 0.45, P.tile, x, y + 2.72, -1.7, 16)); }
+        const t = S.block(2.2, 1.7, 2.4, 1.75, -0.6, y, { colX: [-1.0, 0, 1.0] }); S.roof(2.2, 2.4, 1.75, t, -0.6);
+        m.smoke.push(S.stack(2.55, -2.5, y, 3.3)); S.wins([1.4, 2.2], y + 1.0, 0.62 + 0.0, 0.5); S.lantern(1.0, y + 1.3, 0.82);
+        L.push(B(0.9, 2.4, 0.9, P.stone, -0.9, y + 1.2, -1.6), B(0.92, 0.1, 0.92, p.accent, -0.9, y + 2.0, -1.6));
+      } else {
+        const t = S.block(2.2, 0.6, 2.6, 1.75, -0.5, y); S.trim(2.2, 2.6, 1.75, y + 0.45, -0.5);
+        vault(L, 2.6, 1.1, P.roof, 1.75, t, -0.5, Math.PI / 2, 5, P.wall);
+        for (const x of [-1.95, 0.15]) { L.push(CY(0.68, 0.68, 2.3, P.wallLt, x, y + 1.15, -1.75, 16), SP(0.68, P.wallLt, x, y + 2.3, -1.75, 16, 6, 0.35, Math.PI / 2), CY(0.7, 0.7, 0.08, P.blue, x, y + 1.7, -1.75, 16)); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; L.push(B(0.05, 2.2, 0.05, P.wall, x + Math.sin(a) * 0.69, y + 1.1, -1.75 + Math.cos(a) * 0.69)); } }
+        L.push(B(0.9, 2.4, 0.9, P.wall, -0.9, y + 1.2, -1.6));
+        const a = S.stack(2.55, -2.45, y, 3.0); m.smoke.push(a); S.beacon('bcn', a[0] + 0.25, a[1] - 0.2, a[2]);
+        L.push(B(1.2, 0.85, 0.06, P.wallDk, 1.75, t + 0.3, 0.82)); S.clutter(2.3, 1.7, y);
+      }
+      break;
+    }
+    case 'barracks': {
+      const y = S.base(W, D);
+      if (n) {
+        // 征兵站：石砌长屋 + 陡坡屋顶 + 小烟囱 + 柴堆
+        const t = S.block(3.0, 1.35, 2.5, 0, 0.17, y); S.trim(3.0, 2.5, 0, t - 0.25, 0.17); S.roof(3.0, 2.5, 0, t, 0.17);
+        m.smoke.push(S.tower(1.0, -0.5, y, 2.7)); S.wins([-1.0, 1.0], y + 0.75, 1.44, 0.45);
+        S.door(0.8, 0.95, 0, y, 1.42); S.clutter(-1.3, 1.75, 0);
+      } else if (s) {
+        // 民兵营地：土坯小屋 + 两顶帆布帐篷 + 沙袋
+        const t = S.block(1.9, 1.25, 1.8, 0, 0.52, y); S.trim(1.9, 1.8, 0, y + 0.3, 0.52); S.roof(1.9, 1.8, 0, t, 0.52);
+        S.door(0.8, 0.95, 0, y, 1.42);
+        L.push(roofGeo(1.3, 1.2, 1.05, 0.3, P.canvas, -1.15, y, -1.1), roofGeo(1.2, 1.1, 0.95, 0, P.canvasDk, 1.2, y, -1.2), CY(0.025, 0.025, 1.25, P.wood, -1.15, y + 0.62, -1.1, 4));
+        S.bags(-1.5, 1.2, 2, Math.PI / 2, y + 0.12); S.bags(1.4, 0.3, 2, Math.PI / 2, y + 0.12); S.clutter(-1.35, -0.1, y);
+      } else if (g) {
+        // 练兵场：白墙红柱 + 飞檐 + 兵器架 + 灯笼
+        const t = S.block(2.8, 1.3, 1.9, 0, 0.47, y, { colX: [-1.3, -0.62, 0.62, 1.3] }); S.roof(2.8, 1.9, 0, t, 0.47);
+        S.door(0.8, 0.95, 0, y, 1.42); S.lantern(-0.62, y + 1.05, 1.6); S.lantern(0.62, y + 1.05, 1.6);
+        for (const x of [-1.6, -1.0]) L.push(CY(0.03, 0.03, 1.0, P.wood, x, y + 0.5, -1.45, 4));
+        L.push(B(0.8, 0.05, 0.05, P.wood, -1.3, y + 0.85, -1.45), B(0.8, 0.05, 0.05, P.wood, -1.3, y + 0.45, -1.45));
+        S.wins([-0.95, 0.95], y + 0.75, 1.43, 0.4);
+      } else {
+        // 训练营：拱形波纹钢营房（门在山墙端）+ 通讯模块 + 攀爬架
+        L.push(B(2.5, 0.15, 2.7, P.wallDk, 0, y + 0.07, 0.07)); vault(L, 2.6, 1.15, P.roof, 0, y + 0.12, 0.12, Math.PI / 2, 6, P.wall);
+        S.door(0.8, 0.95, 0, y, 1.42);
+        L.push(B(0.8, 0.8, 0.9, P.wallLt, 1.55, y + 0.4, -1.2), B(0.82, 0.08, 0.92, p.accent, 1.55, y + 0.7, -1.2), CY(0.015, 0.015, 1.4, C.steelLt, 1.55, y + 1.5, -1.4, 4));
+        for (const x of [-1.75, -1.15]) L.push(B(0.08, 1.4, 0.08, P.wood || 0x5a4a34, x, y + 0.7, 1.4));
+        for (let k = 0; k < 4; k++) L.push(B(0.6, 0.03, 0.03, 0x6a5a40, -1.45, y + 0.3 + k * 0.3, 1.4));
+        S.beacon('bcn', 0, y + 1.32, 1.35, 0.3);
+      }
+      S.flag(1.75, 1.75, y, 2.2);
+      swingDoors(m, 0.8, 0.92, 0, y + 0.47, 1.49, n ? P.wood : g ? P.red : s ? P.wood : P.wallDk); m.door = { x: 0, z: 1.42 };
+      break;
+    }
+    case 'factory': {
+      const y = S.base(W, D), dc = n ? P.wallDk : s ? P.canvas : g ? P.wallDk : P.wallLt;
+      if (n) {
+        // 重型战车厂：山墙朝前的大厂房（石墙、陡坡顶）+ 两根红砖烟囱
+        const t = S.block(5.0, 2.45, 4.0, 0, -0.58, y); S.trim(5.0, 4.0, 0, t - 0.32, -0.58); const rt = S.roof(5.0, 4.0, 0, t, -0.58, { ridgeZ: true, pitch: 0.42, gable: P.brick });
+        L.push(B(0.06, 0.05, 3.6, C.glass, -1.0, t + 0.9, -0.58, 0, 0, 0.4), B(0.06, 0.05, 3.6, C.glass, 1.0, t + 0.9, -0.58, 0, 0, -0.4));
+        m.smoke.push(S.tower(-1.9, -2.3, y, 5.0), S.tower(1.9, -2.3, y, 4.3));
+        L.push(B(0.3, 2.15, 0.2, P.wallLt, -1.56, y + 1.07, 1.5), B(0.3, 2.15, 0.2, P.wallLt, 1.56, y + 1.07, 1.5)); S.wins([-2.05, 2.05], y + 1.3, 1.43, 1.0);
+        L.push(archTop(0.5, C.glass, 0, t + 0.55, 1.43, 0.04));
+        m.flash = [[-1.0, t + 0.95, -1.5], [1.0, t + 0.95, -0.3], [-1.0, t + 0.95, 0.4]];
+      } else if (s) {
+        // 车辆改装厂：厚土坯墙 + 木梁上搭锈铁皮顶 + 帆布卷帘 + 轮胎和车架
+        S.block(0.55, 2.1, 4.0, -2.22, -0.58, y); S.block(0.55, 2.1, 4.0, 2.22, -0.58, y); S.block(4.0, 2.1, 0.5, 0, -2.33, y);
+        S.block(0.6, 2.1, 0.5, -1.7, 1.17, y); S.block(0.6, 2.1, 0.5, 1.7, 1.17, y); L.push(B(3.0, 0.22, 0.34, P.wood, 0, y + 2.07, 1.3));
+        L.push(B(5.3, 0.06, 4.5, P.rust, 0, y + 2.35, -0.58, 0, -0.1), B(4.6, 0.08, 4.0, P.wallDk, 0, y + 2.2, -0.58));
+        for (let k = 0; k < 12; k++) L.push(B(0.04, 0.03, 4.5, 0x8a6040, -2.4 + k * 0.44, y + 2.39, -0.58, 0, -0.1));
+        for (const [w, d, c, px, pz] of [[1.3, 1.2, 0x8c8c84, -1.3, -1.6], [1.0, 1.4, 0x6a4a30, 1.2, 0.3], [0.9, 0.9, 0x9a7a50, 0.2, -2.0]]) L.push(B(w, 0.065, d, c, px, y + 2.385 + (pz + 0.58) * 0.1, pz, 0, -0.1));
+        m.smoke.push(S.stack(1.6, -1.6, y + 2.4, 1.2)); S.trim(5.0, 4.0, 0, y + 0.35, -0.58);
+        for (let k = 0; k < 3; k++) L.push(CY(0.26, 0.26, 0.16, C.rubber, 2.45, y + 0.08 + k * 0.17, 2.3, 10));
+        L.push(B(0.9, 0.35, 0.5, p.dark, -2.3, y + 0.3, 2.35, 0.2), CY(0.18, 0.18, 0.12, C.rubber, -2.6, y + 0.18, 2.1, 8, 0, Math.PI / 2));
+        L.push(CY(0.35, 0.35, 0.6, P.metal, -1.6, y + 2.75, -1.6, 10), B(0.7, 0.3, 0.7, P.wood, -1.6, y + 2.4, -1.6));
+        m.flash = [[-1.0, y + 2.4, -0.4], [1.0, y + 2.4, -1.4]];
+      } else if (g) {
+        // 战车总厂：大跨度厂房 + 巨大飞檐顶 + 红柱前廊 + 烟囱
+        const t = S.block(5.0, 2.3, 4.0, 0, -0.58, y, { colX: [-2.4, -1.65, 1.65, 2.4] }); S.roof(5.0, 4.0, 0, t, -0.58);
+        S.wins([-2.05, 2.05], y + 1.55, 1.43, 0.55); m.smoke.push(S.stack(-2.3, -2.4, y, 3.8));
+        S.lantern(-1.65, y + 1.9, 1.62); S.lantern(1.65, y + 1.9, 1.62);
+        m.flash = [[-2.05, y + 1.55, 1.5], [2.05, y + 1.55, 1.5]];
+      } else {
+        // 装甲车间：大拱形波纹钢机库（门在山墙端）+ 天窗 + 排气烟囱 + 蓝灯
+        const t = S.block(5.0, 0.7, 4.0, 0, -0.58, y); S.trim(5.0, 4.0, 0, y + 0.55, -0.58);
+        vault(L, 4.0, 2.45, P.roof, 0, t, -0.58, Math.PI / 2, 6, P.wall);
+        L.push(B(0.5, 0.05, 3.7, C.glass, 0, t + 2.47, -0.58));
+        const a = S.stack(2.3, -2.3, y, 3.0); m.smoke.push(a);
+        S.beacon('bcn', -1.65, y + 2.15, 1.5); S.beacon('bcn2', 1.65, y + 2.15, 1.5, 0.6);
+        m.flash = [[0, t + 2.55, -1.6], [0, t + 2.55, 0.2]];
+      }
+      L.push(B(2.8, 1.95, 0.1, C.dark, 0, y + 0.98, 1.42), B(2.95, 0.26, 0.28, P.metal || C.steel, 0, y + 2.09, 1.54));
+      if (!n) L.push(B(0.15, 2.0, 0.15, C.yellow, -1.45, y + 1.0, 1.45), B(0.15, 2.0, 0.15, C.yellow, 1.45, y + 1.0, 1.45));
+      rollDoor(m, 2.72, 1.92, 0, y + 1.96, 1.5, dc); m.door = { x: 0, z: 1.45 };
+      break;
+    }
+    case 'radar': {
+      const y = S.base(W, D);
+      const t = S.block(2.6, 1.15, 1.9, 0, 0.75, y); S.trim(2.6, 1.9, 0, t - (g ? 0.32 : 0.25), 0.75); S.roof(2.6, 1.9, 0, t, 0.75);
+      S.wins([-0.7, 0.7], y + 0.65, 1.72, 0.4);
+      let top;
+      if (n) { L.push(CY(0.45, 0.62, 2.6, P.wall, 0, y + 1.3, -1.05, 12), CY(0.66, 0.66, 0.12, P.wallDk, 0, y + 0.9, -1.05, 12), CY(0.55, 0.5, 0.18, P.wallDk, 0, y + 2.6, -1.05, 12)); top = y + 2.7; }
+      else if (s) { for (const [x, z] of [[-0.45, -1.5], [0.45, -1.5], [-0.45, -0.6], [0.45, -0.6]]) L.push(CY(0.05, 0.06, 2.5, P.wood, x, y + 1.25, z, 5)); for (const yy of [0.8, 1.6]) L.push(B(1.0, 0.06, 1.0, P.wood, 0, y + yy, -1.05)); L.push(B(1.1, 0.1, 1.1, P.wood, 0, y + 2.5, -1.05), B(0.05, 1.3, 0.05, P.wood, 0, y + 1.2, -1.5, 0, 0, 0.62)); top = y + 2.55; }
+      else if (g) { L.push(CY(0.42, 0.52, 2.5, P.stone, 0, y + 1.25, -1.05, 12), CY(0.54, 0.54, 0.14, P.red, 0, y + 2.1, -1.05, 12), CY(0.55, 0.55, 0.04, P.gilt, 0, y + 2.2, -1.05, 12)); eaveRoof(L, 0.8, 0.8, 0, y + 2.5, -1.05, P, { skirt: true }); top = y + 2.75; }
+      else { S.tower(0, -1.05, y, 2.4); L.push(SP(0.45, P.white, -1.0, t + 0.1, 0.6, 12, 8, 1, Math.PI * 0.6)); top = y + 2.45; }
+      m.parts.dish = h ? { geo: MG([B(1.9, 0.7, 0.08, P.white, 0, 0.4, 0, 0, -0.25), B(1.95, 0.06, 0.14, P.wallDk, 0, 0.05, -0.05), B(0.12, 0.4, 0.12, P.metal, 0, -0.1, 0)]), x: 0, y: top + 0.2, z: -1.05, spin: 1.2 }
+        : { geo: MG([radarDish(1.15), CY(0.12, 0.12, 0.35, C.steel, 0, -0.15, 0, 8)]), x: 0, y: top + 0.35, z: -1.05, spin: 1.2 };
+      break;
+    }
+    case 'helipad': {
+      const y = n ? (L.push(B(3.85, 0.2, 3.85, P.wallDk, 0, 0.1, 0)), 0.2) : s ? (L.push(B(3.85, 0.1, 3.85, P.earth, 0, 0.05, 0)), 0.1) : g ? (L.push(B(3.85, 0.18, 3.85, P.stone, 0, 0.09, 0), B(3.6, 0.02, 3.6, P.red, 0, 0.19, 0), B(3.4, 0.03, 3.4, P.stone, 0, 0.2, 0)), 0.21) : (L.push(B(3.85, 0.2, 3.85, P.wallDk, 0, 0.1, 0)), 0.2);
+      if (s) for (let k = 0; k < 14; k++) { const a = k / 14 * Math.PI * 2; L.push(B(0.18, 0.1, 0.12, C.white, Math.cos(a) * 1.45, y + 0.04, Math.sin(a) * 1.45, -a)); }
+      else L.push(CY(1.45, 1.45, 0.02, C.yellow, 0, y + 0.01, 0, 24), CY(1.3, 1.3, 0.03, n ? P.wallDk : g ? P.stone : P.wallDk, 0, y + 0.02, 0, 24));
+      if (h) for (let k = -3; k <= 3; k++) L.push(B(3.7, 0.01, 0.03, P.metal, 0, y + 0.01, k * 0.5), B(0.03, 0.01, 3.7, P.metal, k * 0.5, y + 0.01, 0));
+      L.push(B(0.22, 0.03, 1.1, C.white, -0.35, y + 0.04, 0), B(0.22, 0.03, 1.1, C.white, 0.35, y + 0.04, 0), B(0.5, 0.03, 0.22, C.white, 0, y + 0.04, 0));
+      let bt;
+      if (n) { const t = S.block(0.75, 1.1, 0.75, 1.5, -1.5, y); L.push(roofGeo(0.95, 0.95, 0.55, 0, P.roof, 1.5, t, -1.5)); bt = t + 0.6; }
+      else if (s) { L.push(roofGeo(0.95, 0.95, 0.9, 0, P.canvas, 1.5, y, -1.5), CY(0.025, 0.025, 1.2, P.wood, 1.5, y + 0.6, -1.5, 4)); bt = y + 1.25; S.bags(-1.55, 1.5, 2, Math.PI / 4, y + 0.12); }
+      else if (g) { for (const [dx, dz] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) L.push(CY(0.05, 0.05, 1.0, P.red, 1.5 + dx, y + 0.5, -1.5 + dz, 6)); bt = eaveRoof(L, 0.85, 0.85, 1.5, y + 1.0, -1.5, P) + 0.04; }
+      else { const t = S.block(0.7, 1.2, 0.7, 1.5, -1.5, y); L.push(B(0.8, 0.3, 0.8, C.glass, 1.5, t + 0.15, -1.5), B(0.86, 0.06, 0.86, p.accent, 1.5, t + 0.33, -1.5)); bt = t + 0.42; for (const [x, z] of [[-1.8, -1.8], [1.8, 1.8], [-1.8, 1.8]]) L.push(B(0.1, 0.06, 0.1, 0x5aa0ff, x, y + 0.04, z)); }
+      S.beacon('bcn', 1.5, bt, -1.5);
+      if (!g) { L.push(CY(0.02, 0.02, 1.3, C.steelLt, -1.65, y + 0.65, -1.65, 4)); const ws = new THREE.CylinderGeometry(0.03, 0.09, 0.45, 8); ws.rotateZ(Math.PI / 2); ws.translate(-1.43, y + 1.22, -1.65); L.push(colorGeo(ws, 0xd86a30)); }
+      break;
+    }
+    case 'lab': {
+      const y = S.base(W, D);
+      const t = S.block(3.0, 1.15, 2.1, 0.0, 0.55, y); S.trim(3.0, 2.1, 0, y + 0.85, 0.55); S.roof(3.0, 2.1, 0, t, 0.55, s ? { dome: 0.6, dx: 0.6, dz: 0.55 } : {});
+      S.wins([-1.0, -0.35, 0.35, 1.0], y + 0.7, 1.62, 0.35);
+      if (n) { L.push(CY(0.62, 0.62, 0.9, P.wall, -0.9, y + 0.45, -1.25, 14), SP(0.62, 0x6a8a84, -0.9, y + 0.9, -1.25, 14, 8), B(0.16, 0.6, 0.04, C.dark, -0.9, y + 1.25, -0.72, 0, -0.5)); m.smoke.push(S.tower(1.2, -1.3, y, 2.2)); }
+      else if (s) { S.tower(-1.2, -1.3, y, 2.4); L.push(CY(0.02, 0.02, 1.6, C.steelLt, 1.3, y + 1.5, -1.3, 4), CY(0.02, 0.02, 1.2, C.steelLt, 1.0, y + 1.3, -1.45, 4)); }
+      else if (g) { L.push(B(1.2, 1.9, 1.1, P.stone, -1.0, y + 0.95, -1.25), B(1.0, 1.5, 0.04, C.glass, -1.0, y + 1.0, -0.69), B(1.22, 0.1, 1.12, p.accent, -1.0, y + 1.68, -1.25), B(1.26, 0.06, 1.16, P.wallDk, -1.0, y + 1.92, -1.25)); L.push(SP(0.45, C.white, 1.0, y + 0.9, -1.2, 12, 6, 1, Math.PI / 2), CY(0.05, 0.05, 0.9, C.steel, 1.0, y + 0.45, -1.2, 6)); }
+      else { L.push(B(1.2, 1.0, 1.0, P.wallLt, -1.0, y + 0.5, -1.3), SP(0.55, P.white, -1.0, y + 1.0, -1.3, 14, 8, 1, Math.PI * 0.62)); const d = new THREE.CylinderGeometry(0.5, 0.1, 0.25, 12, 1, true); d.rotateX(-0.8); d.translate(1.0, y + 1.0, -1.2); L.push(colorGeo(d, C.white), CY(0.05, 0.06, 0.8, P.metal, 1.0, y + 0.4, -1.3, 6)); }
+      if (g) S.lantern(0.0, y + 0.9, 1.75);
+      break;
+    }
+    case 'tech': {
+      const y = S.base(W, D);
+      if (g) {
+        // 科技中心：三层塔楼，每层一圈腰檐，顶上飞檐 + 金色宝顶
+        let yy = y;
+        for (const [w, hh] of [[2.4, 1.0], [1.8, 0.75], [1.3, 0.6]]) { yy = S.block(w, hh, w, -0.2, -0.3, yy, { cols: false }); yy = w > 1.4 ? S.roof(w, w, -0.2, yy, -0.3, { skirt: true }) : S.roof(w, w, -0.2, yy, -0.3); }
+        L.push(CY(0.02, 0.06, 0.5, P.gilt, -0.2, yy + 0.2, -0.3, 6), SP(0.08, P.gilt, -0.2, yy + 0.47, -0.3, 8, 6, 1, Math.PI));
+        S.beacon('bcn', -0.2, yy + 0.62, -0.3, 0.3); S.door(0.6, 0.75, -0.2, y, 0.9); S.trim(2.4, 2.4, -0.2, y + 0.38, -0.3);
+        L.push(B(0.9, 0.7, 1.2, P.stone, 1.45, y + 0.35, 1.0), B(0.7, 0.2, 0.04, C.glass, 1.45, y + 0.45, 1.61)); S.lantern(0.3, y + 0.75, 1.05);
+      } else {
+        const t = S.block(2.6, 1.4, 2.2, -0.3, 0.6, y); S.trim(2.6, 2.2, -0.3, t - 0.28, 0.6); S.roof(2.6, 2.2, -0.3, t, 0.6, s ? { dome: 0.7, dx: -0.3, dz: 0.6 } : {});
+        S.wins([-1.1, 0.5], y + 0.8, 1.72, 0.45); S.door(0.6, 0.85, -0.3, y, 1.7 + (s ? -0.02 : 0));
+        if (n) { const kt = S.block(1.0, 2.6, 1.0, 1.3, -1.2, y); L.push(roofGeo(1.3, 1.3, 1.2, 0, P.roof, 1.3, kt, -1.2), CY(0.02, 0.03, 0.5, C.steelLt, 1.3, kt + 1.45, -1.2, 4)); S.beacon('bcn', 1.3, kt + 1.73, -1.2, 0.3); S.wins([1.3], y + 1.9, -0.68, 0.45); }
+        else if (s) { const tt = S.tower(1.3, -1.25, y, 3.0); S.beacon('bcn', tt[0], tt[1] + 0.02, tt[2], 0.3); L.push(CY(0.015, 0.015, 1.2, C.steelLt, -1.4, y + 2.4, -0.2, 4)); }
+        else { L.push(CY(0.7, 0.7, 1.6, P.wallLt, 1.15, y + 0.8, -1.15, 16), CY(0.72, 0.72, 0.3, C.glass, 1.15, y + 1.1, -1.15, 16), CY(0.72, 0.72, 0.06, P.blue, 1.15, y + 1.6, -1.15, 16), SP(0.5, P.white, 1.15, y + 1.62, -1.15, 12, 8, 1, Math.PI * 0.6)); const tt = S.tower(-1.6, -1.4, y, 2.4); S.beacon('bcn', tt[0], tt[1] - 0.82, tt[2], 0.3); }
+      }
+      break;
+    }
+    case 'silo': {
+      // 导弹井：井盖和井口位置各国一样（活动部件），周围按地域布置
+      L.push(B(W - 0.15, 0.24, D - 0.15, n ? P.wallDk : s ? P.earth : g ? P.wallDk : P.conc, 0, 0.12, 0), B(3.3, 0.55, 3.3, n ? P.wall : s ? P.wallDk : g ? P.stone : P.conc, 0, 0.5, 0));
+      for (let i = 0; i < 8; i++) L.push(B(0.35, 0.02, 0.15, i % 2 ? C.yellow : C.dark, -1.2 + i * 0.34, 0.79, 1.5));
+      L.push(B(2.3, 0.04, 2.3, C.dark, 0, 0.78, -0.2), B(0.5, 0.4, 0.5, p.accent, 1.35, 0.95, 1.3));
+      m.parts.doorL = { geo: MG([B(1.1, 0.14, 2.2, C.concreteLt, 0, 0, 0), B(0.2, 0.02, 2.2, C.yellow, 0.4, 0.08, 0)]), x: -0.55, y: 0.86, z: -0.2 };
+      m.parts.doorR = { geo: MG([B(1.1, 0.14, 2.2, C.concreteLt, 0, 0, 0), B(0.2, 0.02, 2.2, C.yellow, -0.4, 0.08, 0)]), x: 0.55, y: 0.86, z: -0.2 };
+      if (n) { m.smoke.push(S.tower(1.55, -1.55, 0.78, 1.4)); S.block(0.8, 0.7, 0.6, -1.3, 1.3, 0.78); L.push(roofGeo(0.9, 0.7, 0.35, 0.9, P.roof, -1.3, 1.48, 1.3)); }
+      else if (s) { S.bags(-1.55, 0, 6, Math.PI / 2, 0.9); S.bags(1.6, -0.6, 4, Math.PI / 2, 0.9); L.push(roofGeo(0.9, 0.9, 0.7, 0.3, P.canvas, -1.3, 0.78, 1.3)); }
+      else if (g) { for (const [dx, dz] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) L.push(CY(0.045, 0.045, 0.75, P.red, -1.3 + dx, 1.15, 1.3 + dz, 6)); eaveRoof(L, 0.75, 0.75, -1.3, 1.53, 1.3, P); }
+      else { const tt = S.tower(1.55, -1.55, 0.78, 1.8); S.beacon('bcn', tt[0], tt[1] - 0.82, tt[2]); L.push(B(0.8, 0.6, 0.6, P.wallLt, -1.3, 1.08, 1.3), B(0.6, 0.18, 0.04, C.glass, -1.3, 1.15, 1.61)); }
+      break;
+    }
+    case 'mgTurret': {
+      if (n) {
+        // 重机枪堡：圆形混凝土碉 + 观察孔 + 装甲圆顶机枪
+        L.push(CY(0.85, 0.95, 0.75, P.wallDk, 0, 0.375, 0, 12), CY(0.87, 0.87, 0.12, C.dark, 0, 0.55, 0, 12), CY(0.9, 0.86, 0.1, P.wall, 0, 0.8, 0, 12));
+        m.turret = MG([SP(0.42, P.metal, 0, 0.82, 0, 12, 6, 0.75, Math.PI / 2), B(0.22, 0.16, 0.3, C.dark, 0, 0.95, 0.25), barrel(0.045, 0.8, 0, 0.95, 0.3, 0, C.dark), B(0.1, 0.1, 0.1, p.accent, 0.25, 1.12, -0.1)]);
+        m.muzzle = { y: 0.95, z: 1.1 };
+      } else if (s) {
+        // 沙袋机枪阵地：两层沙袋 + 帆布遮阳 + 三脚架机枪
+        L.push(CY(0.85, 0.9, 0.1, P.earth, 0, 0.05, 0, 10)); sandbagRing(L, 0.78, 0.25, 9, true); sandbagRing(L, 0.76, 0.48, 9, true);
+        L.push(CY(0.03, 0.03, 1.4, P.wood, -0.7, 0.7, -0.6, 4), CY(0.03, 0.03, 1.2, P.wood, 0.7, 0.6, -0.6, 4), B(1.6, 0.03, 0.8, P.canvas, 0, 1.33, -0.4, 0, -0.2, 0.08));
+        m.turret = MG([CY(0.02, 0.02, 0.6, C.dark, 0.15, 0.32, 0.1, 4, 0.4), CY(0.02, 0.02, 0.6, C.dark, -0.15, 0.32, 0.1, 4, 0.4), CY(0.02, 0.02, 0.6, C.dark, 0, 0.32, -0.15, 4, -0.4), B(0.16, 0.16, 0.45, C.dark, 0, 0.66, 0.05), barrel(0.03, 0.6, 0, 0.68, 0.25, 0, C.dark), B(0.5, 0.28, 0.03, p.base, 0, 0.78, 0.25), B(0.14, 0.12, 0.2, 0x55603e, 0.2, 0.6, -0.05)]);
+        m.muzzle = { y: 0.68, z: 0.9 };
+      } else if (g) {
+        // 机枪塔：青砖方塔 + 雉堞 + 带护盾的机枪
+        L.push(B(1.3, 1.1, 1.3, P.wallDk, 0, 0.55, 0), B(1.34, 0.05, 1.34, P.gilt, 0, 0.95, 0), B(1.42, 0.1, 1.42, P.stone, 0, 1.12, 0));
+        for (const sd of [-1, 1]) { for (const o of [-0.55, 0, 0.55]) L.push(B(0.24, 0.24, 0.24, P.wallDk, o, 1.29, sd * 0.6)); L.push(B(0.24, 0.24, 0.24, P.wallDk, sd * 0.6, 1.29, 0)); }
+        m.turret = MG([CY(0.2, 0.24, 0.16, P.metal, 0, 1.25, 0, 8), B(0.28, 0.2, 0.42, C.dark, 0, 1.4, 0), barrel(0.035, 0.75, 0, 1.42, 0.2, 0, C.dark), B(0.5, 0.3, 0.04, p.base, 0, 1.45, 0.24), B(0.1, 0.1, 0.1, p.accent, 0.2, 1.62, 0.2)]);
+        m.muzzle = { y: 1.42, z: 0.95 };
+      } else {
+        // 遥控机枪塔：八角混凝土座 + 遥控武器站（光电球 + 机枪）
+        L.push(CY(0.85, 0.92, 0.5, P.conc, 0, 0.25, 0, 8), CY(0.7, 0.75, 0.12, P.wallDk, 0, 0.56, 0, 8), B(0.4, 0.04, 0.03, P.blue, 0, 0.4, 0.86));
+        m.turret = MG([CY(0.3, 0.34, 0.14, P.wallDk, 0, 0.68, 0, 10), B(0.42, 0.28, 0.5, P.wallLt, 0, 0.88, 0), B(0.44, 0.04, 0.52, p.accent, 0, 1.03, 0), SP(0.09, C.glass, 0.18, 1.08, 0.12, 8, 6, 1, Math.PI), barrel(0.035, 0.75, -0.08, 0.86, 0.25, 0, C.dark)]);
+        m.muzzle = { y: 0.86, z: 1.0 };
+      }
+      break;
+    }
+    case 'atTurret': {
+      if (n) {
+        // 100 毫米反坦克炮：混凝土炮位 + 带护盾的长身管炮
+        L.push(frustum(1.85, 1.85, 1.35, 1.35, 0.5, P.wallDk), B(1.4, 0.06, 1.4, P.wall, 0, 0.53, 0));
+        m.turret = MG([B(0.5, 0.25, 0.7, p.dark, 0, 0.66, -0.1), B(0.95, 0.55, 0.06, p.base, 0, 0.95, 0.3, 0, -0.22), B(0.06, 0.45, 0.5, p.base, -0.47, 0.9, 0.05, 0.3), B(0.06, 0.45, 0.5, p.base, 0.47, 0.9, 0.05, -0.3), barrel(0.06, 1.75, 0, 0.88, 0.2), CY(0.1, 0.1, 0.22, C.steel, 0, 0.88, 1.95, 8, Math.PI / 2), B(0.1, 0.1, 0.1, p.accent, 0.3, 1.25, 0.25)]);
+        m.muzzle = { y: 0.88, z: 2.05 };
+      } else if (s) {
+        // 反坦克导弹阵地：沙袋 + 三脚架发射筒
+        L.push(CY(0.85, 0.9, 0.1, P.earth, 0, 0.05, 0, 10)); sandbagRing(L, 0.78, 0.25, 9, true);
+        m.turret = MG([CY(0.025, 0.025, 0.7, C.dark, 0.18, 0.35, 0.1, 4, 0.35), CY(0.025, 0.025, 0.7, C.dark, -0.18, 0.35, 0.1, 4, 0.35), CY(0.025, 0.025, 0.7, C.dark, 0, 0.35, -0.18, 4, -0.35), CY(0.08, 0.08, 1.1, p.base, 0, 0.78, 0.15, 10, Math.PI / 2 - 0.08), B(0.16, 0.14, 0.2, C.dark, 0.14, 0.86, -0.05), CY(0.09, 0.09, 0.04, C.dark, 0, 0.82, 0.71, 10, Math.PI / 2 - 0.08), B(0.3, 0.12, 0.4, 0x55603e, -0.35, 0.35, -0.3)]);
+        m.muzzle = { y: 0.82, z: 0.75 };
+      } else if (g) {
+        L.push(CY(0.88, 0.98, 0.7, P.wallDk, 0, 0.35, 0, 10), CY(0.9, 0.9, 0.05, P.gilt, 0, 0.6, 0, 10), CY(0.92, 0.9, 0.08, P.stone, 0, 0.72, 0, 10));
+        m.turret = MG([B(0.85, 0.45, 0.95, p.base, 0, 0.98, -0.05), B(0.65, 0.06, 0.7, p.dark, 0, 1.23, -0.1), barrel(0.08, 1.5, 0, 1.0, 0.35), CY(0.11, 0.11, 0.2, C.steel, 0, 1.0, 1.85, 8, Math.PI / 2), B(0.12, 0.12, 0.12, p.accent, 0.3, 1.27, -0.3)]);
+        m.muzzle = { y: 1.0, z: 1.95 };
+      } else {
+        // 导弹塔：金属塔身 + 旋转的双联导弹箱
+        L.push(B(0.95, 1.3, 0.95, P.wallLt, 0, 0.65, 0), B(1.0, 0.25, 1.0, P.wallDk, 0, 0.13, 0), B(1.02, 0.08, 1.02, p.accent, 0, 1.2, 0));
+        for (const o of [-0.25, 0.25]) L.push(B(0.04, 1.0, 0.04, P.wall, o, 0.75, 0.49));
+        m.turret = MG([CY(0.3, 0.34, 0.14, P.wallDk, 0, 1.37, 0, 10), B(0.85, 0.45, 0.7, P.wall, 0, 1.65, 0, 0, -0.12), ...[[-0.2, -0.1], [0.2, -0.1], [-0.2, 0.12], [0.2, 0.12]].map(([x, yy]) => CY(0.08, 0.08, 0.03, C.dark, x, 1.65 + yy, 0.36, 8, Math.PI / 2 - 0.12)), B(0.3, 0.3, 0.05, P.white, 0, 1.75, -0.4, 0, 0.3)]);
+        m.muzzle = { y: 1.65, z: 0.45 };
+      }
+      break;
+    }
+    case 'aaGun': {
+      if (n) {
+        // 57 毫米高炮：沙袋炮坑 + 带护盾的单管高炮
+        L.push(CY(0.9, 0.95, 0.3, P.wallDk, 0, 0.15, 0, 10)); sandbagRing(L, 0.82, 0.42, 10);
+        m.turret = MG([CY(0.45, 0.5, 0.2, p.dark, 0, 0.42, 0, 10), B(0.6, 0.45, 0.5, p.base, 0, 0.75, -0.05), B(0.7, 0.5, 0.05, p.base, 0, 0.9, 0.25, 0, -0.3), barrel(0.06, 1.5, 0, 0.9, 0.15, 0.85), B(0.18, 0.2, 0.5, C.dark, 0, 0.98, 0.15, 0, -0.85)]);
+        m.muzzle = { y: 2.0, z: 0.98 };
+      } else if (s) {
+        // 双管高射炮：沙袋圈 + 双联小口径炮 + 炮手座
+        L.push(CY(0.85, 0.9, 0.1, P.earth, 0, 0.05, 0, 10)); sandbagRing(L, 0.8, 0.25, 10); sandbagRing(L, 0.78, 0.48, 10);
+        m.turret = MG([CY(0.3, 0.38, 0.25, p.dark, 0, 0.35, 0, 8), B(0.5, 0.3, 0.45, p.base, 0, 0.62, 0), barrel(0.035, 1.1, -0.12, 0.72, 0.1, 0.75), barrel(0.035, 1.1, 0.12, 0.72, 0.1, 0.75), B(0.2, 0.06, 0.2, C.dark, 0, 0.65, -0.35), B(0.04, 0.3, 0.04, C.dark, 0, 0.5, -0.4)]);
+        m.muzzle = { y: 1.5, z: 0.8 };
+      } else if (g) {
+        // 防空导弹阵地：混凝土座 + 双联导弹发射架 + 雷达
+        L.push(CY(0.9, 0.95, 0.25, P.stone, 0, 0.12, 0, 10), B(1.4, 0.05, 0.1, P.gilt, 0, 0.26, 0.6), B(0.4, 0.5, 0.4, P.wallDk, -0.6, 0.5, -0.55), B(0.45, 0.35, 0.04, P.wall, -0.6, 0.95, -0.55, 0.4, 0.2));
+        m.turret = MG([CY(0.3, 0.36, 0.25, p.dark, 0, 0.38, 0, 8), B(0.7, 0.12, 0.2, p.base, 0, 0.65, 0), ...[-0.22, 0.22].map(x => CY(0.075, 0.075, 1.2, C.white, x, 0.95, 0.15, 8, Math.PI / 2 - 0.65)), ...[-0.22, 0.22].map(x => CY(0.001, 0.075, 0.2, p.accent, x, 1.32, 0.67, 8, Math.PI / 2 - 0.65))]);
+        m.muzzle = { y: 1.4, z: 0.7 };
+      } else {
+        // 防空导弹塔：金属塔座 + 四联装发射箱 + 平板雷达
+        L.push(B(0.7, 0.9, 0.7, P.wallLt, 0, 0.45, 0), B(0.75, 0.2, 0.75, P.wallDk, 0, 0.1, 0), B(0.72, 0.06, 0.72, p.accent, 0, 0.85, 0));
+        m.turret = MG([CY(0.28, 0.32, 0.14, P.wallDk, 0, 0.97, 0, 10), B(0.8, 0.65, 0.6, P.wall, 0, 1.35, 0, 0, -0.5), ...[[-0.18, -0.15], [0.18, -0.15], [-0.18, 0.15], [0.18, 0.15]].map(([x, yy]) => CY(0.1, 0.1, 0.03, C.dark, x, 1.45 + yy * 0.88, 0.3 + yy * 0.48, 8, Math.PI / 2 - 0.5)), B(0.4, 0.35, 0.05, P.white, 0, 1.3, -0.4, 0, 0.25)]);
+        m.muzzle = { y: 1.6, z: 0.4 };
+      }
+      break;
+    }
+    case 'bunker': {
+      let top;
+      if (n) {
+        L.push(frustum(3.6, 3.4, 3.2, 3.0, 0.3, P.wallDk), B(3.0, 1.0, 2.8, P.wallDk, 0, 0.8, -0.1), B(3.25, 0.25, 3.05, P.wall, 0, 1.42, -0.1));
+        L.push(B(2.4, 0.16, 0.06, C.dark, 0, 1.0, 1.31), B(0.06, 0.16, 2.2, C.dark, -1.51, 1.0, -0.1), B(0.06, 0.16, 2.2, C.dark, 1.51, 1.0, -0.1));
+        for (const sx of [-1, 1]) for (let yy = 0.4; yy < 1.2; yy += 0.4) L.push(B(0.24, 0.22, 0.24, P.wallLt, sx * 1.42, yy, 1.22));
+        S.bags(0, 1.75, 6, 0, 0.13); top = 1.55;
+      } else if (s) {
+        // 隐蔽碉堡：覆土掩体 + 杂草 + 伪装网 + 沙袋射击口
+        L.push(frustum(3.7, 3.5, 2.3, 2.1, 1.1, 0x8a7550, 0, 0, -0.1), B(2.3, 0.06, 2.1, 0x7a6a44, 0, 1.12, -0.1));
+        for (let k = 0; k < 7; k++) L.push(SP(rnd(0.18, 0.3), k % 2 ? 0x5a6a34 : 0x6e7440, rnd(-1.3, 1.3), rnd(0.3, 1.05), rnd(-1.2, 1.0), 6, 4, 0.6, Math.PI / 2));
+        const net = [0x6a6a3a, 0x8a7a4a, 0x5a5a34];
+        for (let k = 0; k < 4; k++) L.push(B(1.2, 0.04, 1.1, net[k % 3], -0.6 + (k % 2) * 1.2, 1.18, -0.6 + ((k / 2) | 0) * 1.1, k * 0.1, rnd(-0.05, 0.05)));
+        L.push(B(1.6, 0.14, 0.06, C.dark, 0, 0.62, 1.26)); S.bags(0, 1.6, 5, 0, 0.13); S.bags(0, 1.6, 4, 0, 0.36); top = 1.24;
+      } else if (g) {
+        L.push(B(3.0, 1.1, 2.8, P.wallDk, 0, 0.55, -0.1), B(3.06, 0.05, 2.86, P.gilt, 0, 0.9, -0.1), B(3.2, 0.12, 3.0, P.stone, 0, 1.16, -0.1));
+        for (let k = 0; k < 6; k++) L.push(B(0.26, 0.24, 0.26, P.wallDk, -1.3 + k * 0.52, 1.34, 1.3), B(0.26, 0.24, 0.26, P.wallDk, -1.3 + k * 0.52, 1.34, -1.5));
+        for (const x of [-1.0, 0, 1.0]) L.push(B(0.36, 0.12, 0.06, C.dark, x, 0.62, 1.31));
+        L.push(B(0.7, 0.8, 0.08, P.red, -0.9, 0.42, -1.52)); top = 1.24;
+      } else {
+        L.push(B(3.1, 0.25, 2.9, P.wallDk, 0, 0.12, -0.1), B(2.9, 0.95, 2.7, P.conc, 0, 0.72, -0.1), B(3.0, 0.14, 2.8, P.wallLt, 0, 1.25, -0.1));
+        L.push(B(2.2, 0.14, 0.06, C.dark, 0, 0.9, 1.26), B(0.8, 0.05, 0.03, P.blue, 0, 1.08, 1.27), B(0.7, 0.7, 0.08, P.wallDk, -0.9, 0.6, -1.48));
+        L.push(CY(0.015, 0.015, 1.2, C.steelLt, 1.2, 1.9, -1.2, 4)); S.bags(0, 1.7, 5, 0, 0.13); top = 1.32;
+      }
+      L.push(B(0.6, 0.06, 0.6, p.accent, 1.0, top + 0.02, -0.9));
+      for (let i = 0; i < 5; i++) { L.push(B(0.24, 0.06, 0.24, C.dark, -1.0 + i * 0.5, top + 0.01, 0.95)); m.parts['slot' + i] = { geo: B(0.2, 0.08, 0.2, 0x50ff70), x: -1.0 + i * 0.5, y: top + 0.06, z: 0.95 }; }
+      break;
+    }
+    case 'abm': {
+      L.push(B(W - 0.15, 0.24, D - 0.15, n ? P.wallDk : s ? P.earth : g ? P.wallDk : P.conc, 0, 0.12, 0), B(3.2, 0.3, 3.2, n ? P.wall : s ? P.wallDk : g ? P.stone : P.conc, 0, 0.39, 0), B(1.9, 0.03, 1.9, C.dark, 0.2, 0.55, 0.3));
+      for (let i = 0; i < 6; i++) L.push(B(0.3, 0.02, 0.14, i % 2 ? C.yellow : C.dark, -0.55 + i * 0.3, 0.56, 1.35));
+      const t = S.block(1.0, 0.75, 0.85, -1.05, -1.1, 0.54, { cols: false });
+      if (n) L.push(roofGeo(1.05, 0.9, 0.4, 1.05, P.roof, -1.05, t, -1.1)); else if (g) eaveRoof(L, 1.0, 0.85, -1.05, t, -1.1, P); else if (s) L.push(B(0.9, 0.1, 0.75, P.wallLt, -1.05, t + 0.05, -1.1)); else L.push(B(1.05, 0.08, 0.9, P.wallDk, -1.05, t + 0.04, -1.1));
+      L.push(CY(0.05, 0.05, 0.9, C.steel, 1.15, 1.0, -1.15, 6), B(0.9, 0.7, 0.08, h ? P.white : C.concreteLt, 1.15, 1.6, -1.15, 0.6, -0.35), B(0.3, 0.12, 0.3, C.dark, -1.2, 0.62, 1.2));
+      m.parts.lamp = { geo: B(0.22, 0.14, 0.22, 0x50ff70), x: -1.2, y: 0.74, z: 1.2 };
+      m.turret = MG([CY(0.45, 0.55, 0.35, C.steel, 0, 0.75, 0, 10), B(1.2, 0.9, 1.7, p.base, 0, 1.55, 0.1, 0, -1.05), B(1.24, 0.94, 0.08, p.dark, 0, 1.15, -0.65, 0, -1.05),
+        ...[[-0.28, -0.22], [0.28, -0.22], [-0.28, 0.22], [0.28, 0.22]].map(([x, yy]) => CY(0.2, 0.2, 0.06, C.dark, x, 1.95 + yy * 0.5, 0.86 + yy * 0.87, 10, -0.52))]);
+      m.muzzle = { y: 2.1, z: 0.9 };
+      break;
+    }
+    case 'shipyard': {
+      L.push(B(5.85, 0.3, 5.85, n ? P.wallDk : s ? P.earth : g ? P.wallDk : P.conc, 0, 0.15, 0));
+      const t = S.block(2.2, 1.5, 1.9, -1.6, -1.6, 0.3); S.trim(2.2, 1.9, -1.6, t - 0.3, -1.6); S.roof(2.2, 1.9, -1.6, t, -1.6); S.wins([-2.1, -1.1], 1.0, -0.63, 0.35);
+      L.push(B(2.4, 0.06, 4.6, C.dark, 1.2, 0.31, 0.4), B(0.12, 0.04, 4.6, C.yellow, 0.05, 0.35, 0.4), B(0.12, 0.04, 4.6, C.yellow, 2.35, 0.35, 0.4));
+      L.push(B(1.1, 0.6, 2.6, p.base, 1.2, 0.62, 0.6), B(0.78, 0.6, 0.78, p.base, 1.2, 0.62, 1.9, Math.PI / 4), B(0.6, 0.4, 0.7, p.dark, 1.2, 1.1, 0.2));
+      for (let i = 0; i < 4; i++) L.push(CY(0.1, 0.1, 0.25, C.steel, -2.6 + i * 0.75, 0.42, 2.7, 6));
+      L.push(B(0.3, 3.6, 0.3, C.yellow, -0.3, 2.0, 1.6)); S.clutter(-2.3, 0.4, 0.3);
+      if (h) S.beacon('bcn', -0.3, 3.85, 1.6); else if (n) m.smoke.push(S.tower(-2.5, -2.5, 0.3, 2.6));
+      m.parts.crane = { geo: MG([B(3.2, 0.25, 0.25, C.yellow, 1.0, 0, 0), B(0.7, 0.5, 0.5, C.concreteDk, -0.8, -0.1, 0), CY(0.02, 0.02, 1.4, C.dark, 2.4, -0.7, 0, 4), B(0.2, 0.15, 0.2, C.dark, 2.4, -1.4, 0)]), x: -0.3, y: 3.9, z: 1.6, spin: 0.15 };
+      break;
+    }
+    case 'airfield': {
+      L.push(B(5.85, 0.16, 5.85, n ? P.wallDk : s ? P.earth : g ? P.stone : C.concreteDk, 0, 0.08, 0));
+      for (const [px, pz] of PADS) {
+        L.push(B(2.2, 0.04, 2.2, s ? 0x9a8a6a : C.concrete, px, 0.18, pz), B(1.5, 0.02, 0.08, C.yellow, px, 0.21, pz + 0.95), B(0.08, 0.02, 1.5, C.white, px, 0.21, pz));
+        L.push(CY(0.05, 0.05, 0.08, 0xff5030, px - 1.0, 0.24, pz - 1.0, 6));
+      }
+      L.push(B(5.8, 0.02, 0.1, C.yellow, 0, 0.2, 0), B(0.1, 0.02, 5.8, C.yellow, 0, 0.2, 0), B(5.9, 0.05, 0.15, p.accent, 0, 0.17, 2.88));
+      for (let i = 0; i < 6; i++) m.parts['lt' + i] = { geo: B(0.16, 0.05, 0.16, 0xfff2b0), x: 0, y: 0.24, z: 2.6 - i * 1.04, blink: 0, chase: i, n: 6, glow: [1, 0.9, 0.6] };
+      // 塔台（东北角）
+      const tx = 2.62, tz = -2.62;
+      if (n) { const tt = S.block(0.5, 1.6, 0.5, tx, tz, 0.16); L.push(B(0.6, 0.3, 0.6, C.glass, tx, tt + 0.15, tz)); L.push(roofGeo(0.72, 0.72, 0.45, 0, P.roof, tx, tt + 0.3, tz)); }
+      else if (s) { L.push(B(0.5, 1.5, 0.5, P.wall, tx, 0.91, tz)); for (const [dx, dz] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) L.push(CY(0.025, 0.025, 0.6, P.wood, tx + dx, 1.96, tz + dz, 4)); L.push(B(0.7, 0.04, 0.7, P.canvas, tx, 2.28, tz)); }
+      else if (g) { L.push(B(0.5, 1.6, 0.5, P.wallDk, tx, 0.96, tz), B(0.56, 0.3, 0.56, C.glass, tx, 1.91, tz)); eaveRoof(L, 0.5, 0.5, tx, 2.06, tz, P); }
+      else { L.push(B(0.36, 1.6, 0.36, P.conc, tx, 0.96, tz), B(0.62, 0.32, 0.62, C.glass, tx, 1.92, tz), B(0.68, 0.08, 0.68, P.wallLt, tx, 2.12, tz)); S.beacon('bcn', tx, 2.22, tz); }
+      L.push(B(0.68, 0.06, 0.68, p.accent, tx, n ? 1.7 : 1.78, tz));
+      break;
+    }
+    case 'repairDepot': {
+      const y = S.base(W, D);
+      L.push(B(2.6, 0.12, 2.6, C.dark, 0, y + 0.06, 0.2), B(2.6, 0.03, 0.14, C.yellow, 0, y + 0.13, -1.1), B(2.6, 0.03, 0.14, C.yellow, 0, y + 0.13, 1.5));
+      for (const sd of [-1, 1]) L.push(B(0.25, 2.4, 0.25, P.metal, sd * 1.55, y + 1.2, -1.4), B(0.25, 2.4, 0.25, P.metal, sd * 1.55, y + 1.2, 1.6));
+      L.push(B(3.4, 0.25, 0.3, p.base, 0, y + 2.45, -1.4), B(3.4, 0.25, 0.3, p.base, 0, y + 2.45, 1.6), B(0.3, 0.25, 3.3, p.accent, 0, y + 2.6, 0.1));
+      m.parts.hoist = { geo: MG([B(0.5, 0.35, 0.5, C.yellow, 0, 0, 0), CY(0.02, 0.02, 0.9, C.dark, 0, -0.55, 0, 4), B(0.22, 0.14, 0.22, C.dark, 0, -1.05, 0)]), x: 0.3, y: y + 2.25, z: 0.1, slide: 1.1 };
+      const t = S.block(0.9, 1.0, 0.8, -1.4, -1.5, y); S.roof(0.9, 0.8, -1.4, t, -1.5);
+      m.smoke.push(S.tower(1.5, -1.6, y, 2.0)); S.clutter(1.2, 1.0, y);
+      break;
+    }
+    case 'fortress': {
+      // “长城”要塞炮：青砖圆墙 + 雉堞 + 重炮塔
+      L.push(B(3.85, 0.25, 3.85, P.stone, 0, 0.12, 0), CY(1.6, 1.78, 0.95, P.wallDk, 0, 0.72, 0, 16), CY(1.63, 1.63, 0.05, P.gilt, 0, 1.0, 0, 16), CY(1.66, 1.62, 0.1, P.stone, 0, 1.18, 0, 16));
+      for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; L.push(B(0.38, 0.3, 0.26, P.wallDk, Math.sin(a) * 1.5, 1.38, Math.cos(a) * 1.5, a)); }
+      L.push(B(0.6, 0.7, 0.08, P.red, 0, 0.6, 1.76));
+      m.turret = MG([CY(0.9, 1.0, 0.35, p.dark, 0, 1.4, 0, 10), B(1.4, 0.7, 1.6, p.base, 0, 1.85, -0.1), B(1.2, 0.08, 1.3, p.dark, 0, 2.23, -0.2), B(1.0, 0.5, 0.5, p.base, 0, 1.8, -1.1), barrel(0.13, 2.6, 0, 1.9, 0.6), CY(0.18, 0.18, 0.35, C.steel, 0, 1.9, 3.2, 8, Math.PI / 2), B(0.18, 0.16, 0.4, p.accent, 0.7, 2.1, -0.5)]);
+      m.muzzle = { y: 1.9, z: 3.4 };
+      break;
+    }
+    case 'minePlatform': {
+      L.push(B(3.6, 0.3, 3.6, C.steel, 0, 0.35, 0));
+      for (const [x, z] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) L.push(B(0.3, 0.6, 0.3, C.dark, x, 0.15, z));
+      const t = S.block(1.5, 0.95, 1.3, -0.8, 0.85, 0.5, { colX: [-0.65, 0.65] }); S.roof(1.5, 1.3, -0.8, t, 0.85);
+      L.push(CY(0.6, 0.6, 1.2, C.ore, 1.0, 1.1, 0.9, 12), CY(0.62, 0.62, 0.1, P.red, 1.0, 1.72, 0.9, 12));
+      for (const sd of [-1, 1]) L.push(B(0.12, 3.2, 0.12, C.steel, 0.6 + sd * 0.5, 2.1, -0.9, 0, 0, -sd * 0.15));
+      L.push(B(1.3, 0.15, 0.15, P.red, 0.6, 3.6, -0.9), B(0.4, 0.4, 0.4, C.dark, 0.6, 3.4, -0.9));
+      m.parts.drill = { geo: MG([CY(0.12, 0.12, 2.8, C.steelLt, 0, 0, 0, 8), CY(0.3, 0.05, 0.5, C.dark, 0, -1.5, 0, 8)]), x: 0.6, y: 1.6, z: -0.9, spin: 6 };
+      break;
+    }
+    case 'airBarracks': {
+      const y = S.base(W, D);
+      L.push(B(2.4, 0.12, 2.7, P.wallDk, -0.5, y + 0.06, 0.2)); vault(L, 2.6, 1.15, P.roof, -0.5, y + 0.1, 0.2, Math.PI / 2, 6, P.wall);
+      S.door(0.7, 0.9, -0.5, y, 1.52);
+      const tt = S.block(0.7, 2.6, 0.7, 1.35, -1.2, y); L.push(B(0.9, 0.5, 0.9, C.glass, 1.35, tt + 0.25, -1.2), B(1.0, 0.12, 1.0, p.accent, 1.35, tt + 0.56, -1.2), SP(0.55, P.white, 1.35, tt + 0.62, -1.2, 12, 6, 1, Math.PI / 2));
+      L.push(B(0.9, 0.4, 0.6, 0x6a6e5a, 1.3, y + 0.2, 1.2)); S.beacon('bcn', -0.5, y + 1.3, 1.45, 0.3);
+      swingDoors(m, 0.7, 0.88, -0.5, y + 0.45, 1.59, P.wallDk); m.door = { x: -0.5, z: 1.52 };
+      break;
+    }
+    default: return false;
+  }
+  return true;
+}
 const bldModelCache = {};
 const hash1 = x => { const s = Math.sin(x) * 43758.5453; return s - Math.floor(s); };
 // 建造 / 坍塌动画用：每个部件记下底面中心、高度、出场时间和两个随机数（着色器按部件逐个升起、倾倒）
@@ -1790,7 +2514,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
   const W = d.w * TILE, D = d.h * TILE;
   const L = [], m = { parts: {}, smoke: [] };
   const plinth = () => L.push(B(W - 0.15, 0.24, D - 0.15, C.concreteDk, 0, 0.12, 0));
-  switch (type) {
+  if (!styledBuilding(type, team, nation, p, L, m, W, D)) switch (type) {
     case 'hq': {
       plinth();
       L.push(B(4.4, 2.0, 3.4, C.concrete, 0, 1.24, -0.5), B(4.46, 0.16, 3.46, p.accent, 0, 2.0, -0.5));
@@ -2896,7 +3620,7 @@ function buildBuildingMesh(b) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(m.body, anim ? b.bm.mat : matBld); body.castShadow = true; body.receiveShadow = true; g.add(body);
   if (anim) body.customDepthMaterial = b.bm.depth;
-  b.top = m.top || 2; b.scaf = null; b.partsBuilt = false; b.door = m.door || null;
+  b.top = m.top || 2; b.scaf = null; b.partsBuilt = false; b.door = m.door || null; b.flashPts = m.flash || null;
   b.parts = {};
   for (const k in m.parts) {
     const p = m.parts[k];
@@ -5584,8 +6308,8 @@ function bldWork(b, powered, gdt) {
   const gy = b.mesh.position.y;
   if (b.type === 'factory' && Math.random() < gdt * 5) {
     // 厂房天窗里透出的焊接闪光
-    const x = b.x + [-0.83, 0.85, 2.53][(Math.random() * 3) | 0], z = b.z + rnd(-2.2, 1.0);
-    pFire.spawn(x, gy + 2.95, z, 0, 0.2, 0, 0.08, 1.3, 0.5, 0.65, 0.8, 1, 0.9);
+    const f = b.flashPts ? b.flashPts[(Math.random() * b.flashPts.length) | 0] : [[-0.83, 0.85, 2.53][(Math.random() * 3) | 0], 2.95, rnd(-2.2, 1.0)];
+    pFire.spawn(b.x + f[0], gy + f[1], b.z + f[2], 0, 0.2, 0, 0.08, 1.3, 0.5, 0.65, 0.8, 1, 0.9);
   } else if (b.type === 'refinery' && Math.random() < gdt * 6) {
     // 卸矿扬起的黄土
     const dk = dockPos(b);
