@@ -346,7 +346,7 @@ button { font-family: inherit; }
       <b>目标</b>：摧毁敌方的全部建筑和部队。<br>
       <kbd>左键</kbd> 选择 / 框选　<kbd>右键</kbd> 移动、攻击、采矿　<kbd>Shift</kbd> 加选　双击选同类<br>
       <kbd>方向键</kbd> / 鼠标移到屏幕边缘 / <kbd>中键拖动</kbd> 平移镜头　<kbd>滚轮</kbd> 缩放<br>
-      <kbd>A</kbd> 攻击移动　<kbd>S</kbd> 停止　<kbd>Ctrl/Alt+数字</kbd> 编队　<kbd>数字</kbd> 选编队　<kbd>H</kbd> 回基地<br>
+      <kbd>WASD</kbd> 移动视野　<kbd>Q</kbd> 攻击移动　<kbd>X</kbd> 停止　<kbd>Ctrl/Alt+数字</kbd> 编队　<kbd>数字</kbd> 选编队　<kbd>H</kbd> 回基地<br>
       <kbd>空格</kbd> 暂停　<kbd>Esc</kbd> 菜单 / 取消　选中工厂后右键地面可设置集结点
     </div>
   </div>
@@ -392,7 +392,7 @@ button { font-family: inherit; }
     <button class="bigbtn" id="btnResume">继续作战</button>
     <button class="bigbtn sec" id="btnRestart">重新开始</button>
     <div class="help">
-      <kbd>A</kbd> 攻击移动　<kbd>S</kbd> 停止　<kbd>H</kbd> 回基地　<kbd>Ctrl/Alt+数字</kbd> 编队<br>
+      <kbd>WASD</kbd> 移动视野　<kbd>Q</kbd> 攻击移动　<kbd>X</kbd> 停止　<kbd>H</kbd> 回基地　<kbd>Ctrl/Alt+数字</kbd> 编队<br>
       建造栏：左键生产 / 放置，右键取消；Shift+左键一次排 5 个。<br>
       电力不足时生产减速，防御塔和雷达停止工作。<br>
       工程师可占领中立油井（持续提供资金），或修复己方建筑。
@@ -424,9 +424,10 @@ const TERRAIN_SPEED = [[1, 1], [1, 1], [0, 0], [0, 0], [0.75, 0.5], [0, 0], [0.6
 const TERRAIN_NAME = ['草地', '土地', '岩石', '水', '林地', '', '沼泽', '沙地', '公路', '浅滩', '桥'];
 const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
-const NEUTRAL = -1;
+const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
+const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.2';
+const GAME_VERSION = 'iron-4.3';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -472,7 +473,7 @@ const WEAPONS = {
   atGun:      { dmg: 68, range: 7.5, cd: 2.0, wh: 'ap', proj: 'shell', speed: 50, ground: true, sfx: 'cannon' },
   aaGun:      { dmg: 40, range: 11, cd: 0.45, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
   raptorMissile: { dmg: 52, range: 7.5, cd: 1.6, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket', barrels: 2 },
-  fortGun:    { dmg: 95, range: 10, cd: 2.6, wh: 'ap', proj: 'shell', speed: 55, splash: 0.9, ground: true, sfx: 'cannonBig' },
+  fortGun:    { dmg: 80, range: 8.5, cd: 2.8, wh: 'ap', proj: 'shell', speed: 55, splash: 0.9, ground: true, sfx: 'cannonBig' },
   motoMg:     { dmg: 12, range: 5, cd: 0.3, wh: 'small', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
   hqFlak:     { dmg: 22, range: 9, cd: 0.6, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
   boatGun:    { dmg: 20, range: 7, cd: 0.4, wh: 'flak', proj: 'flak', ground: true, air: true, sfx: 'flak' },
@@ -503,9 +504,9 @@ const WEAPONS = {
   boatMsl:    { dmg: 60, range: 8.5, cd: 2.2, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket' },
   // 金穗
   mortar:     { dmg: 42, range: 9, minRange: 2, cd: 3.2, wh: 'he', proj: 'arty', speed: 13, splash: 1.3, ground: true, sfx: 'cannon' },
-  autoCannon: { dmg: 20, range: 6, cd: 0.55, wh: 'ap', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  autoCannon: { dmg: 16, range: 6, cd: 0.55, wh: 'ap', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
   gunMissile: { dmg: 30, range: 10, cd: 0.5, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
-  gunHow:     { dmg: 110, range: 16, minRange: 3, cd: 5, wh: 'he', proj: 'arty', speed: 19, splash: 1.6, ground: true, sfx: 'arty' },
+  gunHow:     { dmg: 110, range: 14.5, minRange: 3, cd: 5.6, wh: 'he', proj: 'arty', speed: 19, splash: 1.6, ground: true, sfx: 'arty' },
   gun105:     { dmg: 48, range: 6.5, cd: 1.8, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannon' },
   airCruise:  { dmg: 120, range: 12, cd: 1.4, wh: 'he', proj: 'rocket', speed: 26, splash: 1.4, ground: true, sfx: 'rocket' },
   navalGunHeavy: { dmg: 72, range: 9, cd: 2.0, wh: 'ap', proj: 'shell', speed: 50, ground: true, sfx: 'cannonBig' },
@@ -538,79 +539,79 @@ const UNITS = {
   harvester: { name: '采矿车', cat: 'vehicle', role: 'harvester', cost: 1400, time: 18, hp: 1000, armor: 'heavy', speed: 3.0, sight: 5, radius: 1.3, harvester: true, turn: 3, req: ['factory', 'refinery'], desc: '采集矿石运回精炼厂换取资金。' },
 
   // ---------------- 北岭联邦：钢铁洪流 ----------------
-  n_inf:     { name: '征召兵', cat: 'infantry', role: 'inf', nation: 'north', model: 'rifle', cost: 80, time: 4, hp: 130, armor: 'inf', speed: 2.5, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '便宜、训练快的步枪兵，适合大量堆数量。' },
-  n_at:      { name: '火箭筒兵', cat: 'infantry', role: 'at', nation: 'north', model: 'rocketInf', cost: 220, time: 7, hp: 130, armor: 'inf', speed: 2.2, sight: 7, weapon: 'rpg', radius: 0.35, inf: true, req: [], desc: '火箭筒近距离打装甲伤害很高，但射程短（5.5 格），不能打飞机。' },
-  n_spec:    { name: '喷火兵', cat: 'infantry', role: 'spec', nation: 'north', model: 'rifle', cost: 300, time: 8, hp: 180, armor: 'inf', speed: 2.3, sight: 6, weapon: 'flamer', radius: 0.35, inf: true, req: ['radar'], desc: '3 格内喷火，范围伤害。能直接烧伤碉堡和民房里的步兵。' },
-  n_scout:   { name: '履带装甲侦察车', cat: 'vehicle', role: 'scout', nation: 'north', model: 'scout', cost: 550, time: 8, hp: 320, armor: 'light', speed: 5.8, sight: 10, weapon: 'hmg', radius: 1.0, turret: true, turn: 4.5, req: ['factory'], desc: '比轮式侦察车慢，但装甲更厚，重机枪对步兵很凶。' },
-  n_mbt:     { name: '“冻原”重型坦克', cat: 'vehicle', role: 'mbt', nation: 'north', model: 'tank', scale: 1.08, cost: 1000, time: 14, hp: 650, armor: 'heavy', speed: 3.6, sight: 8, weapon: 'gun125', radius: 1.25, turret: true, turn: 2.3, req: ['factory'], desc: '北岭主力。装甲厚、火炮重，但速度慢。' },
-  n_aa:      { name: '四联装自行高炮', cat: 'vehicle', role: 'aa', nation: 'north', model: 'aa', cost: 650, time: 10, hp: 340, armor: 'light', speed: 4.4, sight: 9, weapon: 'quadFlak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '四门速射炮，射程近（7 格）但火力密集，能打飞机，也能扫地面步兵。' },
-  n_arty:    { name: '152 毫米自行榴弹炮', cat: 'vehicle', role: 'arty', nation: 'north', model: 'artillery', scale: 1.1, cost: 1150, time: 16, hp: 300, armor: 'light', speed: 3.0, sight: 7, weapon: 'how152', radius: 1.3, turret: true, turn: 2, req: ['factory', 'radar'], desc: '射速慢，但每一发都有大范围杀伤。近处 3 格打不到。' },
-  n_elite:   { name: '“堡垒”重坦', cat: 'vehicle', role: 'elite', nation: 'north', model: 'heavy', cost: 1700, time: 22, hp: 1150, armor: 'heavy', speed: 3.0, sight: 8, weapon: 'heavyGun', radius: 1.5, turret: true, turn: 1.8, req: ['factory', 'tech'], desc: '北岭王牌。双管重炮，装甲极厚。' },
-  n_heli:    { name: '重型武装直升机', cat: 'air', role: 'heli', nation: 'north', model: 'heli', scale: 1.15, cost: 1600, time: 18, hp: 480, armor: 'air', speed: 7.5, sight: 9, weapon: 'heavyRocket', radius: 1.6, air: true, turn: 2.6, req: ['helipad'], desc: '机身装甲厚，能扛住几轮防空火力，但飞得慢。' },
-  n_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'north', model: 'fighter', cost: 1150, time: 14, hp: 330, armor: 'air', speed: 15, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 3, turn: 2.2, producer: 'airfield', req: ['airfield'], desc: '机体结实，但只带 3 轮空空导弹。停在机场时会自动拦截来袭的敌机。' },
-  n_striker: { name: '装甲攻击机', cat: 'air', role: 'striker', nation: 'north', model: 'striker', cost: 1600, time: 19, hp: 560, armor: 'air', speed: 11, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 4, turn: 1.7, producer: 'airfield', req: ['airfield'], desc: '装甲很厚的对地攻击机，弹药 4 轮，飞得较慢。' },
-  n_bomber:  { name: '远程重型轰炸机', cat: 'air', role: 'bomber', nation: 'north', model: 'bomber', scale: 1.1, cost: 3000, time: 30, hp: 1150, armor: 'air', speed: 8, sight: 9, weapon: 'bombs', radius: 2.4, air: true, plane: true, ammo: 10, turn: 0.9, producer: 'airfield', req: ['airfield', 'tech'], desc: '载弹量最大的轰炸机（10 枚），非常耐打，但又慢又贵。' },
-  n_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'north', model: 'pboat', cost: 600, time: 9, hp: 400, armor: 'naval', speed: 7.0, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
-  n_destroyer: { name: '驱逐舰', cat: 'naval', role: 'destroyer', nation: 'north', model: 'destroyer', cost: 1300, time: 18, hp: 1000, armor: 'naval', speed: 4.3, sight: 9, weapon: 'navalGun', radius: 2.0, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '主力战舰，装甲加厚，穿甲主炮克制舰船和岸边装甲。' },
-  n_sub:     { name: '攻击潜艇', cat: 'naval', role: 'sub', nation: 'north', model: 'sub', cost: 1250, time: 17, hp: 720, armor: 'naval', speed: 4.3, sight: 8, weapon: 'heavyTorpedo', radius: 1.7, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '北岭潜艇更大、鱼雷更重（180）。敌人 5 格以内才能发现它，开火后短暂暴露。' },
-  n_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'north', model: 'cruiser', cost: 2200, time: 26, hp: 1250, armor: 'naval', speed: 3.2, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.2, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+  n_inf:     { name: '征召兵', cat: 'infantry', role: 'inf', nation: 'north', cost: 80, time: 4, hp: 130, armor: 'inf', speed: 2.5, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, req: [], desc: '便宜、训练快的步枪兵，适合大量堆数量。' },
+  n_at:      { name: '火箭筒兵', cat: 'infantry', role: 'at', nation: 'north', cost: 220, time: 7, hp: 130, armor: 'inf', speed: 2.2, sight: 7, weapon: 'rpg', radius: 0.35, inf: true, req: [], desc: '火箭筒近距离打装甲伤害很高，但射程短（5.5 格），不能打飞机。' },
+  n_spec:    { name: '喷火兵', cat: 'infantry', role: 'spec', nation: 'north', cost: 300, time: 8, hp: 180, armor: 'inf', speed: 2.3, sight: 6, weapon: 'flamer', radius: 0.35, inf: true, req: ['radar'], desc: '3 格内喷火，范围伤害。能直接烧伤碉堡和民房里的步兵。' },
+  n_scout:   { name: '履带装甲侦察车', cat: 'vehicle', role: 'scout', nation: 'north', cost: 550, time: 8, hp: 320, armor: 'light', speed: 5.8, sight: 10, weapon: 'hmg', radius: 1.0, turret: true, turn: 4.5, req: ['factory'], desc: '比轮式侦察车慢，但装甲更厚，重机枪对步兵很凶。' },
+  n_mbt:     { name: '“冻原”重型坦克', cat: 'vehicle', role: 'mbt', nation: 'north', cost: 900, time: 13, hp: 650, armor: 'heavy', speed: 3.6, sight: 8, weapon: 'gun125', radius: 1.25, turret: true, turn: 2.3, req: ['factory'], desc: '北岭主力。装甲厚、火炮重，但速度慢。' },
+  n_aa:      { name: '四联装自行高炮', cat: 'vehicle', role: 'aa', nation: 'north', cost: 650, time: 10, hp: 340, armor: 'light', speed: 4.4, sight: 9, weapon: 'quadFlak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '四门速射炮，射程近（7 格）但火力密集，能打飞机，也能扫地面步兵。' },
+  n_arty:    { name: '152 毫米自行榴弹炮', cat: 'vehicle', role: 'arty', nation: 'north', cost: 1150, time: 16, hp: 300, armor: 'light', speed: 3.0, sight: 7, weapon: 'how152', radius: 1.3, turret: true, turn: 2, req: ['factory', 'radar'], desc: '射速慢，但每一发都有大范围杀伤。近处 3 格打不到。' },
+  n_elite:   { name: '“堡垒”重坦', cat: 'vehicle', role: 'elite', nation: 'north', cost: 1700, time: 22, hp: 1150, armor: 'heavy', speed: 3.0, sight: 8, weapon: 'heavyGun', radius: 1.5, turret: true, turn: 1.8, req: ['factory', 'tech'], desc: '北岭王牌。双管重炮，装甲极厚。' },
+  n_heli:    { name: '重型武装直升机', cat: 'air', role: 'heli', nation: 'north', cost: 1600, time: 18, hp: 480, armor: 'air', speed: 7.5, sight: 9, weapon: 'heavyRocket', radius: 1.6, air: true, turn: 2.6, req: ['helipad'], desc: '机身装甲厚，能扛住几轮防空火力，但飞得慢。' },
+  n_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'north', cost: 1150, time: 14, hp: 330, armor: 'air', speed: 15, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 3, turn: 2.2, producer: 'airfield', req: ['airfield'], desc: '机体结实，但只带 3 轮空空导弹。停在机场时会自动拦截来袭的敌机。' },
+  n_striker: { name: '装甲攻击机', cat: 'air', role: 'striker', nation: 'north', cost: 1600, time: 19, hp: 560, armor: 'air', speed: 11, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 4, turn: 1.7, producer: 'airfield', req: ['airfield'], desc: '装甲很厚的对地攻击机，弹药 4 轮，飞得较慢。' },
+  n_bomber:  { name: '远程重型轰炸机', cat: 'air', role: 'bomber', nation: 'north', cost: 3000, time: 30, hp: 1150, armor: 'air', speed: 8, sight: 9, weapon: 'bombs', radius: 2.4, air: true, plane: true, ammo: 10, turn: 0.9, producer: 'airfield', req: ['airfield', 'tech'], desc: '载弹量最大的轰炸机（10 枚），非常耐打，但又慢又贵。' },
+  n_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'north', cost: 600, time: 9, hp: 400, armor: 'naval', speed: 7.0, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  n_destroyer: { name: '驱逐舰', cat: 'naval', role: 'destroyer', nation: 'north', cost: 1300, time: 18, hp: 1000, armor: 'naval', speed: 4.3, sight: 9, weapon: 'navalGun', radius: 2.0, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '主力战舰，装甲加厚，穿甲主炮克制舰船和岸边装甲。' },
+  n_sub:     { name: '攻击潜艇', cat: 'naval', role: 'sub', nation: 'north', cost: 1250, time: 17, hp: 720, armor: 'naval', speed: 4.3, sight: 8, weapon: 'heavyTorpedo', radius: 1.7, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '北岭潜艇更大、鱼雷更重（180）。敌人 5 格以内才能发现它，开火后短暂暴露。' },
+  n_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'north', cost: 2200, time: 26, hp: 1250, armor: 'naval', speed: 3.2, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.2, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
 
   // ---------------- 赤砂共和国：机动游击 ----------------
-  s_inf:     { name: '民兵', cat: 'infantry', role: 'inf', nation: 'south', model: 'rifle', cost: 75, time: 4, hp: 115, armor: 'inf', speed: 3.0, sight: 7, weapon: 'akRifle', radius: 0.35, inf: true, ambush: true, req: [], desc: '便宜、跑得快。在林地里开火伤害 +25%（伏击）。' },
-  s_at:      { name: '反坦克导弹组', cat: 'infantry', role: 'at', nation: 'south', model: 'rocketInf', cost: 300, time: 9, hp: 110, armor: 'inf', speed: 2.0, sight: 9, weapon: 'atgm', radius: 0.35, inf: true, camo: true, req: [], desc: '射程 8 格的反坦克导弹，装填慢。静止 3 秒后伪装隐蔽（敌人 4 格内才能发现），开火后暴露。' },
-  s_spec:    { name: '狙击手', cat: 'infantry', role: 'spec', nation: 'south', model: 'rifle', cost: 600, time: 12, hp: 100, armor: 'inf', speed: 2.4, sight: 11, weapon: 'sniper', radius: 0.35, inf: true, camo: true, req: ['radar'], desc: '9 格外一枪打死普通步兵，对车辆和建筑几乎无效。静止 3 秒后伪装隐蔽。' },
-  s_scout:   { name: '武装皮卡', cat: 'vehicle', role: 'scout', nation: 'south', model: 'scout', scale: 0.95, cost: 400, time: 6, hp: 200, armor: 'light', speed: 7.6, sight: 9, weapon: 'dshk', radius: 1.0, turret: true, turn: 5.5, req: ['factory'], desc: '民用皮卡装上重机枪，便宜又快，适合骚扰采矿车和步兵。' },
-  s_scout2:  { name: '突击摩托兵', cat: 'vehicle', role: 'scout2', nation: 'south', model: 'moto', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, req: ['factory'], desc: '便宜、极快的机枪摩托，适合骚扰和侦察。' },
-  s_mbt:     { name: '轻型坦克', cat: 'vehicle', role: 'mbt', nation: 'south', model: 'tank', scale: 0.9, cost: 650, time: 10, hp: 380, armor: 'heavy', speed: 5.4, sight: 8, weapon: 'gun90', radius: 1.1, turret: true, turn: 3.2, req: ['factory'], desc: '速度快、便宜，装甲薄，适合成群包抄。' },
-  s_aa:      { name: '车载防空导弹', cat: 'vehicle', role: 'aa', nation: 'south', model: 'aa', cost: 700, time: 10, hp: 260, armor: 'light', speed: 5.2, sight: 10, weapon: 'samShort', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联防空导弹，一次齐射伤害高，装填慢。只能打飞机。' },
-  s_arty:    { name: '“沙暴”火箭炮', cat: 'vehicle', role: 'arty', nation: 'south', model: 'salvo', cost: 1300, time: 18, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, req: ['factory', 'radar'], desc: '远程火箭齐射，一次 6 枚，覆盖一大片。' },
-  s_elite:   { name: '战术导弹车', cat: 'vehicle', role: 'elite', nation: 'south', model: 'salvo', scale: 1.12, cost: 2000, time: 24, hp: 300, armor: 'light', speed: 3.6, sight: 8, weapon: 'tacMsl', deploy: 3, radius: 1.4, turret: true, turn: 2, req: ['factory', 'tech'], desc: '射程 22 格的战术弹道导弹，威力极大。要停稳 3 秒展开发射架才能发射，装填很慢。' },
-  s_heli:    { name: '轻型武装直升机', cat: 'air', role: 'heli', nation: 'south', model: 'heli', scale: 0.9, cost: 1000, time: 13, hp: 240, armor: 'air', speed: 11, sight: 9, weapon: 'heliRocket', radius: 1.3, air: true, turn: 3.4, req: ['helipad'], desc: '便宜、速度快，装甲薄。' },
-  s_fighter: { name: '老式截击机', cat: 'air', role: 'fighter', nation: 'south', model: 'fighter', cost: 850, time: 12, hp: 220, armor: 'air', speed: 16, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '便宜的老式战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
-  s_striker: { name: '火箭攻击机', cat: 'air', role: 'striker', nation: 'south', model: 'striker', cost: 1200, time: 16, hp: 340, armor: 'air', speed: 13, sight: 9, weapon: 'rocketPod', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '挂火箭巢的对地攻击机，便宜，弹药 3 轮。' },
-  s_bomber:  { name: '中型轰炸机', cat: 'air', role: 'bomber', nation: 'south', model: 'bomber', scale: 0.85, cost: 2100, time: 24, hp: 700, armor: 'air', speed: 10.5, sight: 9, weapon: 'bombs', radius: 2.0, air: true, plane: true, ammo: 6, turn: 1.2, producer: 'airfield', req: ['airfield', 'tech'], desc: '比重轰炸机便宜、快，载弹 6 枚。' },
-  s_boat:    { name: '快速导弹艇', cat: 'naval', role: 'boat', nation: 'south', model: 'pboat', cost: 700, time: 9, hp: 320, armor: 'naval', speed: 9, sight: 9, weapon: 'boatMsl', radius: 1.3, turret: true, turn: 3.4, naval: true, req: ['shipyard'], desc: '比巡逻艇快，反舰导弹射程 8.5 格，但不能打飞机。' },
-  s_destroyer: { name: '护卫舰', cat: 'naval', role: 'destroyer', nation: 'south', model: 'destroyer', scale: 0.9, cost: 1100, time: 15, hp: 800, armor: 'naval', speed: 5.2, sight: 9, weapon: 'navalGun', radius: 1.8, turret: true, turn: 1.8, naval: true, req: ['shipyard', 'radar'], desc: '比驱逐舰小、便宜、快。' },
-  s_sub:     { name: '小型潜艇', cat: 'naval', role: 'sub', nation: 'south', model: 'sub', scale: 0.9, cost: 950, time: 14, hp: 520, armor: 'naval', speed: 4.8, sight: 8, weapon: 'torpedo', radius: 1.5, turn: 2.2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '便宜的近海潜艇。敌人 5 格以内才能发现它，开火后短暂暴露。' },
-  s_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'south', model: 'cruiser', cost: 2000, time: 24, hp: 1000, armor: 'naval', speed: 3.6, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+  s_inf:     { name: '民兵', cat: 'infantry', role: 'inf', nation: 'south', cost: 75, time: 4, hp: 115, armor: 'inf', speed: 3.0, sight: 7, weapon: 'akRifle', radius: 0.35, inf: true, ambush: true, req: [], desc: '便宜、跑得快。在林地里开火伤害 +25%（伏击）。' },
+  s_at:      { name: '反坦克导弹组', cat: 'infantry', role: 'at', nation: 'south', cost: 300, time: 9, hp: 110, armor: 'inf', speed: 2.0, sight: 9, weapon: 'atgm', radius: 0.35, inf: true, camo: true, req: [], desc: '射程 8 格的反坦克导弹，装填慢。静止 3 秒后伪装隐蔽（敌人 4 格内才能发现），开火后暴露。' },
+  s_spec:    { name: '狙击手', cat: 'infantry', role: 'spec', nation: 'south', cost: 600, time: 12, hp: 100, armor: 'inf', speed: 2.4, sight: 11, weapon: 'sniper', radius: 0.35, inf: true, camo: true, req: ['radar'], desc: '9 格外一枪打死普通步兵，对车辆和建筑几乎无效。静止 3 秒后伪装隐蔽。' },
+  s_scout:   { name: '武装皮卡', cat: 'vehicle', role: 'scout', nation: 'south', cost: 400, time: 6, hp: 200, armor: 'light', speed: 7.6, sight: 9, weapon: 'dshk', radius: 1.0, turret: true, turn: 5.5, req: ['factory'], desc: '民用皮卡装上重机枪，便宜又快，适合骚扰采矿车和步兵。' },
+  s_scout2:  { name: '突击摩托兵', cat: 'vehicle', role: 'scout2', nation: 'south', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, req: ['factory'], desc: '便宜、极快的机枪摩托，适合骚扰和侦察。' },
+  s_mbt:     { name: '轻型坦克', cat: 'vehicle', role: 'mbt', nation: 'south', cost: 650, time: 10, hp: 380, armor: 'heavy', speed: 5.4, sight: 8, weapon: 'gun90', radius: 1.1, turret: true, turn: 3.2, req: ['factory'], desc: '速度快、便宜，装甲薄，适合成群包抄。' },
+  s_aa:      { name: '车载防空导弹', cat: 'vehicle', role: 'aa', nation: 'south', cost: 700, time: 10, hp: 260, armor: 'light', speed: 5.2, sight: 10, weapon: 'samShort', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联防空导弹，一次齐射伤害高，装填慢。只能打飞机。' },
+  s_arty:    { name: '“沙暴”火箭炮', cat: 'vehicle', role: 'arty', nation: 'south', cost: 1300, time: 18, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, req: ['factory', 'radar'], desc: '远程火箭齐射，一次 6 枚，覆盖一大片。' },
+  s_elite:   { name: '战术导弹车', cat: 'vehicle', role: 'elite', nation: 'south', cost: 2000, time: 24, hp: 300, armor: 'light', speed: 3.6, sight: 8, weapon: 'tacMsl', deploy: 3, radius: 1.4, turret: true, turn: 2, req: ['factory', 'tech'], desc: '射程 22 格的战术弹道导弹，威力极大。要停稳 3 秒展开发射架才能发射，装填很慢。' },
+  s_heli:    { name: '轻型武装直升机', cat: 'air', role: 'heli', nation: 'south', cost: 1000, time: 13, hp: 240, armor: 'air', speed: 11, sight: 9, weapon: 'heliRocket', radius: 1.3, air: true, turn: 3.4, req: ['helipad'], desc: '便宜、速度快，装甲薄。' },
+  s_fighter: { name: '老式截击机', cat: 'air', role: 'fighter', nation: 'south', cost: 850, time: 12, hp: 220, armor: 'air', speed: 16, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '便宜的老式战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
+  s_striker: { name: '火箭攻击机', cat: 'air', role: 'striker', nation: 'south', cost: 1200, time: 16, hp: 340, armor: 'air', speed: 13, sight: 9, weapon: 'rocketPod', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '挂火箭巢的对地攻击机，便宜，弹药 3 轮。' },
+  s_bomber:  { name: '中型轰炸机', cat: 'air', role: 'bomber', nation: 'south', cost: 2100, time: 24, hp: 700, armor: 'air', speed: 10.5, sight: 9, weapon: 'bombs', radius: 2.0, air: true, plane: true, ammo: 6, turn: 1.2, producer: 'airfield', req: ['airfield', 'tech'], desc: '比重轰炸机便宜、快，载弹 6 枚。' },
+  s_boat:    { name: '快速导弹艇', cat: 'naval', role: 'boat', nation: 'south', cost: 700, time: 9, hp: 320, armor: 'naval', speed: 9, sight: 9, weapon: 'boatMsl', radius: 1.3, turret: true, turn: 3.4, naval: true, req: ['shipyard'], desc: '比巡逻艇快，反舰导弹射程 8.5 格，但不能打飞机。' },
+  s_destroyer: { name: '护卫舰', cat: 'naval', role: 'destroyer', nation: 'south', cost: 1100, time: 15, hp: 800, armor: 'naval', speed: 5.2, sight: 9, weapon: 'navalGun', radius: 1.8, turret: true, turn: 1.8, naval: true, req: ['shipyard', 'radar'], desc: '比驱逐舰小、便宜、快。' },
+  s_sub:     { name: '小型潜艇', cat: 'naval', role: 'sub', nation: 'south', cost: 950, time: 14, hp: 520, armor: 'naval', speed: 4.8, sight: 8, weapon: 'torpedo', radius: 1.5, turn: 2.2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '便宜的近海潜艇。敌人 5 格以内才能发现它，开火后短暂暴露。' },
+  s_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'south', cost: 2000, time: 24, hp: 1000, armor: 'naval', speed: 3.6, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
 
   // ---------------- 金穗联合体：经济与阵地 ----------------
-  g_inf:     { name: '步枪兵', cat: 'infantry', role: 'inf', nation: 'gold', model: 'rifle', cost: 100, time: 5, hp: 150, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '训练有素的标准步兵。进驻碉堡或民房时伤害 +40%（别国 +20%）。' },
-  g_at:      { name: '反坦克兵', cat: 'infantry', role: 'at', nation: 'gold', model: 'rocketInf', cost: 250, time: 8, hp: 130, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
-  g_spec:    { name: '迫击炮组', cat: 'infantry', role: 'spec', nation: 'gold', model: 'rocketInf', cost: 400, time: 10, hp: 120, armor: 'inf', speed: 2.2, sight: 8, weapon: 'mortar', radius: 0.35, inf: true, req: ['radar'], desc: '步兵携带的迫击炮，射程 9 格、范围伤害，近处 2 格打不到。' },
-  g_scout:   { name: '8×8 轮式装甲车', cat: 'vehicle', role: 'scout', nation: 'gold', model: 'scout', scale: 1.12, cost: 650, time: 9, hp: 340, armor: 'light', speed: 6.5, sight: 10, weapon: 'autoCannon', radius: 1.1, turret: true, turn: 4.5, req: ['factory'], desc: '30 毫米机关炮，能打步兵、轻装甲和直升机。' },
-  g_mbt:     { name: '主战坦克', cat: 'vehicle', role: 'mbt', nation: 'gold', model: 'tank', cost: 950, time: 13, hp: 550, armor: 'heavy', speed: 4.1, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '攻守均衡、偏耐打的主力坦克。' },
-  g_aa:      { name: '弹炮合一防空车', cat: 'vehicle', role: 'aa', nation: 'gold', model: 'aa', cost: 750, time: 11, hp: 320, armor: 'light', speed: 4.8, sight: 10, weapon: 'gunMissile', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '机炮加防空导弹，射程 10 格，只能打飞机。' },
-  g_arty:    { name: '自行加榴炮', cat: 'vehicle', role: 'arty', nation: 'gold', model: 'artillery', cost: 1100, time: 15, hp: 260, armor: 'light', speed: 3.3, sight: 7, weapon: 'gunHow', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '射程最远的火炮（16 格），近处 3 格打不到。' },
-  g_elite:   { name: '两栖突击车', cat: 'vehicle', role: 'elite', nation: 'gold', model: 'tank', scale: 1.05, cost: 1300, time: 17, hp: 650, armor: 'light', speed: 4.6, sight: 9, weapon: 'gun105', amph: true, radius: 1.25, turret: true, turn: 2.6, req: ['factory', 'tech'], desc: '能下水，直接渡过河流和海面（水中速度减半），适合绕过桥梁和防线偷袭。' },
-  g_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'gold', model: 'heli', cost: 1400, time: 16, hp: 340, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
-  g_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'gold', model: 'fighter', cost: 1100, time: 14, hp: 260, armor: 'air', speed: 17, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '高速战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
-  g_striker: { name: '攻击机', cat: 'air', role: 'striker', nation: 'gold', model: 'striker', cost: 1500, time: 18, hp: 380, armor: 'air', speed: 13, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '对地攻击机，反装甲导弹打坦克、舰船和防御塔。弹药 3 轮。' },
-  g_bomber:  { name: '巡航导弹载机', cat: 'air', role: 'bomber', nation: 'gold', model: 'bomber', cost: 2800, time: 28, hp: 900, armor: 'air', speed: 9.5, sight: 10, weapon: 'airCruise', radius: 2.2, air: true, plane: true, ammo: 4, turn: 1.1, producer: 'airfield', req: ['airfield', 'tech'], desc: '在 12 格外发射巡航导弹，不用飞到目标头顶，比较安全。弹药 4 轮。' },
-  g_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'gold', model: 'pboat', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
-  g_destroyer: { name: '导弹驱逐舰', cat: 'naval', role: 'destroyer', nation: 'gold', model: 'destroyer', scale: 1.08, cost: 1500, time: 20, hp: 1150, armor: 'naval', speed: 4.6, sight: 10, weapon: 'navalGunHeavy', radius: 2.1, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '更大的主力战舰，主炮射程 9 格。' },
-  g_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'gold', model: 'sub', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.3, sight: 8, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
-  g_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'gold', model: 'cruiser', cost: 2200, time: 26, hp: 1150, armor: 'naval', speed: 3.4, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+  g_inf:     { name: '步枪兵', cat: 'infantry', role: 'inf', nation: 'gold', cost: 100, time: 5, hp: 150, armor: 'inf', speed: 2.6, sight: 7, weapon: 'rifle', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '训练有素的标准步兵。进驻碉堡或民房时伤害 +40%（别国 +20%）。' },
+  g_at:      { name: '反坦克兵', cat: 'infantry', role: 'at', nation: 'gold', cost: 250, time: 8, hp: 130, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
+  g_spec:    { name: '迫击炮组', cat: 'infantry', role: 'spec', nation: 'gold', cost: 400, time: 10, hp: 120, armor: 'inf', speed: 2.2, sight: 8, weapon: 'mortar', radius: 0.35, inf: true, req: ['radar'], desc: '步兵携带的迫击炮，射程 9 格、范围伤害，近处 2 格打不到。' },
+  g_scout:   { name: '8×8 轮式装甲车', cat: 'vehicle', role: 'scout', nation: 'gold', cost: 650, time: 9, hp: 340, armor: 'light', speed: 6.5, sight: 10, weapon: 'autoCannon', radius: 1.1, turret: true, turn: 4.5, req: ['factory'], desc: '30 毫米机关炮，能打步兵、轻装甲和直升机。' },
+  g_mbt:     { name: '主战坦克', cat: 'vehicle', role: 'mbt', nation: 'gold', cost: 950, time: 13, hp: 550, armor: 'heavy', speed: 4.1, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '攻守均衡、偏耐打的主力坦克。' },
+  g_aa:      { name: '弹炮合一防空车', cat: 'vehicle', role: 'aa', nation: 'gold', cost: 750, time: 11, hp: 320, armor: 'light', speed: 4.8, sight: 10, weapon: 'gunMissile', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '机炮加防空导弹，射程 10 格，只能打飞机。' },
+  g_arty:    { name: '自行加榴炮', cat: 'vehicle', role: 'arty', nation: 'gold', cost: 1200, time: 15, hp: 260, armor: 'light', speed: 3.3, sight: 7, weapon: 'gunHow', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '射程最远的火炮（14.5 格），近处 3 格打不到。' },
+  g_elite:   { name: '两栖突击车', cat: 'vehicle', role: 'elite', nation: 'gold', cost: 1500, time: 18, hp: 600, armor: 'light', speed: 4.6, sight: 9, weapon: 'gun105', amph: true, radius: 1.25, turret: true, turn: 2.6, req: ['factory', 'tech'], desc: '能下水，直接渡过河流和海面（水中速度减半），适合绕过桥梁和防线偷袭。' },
+  g_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'gold', cost: 1400, time: 16, hp: 340, armor: 'air', speed: 9.0, sight: 9, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
+  g_fighter: { name: '截击机', cat: 'air', role: 'fighter', nation: 'gold', cost: 1100, time: 14, hp: 260, armor: 'air', speed: 17, sight: 10, weapon: 'aam', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.4, producer: 'airfield', req: ['airfield'], desc: '高速战斗机，空对空导弹只能打空中目标。停在机场时会自动拦截来袭的敌机。' },
+  g_striker: { name: '攻击机', cat: 'air', role: 'striker', nation: 'gold', cost: 1500, time: 18, hp: 380, armor: 'air', speed: 13, sight: 9, weapon: 'strikeMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 1.9, producer: 'airfield', req: ['airfield'], desc: '对地攻击机，反装甲导弹打坦克、舰船和防御塔。弹药 3 轮。' },
+  g_bomber:  { name: '巡航导弹载机', cat: 'air', role: 'bomber', nation: 'gold', cost: 2800, time: 28, hp: 900, armor: 'air', speed: 9.5, sight: 10, weapon: 'airCruise', radius: 2.2, air: true, plane: true, ammo: 4, turn: 1.1, producer: 'airfield', req: ['airfield', 'tech'], desc: '在 12 格外发射巡航导弹，不用飞到目标头顶，比较安全。弹药 4 轮。' },
+  g_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'gold', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 9, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  g_destroyer: { name: '导弹驱逐舰', cat: 'naval', role: 'destroyer', nation: 'gold', cost: 1500, time: 20, hp: 1150, armor: 'naval', speed: 4.6, sight: 10, weapon: 'navalGunHeavy', radius: 2.1, turret: true, turn: 1.5, naval: true, req: ['shipyard', 'radar'], desc: '更大的主力战舰，主炮射程 9 格。' },
+  g_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'gold', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.3, sight: 8, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
+  g_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'gold', cost: 2200, time: 26, hp: 1150, armor: 'naval', speed: 3.4, sight: 10, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
 
   // ---------------- 灰鹰自治区：精锐与空中 ----------------
-  h_inf:     { name: '空降兵', cat: 'infantry', role: 'inf', nation: 'hawk', model: 'rifle', cost: 160, time: 6, hp: 190, armor: 'inf', speed: 2.8, sight: 8, weapon: 'carbine', radius: 0.35, inf: true, req: [], desc: '精锐步兵，生命和火力都更强，价格也贵。' },
-  h_at:      { name: '标枪导弹兵', cat: 'infantry', role: 'at', nation: 'hawk', model: 'rocketInf', cost: 350, time: 9, hp: 130, armor: 'inf', speed: 2.4, sight: 9, weapon: 'javelin', radius: 0.35, inf: true, req: [], desc: '射程 7.5 格的发射后不管导弹，地面和空中目标都能打。' },
-  h_spec:    { name: '特种侦察兵', cat: 'infantry', role: 'spec', nation: 'hawk', model: 'rifle', cost: 500, time: 10, hp: 140, armor: 'inf', speed: 3.0, sight: 12, weapon: 'suppressed', radius: 0.35, inf: true, stealth: true, req: ['radar'], desc: '一直隐蔽，敌人 4 格以内才能发现（开火后暴露 2 秒）。视野 12 格，适合侦察。' },
-  h_scout:   { name: '侦察车', cat: 'vehicle', role: 'scout', nation: 'hawk', model: 'scout', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 11, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
-  h_scout2:  { name: '侦察无人机', cat: 'air', role: 'scout2', nation: 'hawk', model: 'heli', scale: 0.5, cost: 400, time: 7, hp: 120, armor: 'air', speed: 10, sight: 14, radius: 0.9, air: true, turn: 4, pop: 1, req: ['helipad'], desc: '没有武器，视野 14 格，便宜。跟着部队飞，给火炮看清目标。' },
-  h_mbt:     { name: '中型坦克', cat: 'vehicle', role: 'mbt', nation: 'hawk', model: 'tank', cost: 1100, time: 14, hp: 540, armor: 'heavy', speed: 4.5, sight: 9, weapon: 'precGun', radius: 1.2, turret: true, turn: 2.8, req: ['factory'], desc: '火控先进，射程 7 格（别国坦克 6~6.5 格），速度快，价格高。' },
-  h_aa:      { name: '远程防空导弹车', cat: 'vehicle', role: 'aa', nation: 'hawk', model: 'aa', cost: 900, time: 12, hp: 280, armor: 'light', speed: 4.6, sight: 11, weapon: 'samLong', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '射程 13 格的防空导弹，只能打飞机。' },
-  h_arty:    { name: '精确制导炮', cat: 'vehicle', role: 'arty', nation: 'hawk', model: 'artillery', cost: 1200, time: 16, hp: 250, armor: 'light', speed: 3.6, sight: 8, weapon: 'precArty', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '制导炮弹不散布，伤害集中在目标上，溅射范围小。近处 3 格打不到。' },
-  h_elite:   { name: '电子战车', cat: 'vehicle', role: 'elite', nation: 'hawk', model: 'scout', scale: 1.15, cost: 1400, time: 16, hp: 350, armor: 'light', speed: 5.0, sight: 11, weapon: 'scoutMg', jam: true, radius: 1.1, turret: true, turn: 4, req: ['factory', 'tech'], desc: '电子干扰：周围 6 格内敌方单位和防御塔的射程 -20%。自带一挺机枪自卫。' },
-  h_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'hawk', model: 'heli', cost: 1250, time: 15, hp: 340, armor: 'air', speed: 9.5, sight: 10, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
-  h_heli2:   { name: '“雷枭”攻击直升机', cat: 'air', role: 'heli2', nation: 'hawk', model: 'raptor', cost: 1900, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, req: ['helipad', 'tech'], desc: '灰鹰王牌。重装甲攻击直升机，双联反装甲导弹。' },
-  h_fighter: { name: '多用途战斗机', cat: 'air', role: 'fighter', nation: 'hawk', model: 'fighter', cost: 1000, time: 13, hp: 300, armor: 'air', speed: 17, sight: 10, weapon: 'multiMsl', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.5, producer: 'airfield', req: ['airfield'], desc: '空空、空地都能打。停在机场时会自动拦截来袭的敌机。' },
-  h_striker: { name: '精确攻击机', cat: 'air', role: 'striker', nation: 'hawk', model: 'striker', cost: 1300, time: 16, hp: 400, armor: 'air', speed: 14, sight: 10, weapon: 'precMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 2, producer: 'airfield', req: ['airfield'], desc: '精确制导导弹伤害高，弹药 3 轮。' },
-  h_bomber:  { name: '轰炸机', cat: 'air', role: 'bomber', nation: 'hawk', model: 'bomber', cost: 2300, time: 26, hp: 950, armor: 'air', speed: 9.5, sight: 9, weapon: 'bombs', radius: 2.2, air: true, plane: true, ammo: 8, turn: 1.0, producer: 'airfield', req: ['airfield', 'tech'], desc: '飞过目标上空投下一串炸弹，对建筑特别有效。需要护航。' },
-  h_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'hawk', model: 'pboat', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 10, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
-  h_destroyer: { name: '防空护卫舰', cat: 'naval', role: 'destroyer', nation: 'hawk', model: 'destroyer', cost: 1300, time: 18, hp: 900, armor: 'naval', speed: 4.8, sight: 10, weapon: 'frigateSam', radius: 2.0, turret: true, turn: 1.6, naval: true, req: ['shipyard', 'radar'], desc: '导弹射程 10 格，舰船、岸上和空中目标都能打。' },
-  h_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'hawk', model: 'sub', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.5, sight: 9, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
-  h_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'hawk', model: 'cruiser', cost: 2300, time: 26, hp: 1100, armor: 'naval', speed: 3.6, sight: 11, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
+  h_inf:     { name: '空降兵', cat: 'infantry', role: 'inf', nation: 'hawk', cost: 140, time: 5, hp: 190, armor: 'inf', speed: 2.8, sight: 8, weapon: 'carbine', radius: 0.35, inf: true, req: [], desc: '精锐步兵，生命和火力都更强，价格也贵。' },
+  h_at:      { name: '标枪导弹兵', cat: 'infantry', role: 'at', nation: 'hawk', cost: 350, time: 9, hp: 130, armor: 'inf', speed: 2.4, sight: 9, weapon: 'javelin', radius: 0.35, inf: true, req: [], desc: '射程 7.5 格的发射后不管导弹，地面和空中目标都能打。' },
+  h_spec:    { name: '特种侦察兵', cat: 'infantry', role: 'spec', nation: 'hawk', cost: 500, time: 10, hp: 140, armor: 'inf', speed: 3.0, sight: 12, weapon: 'suppressed', radius: 0.35, inf: true, stealth: true, req: ['radar'], desc: '一直隐蔽，敌人 4 格以内才能发现（开火后暴露 2 秒）。视野 12 格，适合侦察。' },
+  h_scout:   { name: '侦察车', cat: 'vehicle', role: 'scout', nation: 'hawk', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 11, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
+  h_scout2:  { name: '侦察无人机', cat: 'air', role: 'scout2', nation: 'hawk', cost: 400, time: 7, hp: 120, armor: 'air', speed: 10, sight: 14, radius: 0.9, air: true, turn: 4, pop: 1, req: ['helipad'], desc: '没有武器，视野 14 格，便宜。跟着部队飞，给火炮看清目标。' },
+  h_mbt:     { name: '中型坦克', cat: 'vehicle', role: 'mbt', nation: 'hawk', cost: 1000, time: 13, hp: 560, armor: 'heavy', speed: 4.5, sight: 9, weapon: 'precGun', radius: 1.2, turret: true, turn: 2.8, req: ['factory'], desc: '火控先进，射程 7 格（别国坦克 6~6.5 格），速度快，价格高。' },
+  h_aa:      { name: '远程防空导弹车', cat: 'vehicle', role: 'aa', nation: 'hawk', cost: 900, time: 12, hp: 280, armor: 'light', speed: 4.6, sight: 11, weapon: 'samLong', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '射程 13 格的防空导弹，只能打飞机。' },
+  h_arty:    { name: '精确制导炮', cat: 'vehicle', role: 'arty', nation: 'hawk', cost: 1200, time: 16, hp: 250, armor: 'light', speed: 3.6, sight: 8, weapon: 'precArty', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '制导炮弹不散布，伤害集中在目标上，溅射范围小。近处 3 格打不到。' },
+  h_elite:   { name: '电子战车', cat: 'vehicle', role: 'elite', nation: 'hawk', cost: 1400, time: 16, hp: 350, armor: 'light', speed: 5.0, sight: 11, weapon: 'scoutMg', jam: true, radius: 1.1, turret: true, turn: 4, req: ['factory', 'tech'], desc: '电子干扰：周围 6 格内敌方单位和防御塔的射程 -20%。自带一挺机枪自卫。' },
+  h_heli:    { name: '武装直升机', cat: 'air', role: 'heli', nation: 'hawk', cost: 1250, time: 15, hp: 340, armor: 'air', speed: 9.5, sight: 10, weapon: 'heliRocket', radius: 1.4, air: true, turn: 3, req: ['helipad'], desc: '空中火力支援，怕防空武器和火箭。' },
+  h_heli2:   { name: '“雷枭”攻击直升机', cat: 'air', role: 'heli2', nation: 'hawk', cost: 1900, time: 22, hp: 650, armor: 'air', speed: 7.5, sight: 10, weapon: 'raptorMissile', radius: 1.8, air: true, turn: 2.4, req: ['helipad', 'tech'], desc: '灰鹰王牌。重装甲攻击直升机，双联反装甲导弹。' },
+  h_fighter: { name: '多用途战斗机', cat: 'air', role: 'fighter', nation: 'hawk', cost: 1000, time: 13, hp: 300, armor: 'air', speed: 17, sight: 10, weapon: 'multiMsl', radius: 1.4, air: true, plane: true, ammo: 4, turn: 2.5, producer: 'airfield', req: ['airfield'], desc: '空空、空地都能打。停在机场时会自动拦截来袭的敌机。' },
+  h_striker: { name: '精确攻击机', cat: 'air', role: 'striker', nation: 'hawk', cost: 1300, time: 16, hp: 400, armor: 'air', speed: 14, sight: 10, weapon: 'precMsl', radius: 1.5, air: true, plane: true, ammo: 3, turn: 2, producer: 'airfield', req: ['airfield'], desc: '精确制导导弹伤害高，弹药 3 轮。' },
+  h_bomber:  { name: '轰炸机', cat: 'air', role: 'bomber', nation: 'hawk', cost: 2300, time: 26, hp: 950, armor: 'air', speed: 9.5, sight: 9, weapon: 'bombs', radius: 2.2, air: true, plane: true, ammo: 8, turn: 1.0, producer: 'airfield', req: ['airfield', 'tech'], desc: '飞过目标上空投下一串炸弹，对建筑特别有效。需要护航。' },
+  h_boat:    { name: '巡逻艇', cat: 'naval', role: 'boat', nation: 'hawk', cost: 600, time: 9, hp: 380, armor: 'naval', speed: 7.5, sight: 10, weapon: 'boatGun', radius: 1.3, turret: true, turn: 3, naval: true, req: ['shipyard'], desc: '速射炮能同时打地面和空中，克制步兵和直升机。' },
+  h_destroyer: { name: '防空护卫舰', cat: 'naval', role: 'destroyer', nation: 'hawk', cost: 1300, time: 18, hp: 900, armor: 'naval', speed: 4.8, sight: 10, weapon: 'frigateSam', radius: 2.0, turret: true, turn: 1.6, naval: true, req: ['shipyard', 'radar'], desc: '导弹射程 10 格，舰船、岸上和空中目标都能打。' },
+  h_sub:     { name: '潜艇', cat: 'naval', role: 'sub', nation: 'hawk', cost: 1100, time: 16, hp: 600, armor: 'naval', speed: 4.5, sight: 9, weapon: 'torpedo', radius: 1.6, turn: 2, naval: true, sub: true, req: ['shipyard', 'radar'], desc: '敌人 5 格以内才能发现它（开火后短暂暴露）。鱼雷只能打舰船，但伤害极高。' },
+  h_cruiser: { name: '导弹巡洋舰', cat: 'naval', role: 'cruiser', nation: 'hawk', cost: 2300, time: 26, hp: 1100, armor: 'naval', speed: 3.6, sight: 11, weapon: 'cruiseMsl', radius: 2.3, turret: true, turn: 1.3, naval: true, req: ['shipyard', 'tech'], desc: '射程 15 格的对岸导弹齐射，近处有盲区。' },
 };
 
 const BUILDINGS = {
@@ -632,11 +633,12 @@ const BUILDINGS = {
   fortress: { name: '“长城”要塞炮', cat: 'defense', w: 2, h: 2, hp: 1600, power: -40, cost: 1800, time: 20, sight: 11, weapon: 'fortGun', defense: true, nation: 'gold', req: ['tech'], desc: '金穗专属。重型要塞炮，射程远、威力大。' },
   subhq:    { name: '副部', cat: 'building', w: 3, h: 3, hp: 2500, power: 0, cost: 2500, time: 25, sight: 9, max: 1, weapon: 'hqFlak', reach: 14, req: ['factory'], desc: '前线指挥所：可以建在离己方建筑 14 格以内的地方（普通建筑只能 4 格），建好后周围就能继续造建筑，用来占领远处的矿区和油井。提供 20 人口，自带防空炮。最多 1 座，被摧毁不会战败。' },
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
-  minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1500, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
+  minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1800, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
   camoNet:  { name: '伪装网阵地', cat: 'building', w: 2, h: 2, hp: 600, power: -10, cost: 800, time: 10, sight: 6, nation: 'south', req: ['barracks'], desc: '赤砂专属。给周围 5 格内的己方建筑盖上伪装网：敌人除非有单位或建筑靠近到 6 格以内，否则在战场和小地图上都看不到它们。' },
   airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
   bridge:   { name: '桥', w: 3, h: 6, hp: 1500, power: 0, cost: 0, time: 0, sight: 0, desc: '河上的公路桥。可以用炮弹、火箭、炸弹炸断（右键下令攻击），断了以后谁都过不去；派工程师右键断桥可以修好。' },
   house:    { name: '民房', w: 2, h: 2, hp: 1200, power: 0, cost: 0, time: 0, sight: 6, garrison: 4, desc: '小镇里的民房。最多进驻 4 名步兵（射程 +1 格、伤害 +20%），有人进驻后算作那一方的据点。被打爆后变成废墟。' },
+  village:  { name: '村公所', w: 2, h: 2, hp: 1500, power: 0, cost: 0, time: 0, sight: 6, derrick: true, village: true, income: 6, desc: '村庄的中心。先消灭守军，再派工程师占领：第一次攻下奖励 $' + 1500 + '，之后每秒提供 6 资金。被打爆会变回中立；没人占领时守军会慢慢回来。' },
   derrick:  { name: '油井', w: 2, h: 2, hp: 700, power: 0, cost: 0, time: 0, sight: 4, derrick: true, income: 4, desc: '派工程师占领后，每秒提供 4 资金。' },
   shipyard: { name: '船厂', cat: 'building', w: 3, h: 3, hp: 1500, power: -30, cost: 1500, time: 16, sight: 7, naval: true, req: ['refinery'], desc: '生产舰船。必须建在岸边（紧挨水面），可以离己方建筑稍远（8 格以内）。只在内海地图上可建。' },
   airfield: { name: '机场', cat: 'building', w: 3, h: 3, hp: 1300, power: -40, cost: 1500, time: 16, sight: 7, req: ['radar'], desc: '生产固定翼飞机。有 4 个停机位，飞机在这里补充弹药和修理；每个机场最多停 4 架。' },
@@ -685,10 +687,10 @@ const NATIONS = {
     traits: ['坦克装甲厚、火力猛，但速度慢', '征召兵便宜量大，喷火兵专烧碉堡', '建筑生命 +20%，燃煤电厂产电 +20%'], camo: { base: 0x58623a, dark: 0x3c4429, uni: 0x5a6440 } },
   south: { name: '赤砂共和国', short: '赤砂', tag: '机动游击', region: '沙漠', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
     unique: 's_elite', uniques: ['s_elite', 's_spec', 'camoNet'], ability: 'barrage',
-    traits: ['单位快而便宜、装甲薄', '狙击手和反坦克导弹组静止时伪装', '建筑便宜 15%、建得快，生命 -15%'], camo: { base: 0xa18a5a, dark: 0x76643f, uni: 0x9a8458 } },
-  gold: { name: '金穗联合体', short: '金穗', tag: '经济与阵地', region: '东方', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1.2, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
+    traits: ['单位快而便宜、装甲薄', '狙击手和反坦克导弹组静止时伪装', '建筑便宜 15%、建得快，生命 -18%'], camo: { base: 0xa18a5a, dark: 0x76643f, uni: 0x9a8458 } },
+  gold: { name: '金穗联合体', short: '金穗', tag: '经济与阵地', region: '东方', hpMul: 0.98, speedMul: 1, dmgMul: 1, incomeMul: 1.05, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
     unique: 'fortress', uniques: ['g_elite', 'fortress', 'minePlatform'], ability: 'grant',
-    traits: ['矿石收入 +20%', '防御建筑便宜 15%、生命 +15%', '步兵进驻伤害更高，火炮射程最远'], camo: { base: 0x63676a, dark: 0x45484a, uni: 0x5c6062 } },
+    traits: ['矿石收入 +5%', '防御建筑便宜 15%、生命 +8%', '步兵进驻伤害更高，火炮射程最远'], camo: { base: 0x63676a, dark: 0x45484a, uni: 0x5c6062 } },
   hawk: { name: '灰鹰自治区', short: '灰鹰', tag: '精锐与空中', region: '山地', hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1,
     unique: 'h_heli2', uniques: ['h_heli2', 'h_elite', 'airBarracks'], ability: 'airdrop',
     traits: ['单位贵但精准、射程远', '直升机坪和机场便宜 20%', '有侦察无人机和电子战车'], camo: { base: 0x9a9c94, dark: 0x6c6e68, uni: 0x8c8e86 } },
@@ -696,7 +698,7 @@ const NATIONS = {
 // 各国建筑、工程师、采矿车的名字和数值（mul 作用于所有建筑，defMul 只作用于防御建筑）
 const NAT_OVERRIDE = {
   north: {
-    mul: { hp: 1.2, time: 1.1 },
+    mul: { hp: 1.2 },
     hq: { name: '指挥要塞' }, power: { name: '燃煤电厂', power: 120, desc: '提供 120 电力（燃煤，比别国多 20%）。' },
     refinery: { name: '矿石处理厂' }, barracks: { name: '征兵站' }, factory: { name: '重型战车厂' },
     mgTurret: { name: '重机枪堡', weapon: 'hmgTurret', hp: 600, desc: '重机枪火力更猛，克制步兵。' },
@@ -706,7 +708,7 @@ const NAT_OVERRIDE = {
     engineer: { name: '工兵', hp: 100 }, harvester: { name: '重型采矿车', hp: 1300, speed: 2.7 },
   },
   south: {
-    mul: { hp: 0.85, cost: 0.85, time: 0.85 },
+    mul: { hp: 0.82, cost: 0.85, time: 0.85 },
     hq: { name: '前线指挥部' }, power: { name: '柴油发电站', power: 90, desc: '提供 90 电力。便宜但产电少。' },
     refinery: { name: '矿石集散站' }, barracks: { name: '民兵营地' }, factory: { name: '车辆改装厂' },
     mgTurret: { name: '沙袋机枪阵地', cost: 300, hp: 380, desc: '便宜的机枪阵地，克制步兵。' },
@@ -715,13 +717,12 @@ const NAT_OVERRIDE = {
     engineer: { name: '技工', speed: 2.8 }, harvester: { name: '轻型采矿车', hp: 800, speed: 3.6, cost: 1200 },
   },
   gold: {
-    defMul: { hp: 1.15, cost: 0.85 },
-    hq: { name: '总指挥部' }, power: { name: '水力发电站' }, refinery: { desc: '处理矿石，附送一辆采矿车。金穗的矿石收入 +20%。' },
+    defMul: { hp: 1.08, cost: 0.85 },
+    hq: { name: '总指挥部' }, power: { name: '水力发电站' }, refinery: { desc: '处理矿石，附送一辆采矿车。金穗的矿石收入 +5%。' },
     barracks: { name: '练兵场' }, factory: { name: '战车总厂' },
     aaGun: { name: '防空导弹阵地', weapon: 'samSite', cost: 700, desc: '射程 13 格的防空导弹，只能攻击空中单位。' },
   },
   hawk: {
-    mul: { cost: 1.05 },
     hq: { name: '山地指挥所' }, power: { name: '燃气轮机电站' }, barracks: { name: '训练营' }, factory: { name: '装甲车间' },
     helipad: { costMul: 0.8 }, airfield: { costMul: 0.8 },
     atTurret: { name: '导弹塔', weapon: 'mslTower', desc: '反装甲导弹，地面和空中都能打。' },
@@ -753,14 +754,14 @@ const unitFor = (nation, role) => { for (const k in UNITS) { const d = UNITS[k];
 const ABILITIES = {
   fieldRepair: { name: '战地抢修', cd: 180, target: true, radius: 6, desc: '指定区域内（半径 6 格）己方单位和建筑在 5 秒内回复 40% 生命。' },
   barrage:     { name: '火箭炮覆盖', cd: 240, target: true, radius: 5, desc: '3 秒后向指定区域落下 16 枚火箭，对地面造成大范围伤害。' },
-  grant:       { name: '紧急拨款', cd: 300, target: false, desc: '立即获得 $3000 资金。' },
+  grant:       { name: '紧急拨款', cd: 360, target: false, desc: '立即获得 $2000 资金。' },
   airdrop:     { name: '伞兵空投', cd: 210, target: true, desc: '在任意已探索的地点空投 6 名步枪兵和 2 名反坦克兵。' },
 };
 const NEUTRAL_NATION = { hpMul: 1, speedMul: 1, dmgMul: 1, incomeMul: 1, bldCostMul: 1, airCostMul: 1, airHpMul: 1 };
 let iconNation = 'north';
-const nationKeyOf = team => (team >= 0 && teams[team]) ? teams[team].nation : iconNation;
+const nationKeyOf = team => team === MILITIA ? 'south' : (team >= 0 && teams[team]) ? teams[team].nation : iconNation;
 const slotOf = team => (team >= 0 && teams[team]) ? teams[team].slot : 0;
-const teamColor = team => team < 0 ? '#bbbbaa' : SLOT_COLORS[slotOf(team)].css;
+const teamColor = team => team === MILITIA ? '#b05a48' : team < 0 ? '#bbbbaa' : SLOT_COLORS[slotOf(team)].css;
 // 兵营和空降步兵营都算作“兵营”
 const countOf = (T, type) => (T.counts[type] || 0) + (type === 'barracks' ? (T.counts.airBarracks || 0) : 0);
 const natOf = team => team >= 0 ? NATIONS[nationKeyOf(team)] : NEUTRAL_NATION;
@@ -946,7 +947,7 @@ const navigable = new Uint8Array(MAP * MAP);   // 舰船能走的水面（与中
 const bldGrid = new Int32Array(MAP * MAP);
 let oreFields = [];
 let derrickSites = [];
-let bridgeSites = [], houseSites = [];   // 桥（{tx,tz,w,h}）和民房（2×2）位置，由地图生成，联机各方一致
+let bridgeSites = [], houseSites = [], villageSites = [];   // 桥（{tx,tz,w,h}）和民房（2×2）位置，由地图生成，联机各方一致
 // 高度场：存放在 (MAP+1)² 个格点上，单位是世界坐标
 const HG = MAP + 1;
 const hgt = new Float32Array(HG * HG);
@@ -1068,6 +1069,8 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   for (let d = -7; d <= 7; d++) { setT(townC[0] + d, townC[1], T_ROAD); setT(townC[0], townC[1] + d, T_ROAD); }
   houseSites = [[-4, -4], [2, -4], [-4, 2], [2, 2]].map(([dx, dz]) => ({ tx: townC[0] + dx, tz: townC[1] + dz }));
   for (const h of houseSites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
+  villageSites = [{ tx: townC[0] + 4, tz: townC[1] - 2 }];
+  for (const h of villageSites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
 
   // 河流（只在大陆地图）：沿象限边缘从地图边流向中央，中央留出一片空地；一座桥 + 一处浅滩
   bridgeSites = [];
@@ -1157,6 +1160,7 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   const rotRect = (r, k) => { let { tx, tz, w, h } = r; for (let i = 0; i < k; i++) [tx, tz, w, h] = [MAP - tz - h, tx, h, w]; return { tx, tz, w, h, rot: k % 2 }; };
   bridgeSites = bridgeSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect(r, k)));
   houseSites = houseSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect({ ...r, w: 2, h: 2 }, k)));
+  villageSites = villageSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect({ ...r, w: 2, h: 2 }, k)));
 
   // 4 邻域泛洪
   const flood = (start, ok) => {
@@ -1206,6 +1210,7 @@ function generateHeights(rng, nHill, k, kr) {
   for (const b of BASES) disc(b.tx, b.tz, 15 * kr);
   for (const d of derrickSites) disc(d.tx + 1, d.tz + 1, 3);
   for (const s of houseSites) disc(s.tx + 1, s.tz + 1, 3);
+  for (const s of villageSites) disc(s.tx + 1, s.tz + 1, 3);
   for (let h = 0; h < q.length; h++) {
     const c = q[h], cx = c % MAP, cz = (c / MAP) | 0, d = dist[c];
     if (d >= 20) continue;
@@ -1481,6 +1486,7 @@ const C = {
   glass: 0x26323a, yellow: 0xc89a1e, rust: 0x7a4a2a, skin: 0xc49674, ore: 0xc9a640, lab: 0xc2c4be,
 };
 function teamPal(team, nation) {
+  if (team === MILITIA) return { base: 0x6e604a, dark: 0x3e362c, accent: 0x7a2a22, uni: 0x75684e };   // 守军：土黄杂色 + 暗红头巾
   if (team < 0) return { base: 0x7c7a70, dark: 0x57564f, accent: 0x9c9a8e, uni: 0x7c7a70 };
   const c = NATIONS[nation].camo;
   return { base: c.base, dark: c.dark, uni: c.uni, accent: SLOT_COLORS[slotOf(team)].hex };
@@ -1537,6 +1543,629 @@ function trackedHull(list, p, L, W, H, y0 = 0.3) {
   list.push(B(0.6, 0.12, 0.45, C.steel, 0, y0 + 0.27 + H + 0.04, -L / 2 + 0.7));
 }
 
+// =====================================================================
+// 四国专属单位模型（设计语言：北岭厚重方正、铸造圆炮塔、油桶；赤砂轻便改装、皮卡卡车、帆布；
+// 金穗均衡现代、楔形装甲、侧裙；灰鹰精致修长、低矮楔形、传感器和天线）
+// 机头 / 车头朝 +z；步兵和车辆从 y=0 起；飞机和直升机以 y=0 为中心；舰船吃水线在 y≈0
+// =====================================================================
+const P_HAWK_WHITE = 0xe0e2e0;
+const UPAL = {
+  north: { uni: 0x5c6046, coat: 0x585c44, pants: 0x464a38, fur: 0x5a4a38, helm: 0x4a5236, gear: 0x3e3a30, wood: 0x6a4a2a },
+  south: { uni: 0xb4a07a, pants: 0x8c7856, scarf: 0xd6caae, scarf2: 0x9a3a2a, vest: 0x6a6040, gear: 0x5a4a34, wood: 0x6a4a2a },
+  gold: { uni: 0x5c6456, pants: 0x4c5448, helm: 0x4a5246, armor: 0x3c443a, gear: 0x343a32 },
+  hawk: { uni: 0x7a8076, pants: 0x666c64, helm: 0x585e58, armor: 0x4c5860, gear: 0x383e42 },
+};
+// 楔形块：底面 w×len，顶面前收 front、后收 rear、两侧各收 taper
+function hullGeo(w, h, len, front, rear, taper, hex, x = 0, y = 0, z = 0) {
+  const a = w / 2, b = len / 2, t = a - taper;
+  const bo = [[-a, 0, -b], [a, 0, -b], [a, 0, b], [-a, 0, b]], tp = [[-t, h, -b + rear], [t, h, -b + rear], [t, h, b - front], [-t, h, b - front]];
+  return polyGeo(xfFaces([bo, tp, [bo[0], bo[1], tp[1], tp[0]], [bo[1], bo[2], tp[2], tp[1]], [bo[2], bo[3], tp[3], tp[2]], [bo[3], bo[0], tp[0], tp[3]]], x, y, z, 0), hex);
+}
+// 水平薄板（机翼、尾翼）：pts 为 [x, z, 高度偏移]
+function plateXZ(pts, t, hex, x = 0, y = 0, z = 0) {
+  const up = pts.map(([a, c, o = 0]) => [x + a, y + o + t / 2, z + c]), dn = pts.map(([a, c, o = 0]) => [x + a, y + o - t / 2, z + c]);
+  const F = [up, dn]; for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; F.push([up[i], up[j], dn[j], dn[i]]); }
+  return polyGeo(F, hex);
+}
+// 竖直薄板（垂尾、鳍）：pts 为 [z, y]，rz 为外倾角
+function plateYZ(pts, t, hex, x = 0, y = 0, z = 0, rz = 0) {
+  const c = Math.cos(rz), s = Math.sin(rz), P = (px, py, pz) => [x + px * c - py * s, y + px * s + py * c, z + pz];
+  const a = pts.map(([pz, py]) => P(t / 2, py, pz)), b = pts.map(([pz, py]) => P(-t / 2, py, pz));
+  const F = [a, b]; for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; F.push([a[i], a[j], b[j], b[i]]); }
+  return polyGeo(F, hex);
+}
+// 一对机翼：根部前缘在 (rootX, rootZ + cRoot/2)，sweep 为翼尖前缘后掠量，dy 为上反
+function wings(L, rootX, y, rootZ, span, cRoot, cTip, sweep, t, hex, dy = 0) {
+  for (const s of [-1, 1]) L.push(plateXZ([[s * rootX, rootZ + cRoot / 2], [s * (rootX + span), rootZ + cRoot / 2 - sweep, dy], [s * (rootX + span), rootZ + cRoot / 2 - sweep - cTip, dy], [s * rootX, rootZ - cRoot / 2]], t, hex, 0, y, 0));
+}
+// 机身：圆柱 + 锥形机头 + 尾锥
+function fuselage(L, len, r, hex, y = 0, z = 0, nose = 0.6, tail = 0.4, noseHex = hex) {
+  L.push(CY(r, r, len, hex, 0, y, z, 10, Math.PI / 2), CY(0.02, r, nose, noseHex, 0, y, z + len / 2 + nose / 2, 10, Math.PI / 2), CY(r, r * 0.6, tail, hex, 0, y, z - len / 2 - tail / 2, 10, Math.PI / 2));
+}
+// 履带：履带块 + 两端圆角 + 负重轮 + 主动轮；opt.skirt 侧裙颜色
+function tracks(L, len, w, y0, n, opt = {}) {
+  const r = opt.wr || 0.19;
+  for (const s of [-1, 1]) {
+    const x = s * (w / 2 - 0.16);
+    L.push(B(0.32, 0.42, len - 0.4, C.track, x, y0, 0));
+    for (const e of [-1, 1]) L.push(CY(0.21, 0.21, 0.32, C.track, x, y0, e * (len / 2 - 0.2), 10, 0, Math.PI / 2));
+    for (let i = 0; i < n; i++) L.push(wheel(s * (w / 2 + 0.005), y0 - 0.03, -len / 2 + 0.34 + i * (len - 0.68) / (n - 1), r, C.steel, 0.07));
+    L.push(wheel(s * (w / 2 + 0.005), y0 + 0.06, len / 2 - 0.2, 0.15, C.dark, 0.08));
+    if (opt.skirt) L.push(B(0.05, opt.skirtH || 0.3, len - 0.3, opt.skirt, s * (w / 2 + 0.04), y0 + 0.08, 0), B(0.055, 0.06, len * 0.3, opt.stripe || opt.skirt, s * (w / 2 + 0.045), y0 + 0.1, len * 0.18));
+  }
+}
+// 车轮组：每侧 zs 位置各一个
+function wheelsAt(L, x, y, zs, r, w = 0.2) { for (const s of [-1, 1]) for (const z of zs) L.push(wheel(s * x, y, z, r, C.rubber, w), CY(r * 0.45, r * 0.45, w + 0.01, C.steel, s * x, y, z, 8, 0, Math.PI / 2)); }
+// 船体：甲板轮廓是方艉 + 尖艏，底部收窄
+function shipHull(len, bm, h, hex, y = -0.25, bowF = 0.32) {
+  const a = bm / 2, b = len / 2, sh = b - Math.min(len * bowF, bm * 1.7);
+  const top = [[-a, h, -b], [a, h, -b], [a, h, sh], [0, h, b], [-a, h, sh]];
+  const bot = [[-a * 0.5, 0, -b + 0.25], [a * 0.5, 0, -b + 0.25], [a * 0.5, 0, sh - 0.2], [0, 0, b - 0.45], [-a * 0.5, 0, sh - 0.2]];
+  const F = [top, bot]; for (let i = 0; i < 5; i++) { const j = (i + 1) % 5; F.push([top[i], top[j], bot[j], bot[i]]); }
+  return polyGeo(xfFaces(F, 0, y, 0, 0), hex);
+}
+// 旋翼（n 片桨叶）和尾桨
+function rotorGeo(r, n, chord = 0.18, hex = C.dark) {
+  const L = [CY(0.12, 0.12, 0.1, C.steel, 0, 0, 0, 8)];
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; L.push(B(r, 0.03, chord, hex, Math.cos(a) * r / 2, 0, -Math.sin(a) * r / 2, a)); }
+  return MG(L);
+}
+const tailRotorGeo = (r, n = 2) => MG(Array.from({ length: n }, (_, i) => B(0.03, r * 2, 0.08, C.dark, 0, 0, 0, 0, i * Math.PI / n)));
+
+// 步兵：按国家换军服、头饰和装备；kit 决定武器，返回枪口位置
+function soldier(L, p, N, kit) {
+  const U = UPAL[N], up = N === 'north' ? U.coat : U.uni;
+  for (const s of [-1, 1]) L.push(B(0.12, 0.44, 0.14, U.pants, s * 0.08, 0.26, 0), B(0.13, 0.09, 0.19, C.dark, s * 0.08, 0.045, 0.02));
+  if (N === 'north') L.push(hullGeo(0.4, 0.42, 0.28, 0, 0, 0.03, U.coat, 0, 0.3, 0));
+  L.push(B(0.34, 0.4, 0.22, up, 0, 0.68, 0), B(0.08, 0.34, 0.1, up, -0.21, 0.68, 0.04), B(0.08, 0.34, 0.1, up, 0.21, 0.68, 0.06));
+  if (N === 'north') L.push(B(0.36, 0.05, 0.24, U.gear, 0, 0.56, 0), B(0.05, 0.42, 0.24, U.gear, 0, 0.72, 0, 0, 0, 0.6));
+  else if (N === 'south') L.push(B(0.36, 0.24, 0.24, U.vest, 0, 0.72, 0), B(0.08, 0.1, 0.05, U.gear, -0.08, 0.68, 0.13), B(0.08, 0.1, 0.05, U.gear, 0.08, 0.68, 0.13));
+  else if (N === 'gold') L.push(B(0.37, 0.28, 0.25, U.armor, 0, 0.7, 0), B(0.3, 0.06, 0.06, U.gear, 0, 0.6, 0.13));
+  else { L.push(B(0.37, 0.3, 0.26, U.armor, 0, 0.7, 0)); for (const x of [-0.1, 0, 0.1]) L.push(B(0.08, 0.09, 0.06, U.gear, x, 0.64, 0.14)); }
+  const face = kit === 'stealth' ? 0x2a2c2a : C.skin;
+  L.push(SP(0.1, face, 0, 0.97, 0, 8, 6), B(0.07, 0.08, 0.23, p.accent, 0.22, 0.78, 0));
+  // 头饰
+  if (N === 'north') {
+    if (kit === 'flame') L.push(SP(0.13, U.helm, 0, 1.0, 0, 8, 5, 0.8, Math.PI / 2), CY(0.15, 0.15, 0.02, U.helm, 0, 1.0, 0, 10), B(0.13, 0.1, 0.08, C.dark, 0, 0.94, 0.09), CY(0.04, 0.04, 0.07, C.steel, 0, 0.9, 0.15, 6, Math.PI / 2));
+    else L.push(B(0.25, 0.13, 0.25, U.fur, 0, 1.07, 0), B(0.04, 0.13, 0.17, U.fur, -0.13, 0.98, 0), B(0.04, 0.13, 0.17, U.fur, 0.13, 0.98, 0), B(0.27, 0.05, 0.05, U.fur, 0, 1.03, 0.12));
+  } else if (N === 'south') {
+    if (kit === 'sniper') for (let i = 0; i < 6; i++) L.push(SP(0.13, i % 2 ? 0x6a6a3a : 0x8a7a4a, Math.cos(i) * 0.12, 0.88 + (i % 3) * 0.08, Math.sin(i * 1.7) * 0.1 - 0.03, 6, 4));
+    else L.push(SP(0.125, U.scarf, 0, 1.0, 0, 8, 5, 0.9, Math.PI / 2 * 1.15), B(0.12, 0.16, 0.04, U.scarf, 0, 0.92, -0.12), B(0.22, 0.03, 0.2, U.scarf2, 0, 1.06, 0));
+  } else if (N === 'gold') L.push(SP(0.13, U.helm, 0, 1.0, 0, 8, 5, 0.85, Math.PI / 2), CY(0.14, 0.14, 0.025, U.helm, 0, 0.99, 0, 10), B(0.06, 0.04, 0.04, C.dark, 0, 1.06, 0.12));
+  else L.push(SP(0.13, kit === 'stealth' ? 0x2e3236 : U.helm, 0, 1.0, 0, 8, 5, 0.82, Math.PI / 2), B(0.07, 0.06, 0.06, C.dark, 0, 1.05, 0.13), ...(kit === 'stealth' ? [-0.045, -0.015, 0.015, 0.045].map(x => CY(0.015, 0.015, 0.07, 0x101010, x, 1.0, 0.15, 5, Math.PI / 2)) : [B(0.2, 0.04, 0.03, C.dark, 0, 1.02, 0.11)]));
+  // 武器与背负
+  const gun = (len, hex = C.dark) => L.push(B(0.05, 0.07, len, hex, 0.14, 0.66, 0.08 + len / 2));
+  switch (kit) {
+    case 'rifle':
+      if (N === 'north') L.push(B(0.05, 0.06, 0.7, U.wood, 0.14, 0.66, 0.3), B(0.04, 0.04, 0.3, C.dark, 0.14, 0.68, 0.6));
+      else if (N === 'gold') L.push(B(0.06, 0.1, 0.5, C.dark, 0.14, 0.66, 0.22), B(0.03, 0.03, 0.15, C.dark, 0.14, 0.7, 0.53));
+      else gun(0.58);
+      L.push(B(0.18, 0.22, 0.12, U.gear || C.dark, 0, 0.7, -0.17)); return { y: 0.68, z: 0.62 };
+    case 'ak': L.push(B(0.05, 0.07, 0.6, C.dark, 0.14, 0.66, 0.3), B(0.04, 0.12, 0.05, C.dark, 0.14, 0.58, 0.32, 0, -0.4), B(0.05, 0.06, 0.18, U.wood, 0.14, 0.64, 0.06)); return { y: 0.68, z: 0.62 };
+    case 'carbine': gun(0.48); L.push(B(0.05, 0.05, 0.1, C.glass, 0.14, 0.72, 0.25), B(0.26, 0.34, 0.16, U.gear, 0, 0.7, -0.19), B(0.2, 0.08, 0.12, U.armor, 0, 0.9, -0.2)); return { y: 0.68, z: 0.58 };
+    case 'stealth': L.push(B(0.05, 0.07, 0.5, C.dark, 0.14, 0.66, 0.26), CY(0.035, 0.035, 0.28, C.dark, 0.14, 0.67, 0.64, 6, Math.PI / 2), B(0.05, 0.05, 0.1, C.glass, 0.14, 0.73, 0.25), B(0.24, 0.3, 0.14, U.gear, 0, 0.7, -0.18)); return { y: 0.68, z: 0.8 };
+    case 'rpg': L.push(CY(0.045, 0.045, 0.85, U.wood || C.dark, 0.17, 0.9, 0.08, 8, Math.PI / 2), CY(0.005, 0.1, 0.22, 0x5a6a3a, 0.17, 0.9, 0.62, 8, Math.PI / 2), B(0.2, 0.26, 0.12, U.gear, 0, 0.7, -0.17), CY(0.05, 0.05, 0.4, 0x5a6a3a, -0.1, 0.78, -0.2, 6)); return { y: 0.9, z: 0.72 };
+    case 'flame': L.push(CY(0.08, 0.08, 0.42, C.steelLt, -0.08, 0.72, -0.2, 8), CY(0.08, 0.08, 0.42, C.steelLt, 0.08, 0.72, -0.2, 8), CY(0.06, 0.06, 0.3, 0x8a3a2a, 0, 0.7, -0.29, 8), B(0.05, 0.07, 0.45, C.dark, 0.14, 0.6, 0.25), CY(0.03, 0.03, 0.12, C.steel, 0.14, 0.6, 0.52, 6, Math.PI / 2), B(0.025, 0.025, 0.3, C.dark, 0.1, 0.55, 0.0, 0, 0.6)); return { y: 0.6, z: 0.58 };
+    case 'atgm': L.push(CY(0.09, 0.09, 0.95, 0x6a6040, 0.18, 0.92, 0.1, 10, Math.PI / 2), B(0.12, 0.12, 0.16, C.dark, 0.18, 0.92, -0.25), B(0.05, 0.6, 0.05, C.dark, -0.08, 0.6, -0.2, 0, 0.3), B(0.05, 0.6, 0.05, C.dark, 0.06, 0.6, -0.2, 0, -0.3)); return { y: 0.92, z: 0.62 };
+    case 'sniper': L.push(B(0.05, 0.06, 0.95, U.wood || C.dark, 0.14, 0.66, 0.38), CY(0.03, 0.03, 0.3, C.dark, 0.14, 0.74, 0.3, 6, Math.PI / 2), B(0.03, 0.03, 0.25, C.dark, 0.14, 0.66, 0.95)); return { y: 0.68, z: 1.05 };
+    case 'atRocket': L.push(CY(0.06, 0.06, 0.95, 0x4c5446, 0.17, 0.9, 0.1, 8, Math.PI / 2), B(0.1, 0.14, 0.12, C.dark, 0.17, 0.82, 0.25), CY(0.07, 0.06, 0.08, C.dark, 0.17, 0.9, 0.6, 8, Math.PI / 2), B(0.2, 0.26, 0.12, U.gear, 0, 0.7, -0.17)); return { y: 0.9, z: 0.65 };
+    case 'mortar': L.push(CY(0.06, 0.06, 0.8, C.dark, 0, 0.85, -0.2, 8, 0.45), CY(0.16, 0.16, 0.04, C.steel, 0, 0.5, -0.24, 10, 1.4), B(0.2, 0.26, 0.12, U.gear, 0.0, 0.66, -0.15), B(0.12, 0.14, 0.2, 0x5a6248, 0.25, 0.4, 0)); gun(0.45); return { y: 1.2, z: 0 };
+    case 'javelin': L.push(CY(0.08, 0.08, 1.05, 0x4c5446, 0.18, 0.92, 0.1, 10, Math.PI / 2), B(0.2, 0.16, 0.18, 0x3a3e38, 0.15, 0.88, 0.0), B(0.06, 0.06, 0.08, C.glass, 0.25, 0.9, 0.08), B(0.26, 0.34, 0.16, U.gear, 0, 0.7, -0.19)); return { y: 0.92, z: 0.66 };
+    case 'eng': L.push(B(0.26, 0.16, 0.14, 0xa03020, 0.24, 0.42, 0), B(0.3, 0.06, 0.06, C.steelLt, 0.05, 1.05, 0.08), B(0.22, 0.3, 0.14, U.gear || 0x5a5040, 0, 0.7, -0.17), B(0.04, 0.3, 0.04, C.steelLt, -0.24, 0.5, 0.08)); return { y: 0.7, z: 0.4 };
+  }
+  return { y: 0.7, z: 0.5 };
+}
+
+// 按单位生成专属模型；返回 false 时退回通用模型
+function styledUnit(type, team, N, p, L, T, m) {
+  const D = UNITS[type];
+  if (!D || !UPAL[N]) return false;
+  const role = D.role, k = type === 'engineer' || type === 'harvester' ? N[0] + '_' + type : type;
+  const acc = p.accent, bs = p.base, dk = p.dark;
+  switch (k) {
+    // ======================= 步兵 =======================
+    case 'n_inf': m.muzzle = soldier(L, p, 'north', 'rifle'); break;
+    case 'n_at': m.muzzle = soldier(L, p, 'north', 'rpg'); break;
+    case 'n_spec': m.muzzle = soldier(L, p, 'north', 'flame'); break;
+    case 's_inf': m.muzzle = soldier(L, p, 'south', 'ak'); break;
+    case 's_at': m.muzzle = soldier(L, p, 'south', 'atgm'); break;
+    case 's_spec': m.muzzle = soldier(L, p, 'south', 'sniper'); break;
+    case 'g_inf': m.muzzle = soldier(L, p, 'gold', 'rifle'); break;
+    case 'g_at': m.muzzle = soldier(L, p, 'gold', 'atRocket'); break;
+    case 'g_spec': m.muzzle = soldier(L, p, 'gold', 'mortar'); break;
+    case 'h_inf': m.muzzle = soldier(L, p, 'hawk', 'carbine'); break;
+    case 'h_at': m.muzzle = soldier(L, p, 'hawk', 'javelin'); break;
+    case 'h_spec': m.muzzle = soldier(L, p, 'hawk', 'stealth'); break;
+    case 'n_engineer': case 's_engineer': case 'g_engineer': case 'h_engineer': m.muzzle = soldier(L, p, N, 'eng'); break;
+
+    // ======================= 北岭载具 =======================
+    case 'n_scout': {
+      // 履带装甲侦察车：长斜鼻低矮车体 + 小圆顶机枪塔
+      tracks(L, 2.1, 1.5, 0.3, 5, { wr: 0.17 });
+      L.push(hullGeo(1.2, 0.5, 2.1, 0.55, 0.12, 0.08, bs, 0, 0.42, 0), B(1.62, 0.04, 2.1, dk, 0, 0.53, 0), B(1.0, 0.08, 0.2, acc, 0, 0.93, -0.8));
+      L.push(B(0.35, 0.12, 0.3, C.glass, -0.25, 0.86, 0.45, 0, -0.5), CY(0.12, 0.12, 0.5, 0x4a5236, 0.45, 1.0, -0.75, 8, Math.PI / 2));
+      T.push(SP(0.32, bs, 0, 0.92, -0.1, 10, 6, 0.6, Math.PI / 2), barrel(0.04, 0.75, 0.0, 1.05, 0.15, 0, C.dark), B(0.12, 0.1, 0.25, dk, 0.18, 1.08, -0.15));
+      m.muzzle = { y: 1.05, z: 0.9 };
+      break;
+    }
+    case 'n_mbt': {
+      // “冻原”重型坦克：铸造圆炮塔、反应装甲块、抽烟装置、车尾油桶
+      tracks(L, 2.75, 1.78, 0.34, 6, { wr: 0.21 });
+      L.push(hullGeo(1.3, 0.44, 2.7, 0.6, 0.15, 0.05, bs, 0, 0.5, 0), B(1.84, 0.05, 2.75, dk, 0, 0.6, 0), B(1.1, 0.08, 0.25, acc, 0, 0.92, -1.05));
+      for (const s of [-1, 1]) L.push(CY(0.16, 0.16, 0.9, 0x4a5236, s * 0.42, 0.98, -1.35, 10, 0, Math.PI / 2));
+      for (let i = 0; i < 6; i++) L.push(B(0.2, 0.08, 0.14, dk, -0.5 + i * 0.2, 0.86, 1.05, 0, -0.55));
+      T.push(SP(0.7, bs, 0, 0.94, -0.1, 16, 8, 0.48, Math.PI / 2), B(0.45, 0.32, 0.25, dk, 0, 1.08, 0.55), barrel(0.09, 1.9, 0, 1.12, 0.6), CY(0.13, 0.13, 0.3, dk, 0, 1.12, 1.6, 8, Math.PI / 2));
+      for (const s of [-1, 1]) for (let i = 0; i < 3; i++) T.push(B(0.18, 0.12, 0.08, dk, s * (0.3 + i * 0.12), 1.12, 0.48 - i * 0.07, s * -0.4));
+      T.push(CY(0.13, 0.15, 0.14, dk, 0.32, 1.33, -0.25, 10), B(0.12, 0.12, 0.12, C.glass, -0.3, 1.32, 0.2), CY(0.012, 0.012, 1.0, C.dark, -0.4, 1.8, -0.55, 4), B(0.14, 0.1, 0.2, acc, 0.5, 1.22, -0.5));
+      m.muzzle = { y: 1.12, z: 2.5 };
+      break;
+    }
+    case 'n_aa': {
+      // 四联装自行高炮：平板车体 + 方箱炮塔 + 四根炮管 + 后部雷达
+      tracks(L, 2.35, 1.6, 0.3, 6, { wr: 0.17 });
+      L.push(hullGeo(1.2, 0.45, 2.35, 0.4, 0.05, 0.05, bs, 0, 0.42, 0), B(1.64, 0.04, 2.35, dk, 0, 0.52, 0));
+      T.push(hullGeo(1.3, 0.48, 1.25, 0.25, 0.08, 0.12, bs, 0, 0.87, -0.1), B(1.32, 0.06, 0.2, acc, 0, 1.2, -0.6));
+      for (const sx of [-0.28, 0.28]) for (const sy of [0, 0.16]) T.push(barrel(0.035, 1.05, sx, 1.1 + sy, 0.35, 0.65, C.dark));
+      T.push(CY(0.03, 0.03, 0.3, C.steel, 0, 1.5, -0.55, 4), B(0.6, 0.04, 0.35, C.dark, 0, 1.68, -0.55, 0, 0.5));
+      m.muzzle = { y: 1.9, z: 1.05 };
+      break;
+    }
+    case 'n_arty': {
+      // 152 毫米自行榴弹炮：长车体 + 后置大炮塔 + 带炮口制退器的长身管
+      tracks(L, 2.95, 1.72, 0.34, 7, { wr: 0.18 });
+      L.push(hullGeo(1.3, 0.45, 2.95, 0.55, 0.05, 0.05, bs, 0, 0.5, 0), B(1.76, 0.05, 2.95, dk, 0, 0.6, 0));
+      T.push(hullGeo(1.45, 0.7, 1.7, 0.3, 0.05, 0.12, bs, 0, 0.95, -0.4), B(1.47, 0.08, 0.25, acc, 0, 1.55, -1.1), barrel(0.1, 2.4, 0, 1.3, 0.4, 0.35), B(0.24, 0.2, 0.3, dk, 0, 2.15, 2.62, 0, -0.35), CY(0.13, 0.15, 0.14, dk, 0.45, 1.72, -0.3, 10));
+      m.muzzle = { y: 2.15, z: 2.7 };
+      break;
+    }
+    case 'n_elite': {
+      // “堡垒”双管重坦：宽履带 + 侧裙 + 巨大的楔形炮塔 + 双炮管
+      tracks(L, 3.1, 2.1, 0.38, 7, { wr: 0.22, skirt: dk, skirtH: 0.36, stripe: acc });
+      L.push(hullGeo(1.5, 0.55, 3.05, 0.65, 0.2, 0.05, bs, 0, 0.56, 0), B(2.18, 0.06, 3.1, dk, 0, 0.68, 0));
+      for (const s of [-1, 1]) L.push(CY(0.17, 0.17, 1.0, 0x4a5236, s * 0.45, 1.15, -1.55, 10, 0, Math.PI / 2));
+      T.push(hullGeo(1.55, 0.56, 1.75, 0.45, 0.12, 0.15, bs, 0, 1.11, -0.15), B(1.6, 0.06, 1.2, dk, 0, 1.68, -0.35), barrel(0.085, 1.75, -0.24, 1.38, 0.55), barrel(0.085, 1.75, 0.24, 1.38, 0.55));
+      T.push(CY(0.15, 0.17, 0.16, dk, 0.4, 1.76, -0.4, 10), CY(0.11, 0.11, 0.25, dk, -0.24, 1.38, 1.8, 8, Math.PI / 2), CY(0.11, 0.11, 0.25, dk, 0.24, 1.38, 1.8, 8, Math.PI / 2), B(0.18, 0.14, 0.32, acc, 0.65, 1.5, -0.6));
+      m.muzzle = { y: 1.38, z: 2.4 };
+      break;
+    }
+    case 'n_harvester': {
+      // 重型采矿车：履带底盘 + 前置驾驶室 + 大矿斗
+      tracks(L, 2.9, 1.8, 0.34, 6, { wr: 0.2 });
+      L.push(B(1.3, 0.3, 2.9, C.dark, 0, 0.6, 0), hullGeo(1.4, 0.8, 0.85, 0.2, 0, 0.08, bs, 0, 0.75, 1.0), B(1.2, 0.26, 0.05, C.glass, 0, 1.25, 1.33, 0, -0.25));
+      L.push(hullGeo(1.75, 1.0, 1.9, -0.15, -0.15, -0.05, bs, 0, 0.75, -0.5), B(1.82, 0.14, 1.95, acc, 0, 1.6, -0.5), B(1.7, 0.32, 0.45, C.steelLt, 0, 0.45, 1.65), CY(0.07, 0.08, 0.6, C.dark, -0.55, 1.75, 0.75, 6));
+      m.cargo = MG([B(1.5, 0.4, 1.7, C.ore, 0, 0, 0)]); m.cargoY = 1.55; m.cargoZ = -0.5;
+      break;
+    }
+    // ======================= 赤砂载具 =======================
+    case 's_scout': {
+      // 武装皮卡：驾驶室 + 敞开货斗 + 三脚架重机枪
+      wheelsAt(L, 0.62, 0.3, [0.72, -0.72], 0.3, 0.2);
+      L.push(B(1.15, 0.22, 2.2, C.dark, 0, 0.45, 0), B(1.15, 0.32, 0.75, bs, 0, 0.66, 0.75), B(1.05, 0.42, 0.75, bs, 0, 0.98, 0.1), B(0.95, 0.3, 0.05, C.glass, 0, 1.02, 0.47, 0, -0.35));
+      for (const s of [-1, 1]) L.push(B(0.06, 0.28, 1.05, bs, s * 0.55, 0.7, -0.6)); L.push(B(1.15, 0.28, 0.06, bs, 0, 0.7, -1.1), B(1.16, 0.08, 0.14, acc, 0, 1.22, -0.1), B(1.2, 0.08, 0.12, C.steel, 0, 0.62, 1.12));
+      L.push(CY(0.13, 0.13, 0.3, 0x5a6a3a, 0.35, 0.66, -0.85, 8), B(0.3, 0.2, 0.2, 0x5a6a3a, -0.3, 0.68, -0.85));
+      T.push(CY(0.02, 0.02, 0.5, C.dark, 0, 0.8, -0.4, 4), B(0.14, 0.14, 0.45, C.dark, 0, 1.12, -0.35), barrel(0.04, 0.7, 0, 1.14, -0.1, 0.05, C.dark), B(0.4, 0.26, 0.04, dk, 0, 1.2, -0.12));
+      m.muzzle = { y: 1.16, z: 0.65 };
+      break;
+    }
+    case 's_scout2': {
+      // 突击摩托兵：越野摩托 + 包头巾的骑手 + 车把机枪
+      L.push(wheel(0, 0.32, 0.62, 0.32, C.rubber, 0.14), wheel(0, 0.32, -0.62, 0.32, C.rubber, 0.14));
+      L.push(B(0.22, 0.28, 1.1, bs, 0, 0.6, 0), B(0.28, 0.2, 0.5, C.dark, 0, 0.5, -0.1), B(0.24, 0.1, 0.55, C.dark, 0, 0.78, -0.25), B(0.06, 0.45, 0.06, C.steel, 0, 0.7, 0.58, 0, -0.35), B(0.6, 0.05, 0.05, C.dark, 0, 0.92, 0.48));
+      L.push(B(0.26, 0.38, 0.2, UPAL.south.uni, 0, 1.08, -0.15, 0, 0.3), SP(0.11, C.skin, 0, 1.38, -0.02, 8, 6), SP(0.13, UPAL.south.scarf, 0, 1.42, -0.02, 8, 4, 0.85, Math.PI / 2 * 1.15), B(0.12, 0.16, 0.04, UPAL.south.scarf, 0, 1.3, -0.15));
+      L.push(B(0.08, 0.3, 0.1, UPAL.south.uni, -0.18, 0.95, 0.12), B(0.08, 0.3, 0.1, UPAL.south.uni, 0.18, 0.95, 0.12), B(0.24, 0.08, 0.18, acc, 0, 0.72, -0.5), barrel(0.03, 0.55, 0.14, 0.92, 0.45, 0, C.dark));
+      m.muzzle = { y: 0.92, z: 1.0 };
+      break;
+    }
+    case 's_mbt': {
+      // 轻型坦克：大负重轮、低矮车体、小炮塔、帆布和杂物箱
+      tracks(L, 2.2, 1.45, 0.3, 4, { wr: 0.24 });
+      L.push(hullGeo(1.05, 0.38, 2.15, 0.45, 0.12, 0.05, bs, 0, 0.42, 0), B(1.5, 0.04, 2.2, dk, 0, 0.52, 0), B(0.8, 0.07, 0.2, acc, 0, 0.82, -0.8));
+      L.push(B(0.7, 0.18, 0.4, 0xa8925e, 0, 0.88, -0.75, 0.1), B(0.25, 0.2, 0.4, 0x6a5a3a, 0.62, 0.66, -0.5));
+      T.push(hullGeo(0.9, 0.34, 0.95, 0.3, 0.1, 0.12, bs, 0, 0.8, -0.05), barrel(0.06, 1.3, 0, 0.98, 0.35), CY(0.08, 0.08, 0.18, C.steel, 0, 0.98, 1.6, 8, Math.PI / 2), B(0.5, 0.12, 0.2, 0x8a7a50, 0, 1.0, -0.6), CY(0.1, 0.1, 0.1, dk, 0.22, 1.18, -0.15, 8));
+      m.muzzle = { y: 0.98, z: 1.7 };
+      break;
+    }
+    case 's_aa': {
+      // 车载防空导弹：轻型卡车 + 后部双联导弹发射架
+      wheelsAt(L, 0.66, 0.32, [0.95, -0.55, -1.05], 0.32, 0.22);
+      L.push(B(1.2, 0.25, 2.8, C.dark, 0, 0.5, 0), hullGeo(1.25, 0.75, 0.8, 0.22, 0, 0.06, bs, 0, 0.6, 1.0), B(1.05, 0.25, 0.05, C.glass, 0, 1.12, 1.3, 0, -0.3), B(1.27, 0.08, 0.18, acc, 0, 1.38, 0.8), B(1.25, 0.3, 1.7, dk, 0, 0.78, -0.45));
+      T.push(CY(0.26, 0.32, 0.22, C.steel, 0, 1.05, -0.5, 8), B(0.5, 0.12, 0.6, bs, 0, 1.2, -0.5), ...[-0.22, 0.22].map(x => CY(0.075, 0.075, 1.3, C.white, x, 1.48, -0.35, 8, Math.PI / 2 - 0.5)), ...[-0.22, 0.22].map(x => CY(0.001, 0.075, 0.2, acc, x, 1.82, 0.27, 8, Math.PI / 2 - 0.5)));
+      m.muzzle = { y: 1.85, z: 0.35 };
+      break;
+    }
+    case 's_arty': {
+      // “沙暴”火箭炮：三轴卡车 + 40 管火箭发射箱
+      wheelsAt(L, 0.68, 0.34, [1.05, -0.3, -1.0], 0.34, 0.22);
+      L.push(B(1.3, 0.3, 3.1, C.dark, 0, 0.55, 0), hullGeo(1.35, 0.85, 0.9, 0.25, 0, 0.06, bs, 0, 0.65, 1.1), B(1.15, 0.28, 0.05, C.glass, 0, 1.25, 1.44, 0, -0.3), B(1.37, 0.1, 0.18, acc, 0, 1.52, 0.9), B(1.25, 0.2, 1.9, dk, 0, 0.8, -0.5));
+      const pod = [B(1.2, 0.5, 1.6, bs, 0, 0, 0)];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) pod.push(CY(0.07, 0.07, 0.04, C.dark, (c - 2.5) * 0.18, (r - 1.5) * 0.11, 0.81, 6, Math.PI / 2));
+      const pg = MG(pod); pg.rotateX(-0.35); pg.translate(0, 1.35, -0.55);
+      T.push(pg, CY(0.25, 0.3, 0.25, C.steel, 0, 1.0, -0.55, 8));
+      m.muzzle = { y: 1.6, z: 0.3 };
+      break;
+    }
+    case 's_elite': {
+      // 战术导弹车：四轴长底盘 + 前置驾驶室 + 起竖架上的单枚大型导弹
+      wheelsAt(L, 0.72, 0.36, [1.25, 0.55, -0.55, -1.25], 0.36, 0.24);
+      L.push(B(1.35, 0.3, 3.4, C.dark, 0, 0.6, 0), hullGeo(1.45, 0.75, 0.9, 0.25, 0, 0.08, bs, 0, 0.75, 1.3), B(1.25, 0.26, 0.05, C.glass, 0, 1.28, 1.63, 0, -0.3), B(1.47, 0.08, 0.18, acc, 0, 1.52, 1.08), B(1.3, 0.25, 2.3, dk, 0, 0.88, -0.45));
+      const ms = [CY(0.17, 0.17, 2.4, C.white, 0, 0, 0, 12, Math.PI / 2), CY(0.001, 0.17, 0.5, 0x5a6a3a, 0, 0, 1.45, 12, Math.PI / 2), B(0.04, 0.5, 0.35, C.white, 0, 0, -1.05), B(0.5, 0.04, 0.35, C.white, 0, 0, -1.05), B(0.3, 0.1, 2.3, C.steel, 0, -0.22, -0.1)];
+      const mg = MG(ms); mg.rotateX(-0.12); mg.translate(0, 1.35, -0.4);
+      T.push(mg, B(0.4, 0.4, 0.3, C.steel, 0, 1.1, -1.55));
+      m.muzzle = { y: 1.55, z: 1.4 };
+      break;
+    }
+    case 's_harvester': {
+      // 轻型采矿车：双轴卡车 + 翻斗
+      wheelsAt(L, 0.68, 0.34, [0.95, -0.85], 0.34, 0.26);
+      L.push(B(1.3, 0.28, 2.8, C.dark, 0, 0.55, 0), hullGeo(1.35, 0.8, 0.85, 0.25, 0, 0.06, bs, 0, 0.65, 0.95), B(1.15, 0.26, 0.05, C.glass, 0, 1.22, 1.28, 0, -0.3));
+      L.push(hullGeo(1.5, 0.75, 1.7, -0.12, 0.05, -0.06, bs, 0, 0.72, -0.5), B(1.56, 0.1, 1.76, acc, 0, 1.42, -0.5), B(1.4, 0.25, 0.4, C.steelLt, 0, 0.42, 1.55));
+      m.cargo = MG([B(1.35, 0.36, 1.5, C.ore, 0, 0, 0)]); m.cargoY = 1.35; m.cargoZ = -0.5;
+      break;
+    }
+    // ======================= 金穗载具 =======================
+    case 'g_scout': {
+      // 8×8 轮式装甲车：楔形车体 + 低矮机关炮塔
+      wheelsAt(L, 0.66, 0.3, [1.0, 0.4, -0.3, -0.95], 0.3, 0.2);
+      L.push(hullGeo(1.3, 0.62, 2.6, 0.6, 0.15, 0.12, bs, 0, 0.38, 0), B(1.32, 0.06, 2.4, dk, 0, 0.56, -0.05), B(0.9, 0.07, 0.22, acc, 0, 1.0, -0.95), B(0.3, 0.14, 0.04, C.glass, -0.3, 0.88, 0.85, 0, -0.6));
+      T.push(hullGeo(0.95, 0.32, 1.0, 0.3, 0.1, 0.12, bs, 0, 1.0, -0.1), barrel(0.045, 1.15, 0, 1.15, 0.35, 0.05, C.dark), B(0.14, 0.14, 0.14, C.glass, 0.3, 1.38, 0.0), B(0.2, 0.12, 0.25, dk, -0.32, 1.2, 0.1));
+      m.muzzle = { y: 1.16, z: 1.5 };
+      break;
+    }
+    case 'g_mbt': {
+      // 主战坦克：带侧裙的履带 + 楔形附加装甲炮塔 + 带热护套的长炮管
+      tracks(L, 2.65, 1.72, 0.32, 6, { wr: 0.2, skirt: bs, skirtH: 0.32, stripe: acc });
+      L.push(hullGeo(1.28, 0.42, 2.6, 0.65, 0.1, 0.04, bs, 0, 0.5, 0), B(1.78, 0.05, 2.65, dk, 0, 0.6, 0));
+      T.push(hullGeo(1.15, 0.38, 1.3, 0.1, 0.12, 0.1, bs, 0, 0.92, -0.2), B(1.17, 0.06, 0.24, acc, 0, 1.15, -0.75));
+      for (const s of [-1, 1]) T.push(polyGeo(xfFaces([[[0, 0, 0], [s * 0.5, 0, 0], [s * 0.2, 0, 0.55]], [[0, 0.36, 0], [s * 0.5, 0.36, 0], [s * 0.2, 0.36, 0.55]], [[0, 0, 0], [s * 0.5, 0, 0], [s * 0.5, 0.36, 0], [0, 0.36, 0]], [[s * 0.5, 0, 0], [s * 0.2, 0, 0.55], [s * 0.2, 0.36, 0.55], [s * 0.5, 0.36, 0]], [[0, 0, 0], [s * 0.2, 0, 0.55], [s * 0.2, 0.36, 0.55], [0, 0.36, 0]]], s * 0.08, 0.93, 0.42, 0), bs));
+      T.push(barrel(0.08, 1.95, 0, 1.1, 0.5), CY(0.1, 0.1, 0.5, dk, 0, 1.1, 1.3, 8, Math.PI / 2), B(0.2, 0.22, 0.2, C.glass, 0.38, 1.38, -0.1), B(0.16, 0.14, 0.16, dk, -0.35, 1.36, -0.3));
+      m.muzzle = { y: 1.1, z: 2.5 };
+      break;
+    }
+    case 'g_aa': {
+      // 弹炮合一防空车：两侧双管炮 + 导弹箱 + 顶部搜索雷达
+      tracks(L, 2.4, 1.6, 0.3, 6, { wr: 0.18, skirt: bs });
+      L.push(hullGeo(1.2, 0.45, 2.4, 0.5, 0.08, 0.05, bs, 0, 0.42, 0), B(1.64, 0.04, 2.4, dk, 0, 0.52, 0));
+      T.push(hullGeo(1.1, 0.55, 1.2, 0.25, 0.1, 0.1, bs, 0, 0.87, -0.15), B(1.12, 0.06, 0.2, acc, 0, 1.38, -0.65));
+      for (const s of [-1, 1]) T.push(barrel(0.035, 0.95, s * 0.68, 1.15, 0.0, 0.25, C.dark), barrel(0.035, 0.95, s * 0.68, 1.27, 0.0, 0.25, C.dark), B(0.18, 0.3, 0.55, dk, s * 0.66, 1.25, -0.3));
+      T.push(CY(0.04, 0.04, 0.3, C.steel, 0, 1.55, -0.45, 4), B(0.85, 0.3, 0.05, C.white, 0, 1.8, -0.45, 0, 0.2));
+      m.muzzle = { y: 1.4, z: 1.0 };
+      break;
+    }
+    case 'g_arty': {
+      // 自行加榴炮：长车体 + 方正大炮塔 + 特别长的身管
+      tracks(L, 3.0, 1.75, 0.33, 7, { wr: 0.18, skirt: bs });
+      L.push(hullGeo(1.3, 0.45, 3.0, 0.55, 0.05, 0.05, bs, 0, 0.48, 0), B(1.8, 0.05, 3.0, dk, 0, 0.58, 0));
+      T.push(hullGeo(1.5, 0.72, 1.85, 0.2, 0.05, 0.08, bs, 0, 0.93, -0.45), B(1.52, 0.08, 0.25, acc, 0, 1.55, -1.25), barrel(0.09, 2.7, 0, 1.3, 0.45, 0.35), CY(0.12, 0.12, 0.25, dk, 0, 2.28, 2.95, 8, Math.PI / 2 - 0.35), B(0.2, 0.2, 0.2, C.glass, 0.5, 1.75, -0.2));
+      m.muzzle = { y: 2.3, z: 3.0 };
+      break;
+    }
+    case 'g_elite': {
+      // 两栖突击车：船形车体 + 防浪板 + 低矮履带 + 105 炮塔 + 尾部喷水推进口
+      tracks(L, 2.5, 1.7, 0.28, 6, { wr: 0.17 });
+      L.push(hullGeo(1.62, 0.5, 2.7, 0.75, 0.15, 0.08, bs, 0, 0.42, 0), B(1.4, 0.05, 0.5, dk, 0, 0.72, 1.45, 0, -0.9), B(1.0, 0.07, 0.2, acc, 0, 0.94, -0.95));
+      for (const s of [-1, 1]) L.push(CY(0.12, 0.12, 0.1, C.dark, s * 0.4, 0.62, -1.36, 10, Math.PI / 2));
+      T.push(hullGeo(1.0, 0.36, 1.05, 0.3, 0.1, 0.12, bs, 0, 0.92, -0.15), barrel(0.065, 1.5, 0, 1.12, 0.4), CY(0.09, 0.09, 0.18, C.steel, 0, 1.12, 1.85, 8, Math.PI / 2), B(0.16, 0.16, 0.16, C.glass, 0.3, 1.36, -0.25));
+      m.muzzle = { y: 1.12, z: 1.95 };
+      break;
+    }
+    case 'g_harvester': {
+      // 采矿车：三轴重卡 + 大翻斗
+      wheelsAt(L, 0.72, 0.36, [1.0, -0.15, -1.0], 0.36, 0.3);
+      L.push(B(1.5, 0.3, 3.0, C.dark, 0, 0.55, 0), hullGeo(1.45, 0.85, 0.8, 0.18, 0, 0.06, bs, 0, 0.7, 1.05), B(1.25, 0.28, 0.05, C.glass, 0, 1.28, 1.42, 0, -0.25));
+      L.push(hullGeo(1.65, 0.95, 1.85, -0.1, 0.05, -0.04, bs, 0, 0.7, -0.5), B(1.7, 0.14, 1.9, acc, 0, 1.6, -0.5), B(1.5, 0.3, 0.45, C.steelLt, 0, 0.42, 1.65), B(0.2, 0.6, 0.2, C.steel, 0.6, 1.8, 0.75));
+      m.cargo = MG([B(1.45, 0.4, 1.65, C.ore, 0, 0, 0)]); m.cargoY = 1.5; m.cargoZ = -0.5;
+      break;
+    }
+    // ======================= 灰鹰载具 =======================
+    case 'h_scout': {
+      // 侦察车：低矮四轮楔形车 + 升降传感器桅杆 + 小型遥控机枪
+      wheelsAt(L, 0.6, 0.3, [0.75, -0.75], 0.3, 0.22);
+      L.push(hullGeo(1.2, 0.5, 2.2, 0.6, 0.2, 0.12, bs, 0, 0.38, 0), B(1.0, 0.18, 0.05, C.glass, 0, 0.78, 0.55, 0, -0.9), B(0.95, 0.06, 0.2, acc, 0, 0.89, -0.75));
+      L.push(CY(0.04, 0.04, 0.8, C.steel, -0.35, 1.25, -0.6, 6), B(0.3, 0.16, 0.16, 0x3a4044, -0.35, 1.68, -0.6), B(0.1, 0.1, 0.02, C.glass, -0.35, 1.68, -0.51));
+      T.push(B(0.28, 0.18, 0.36, 0x4c5860, 0, 0.98, -0.1), barrel(0.03, 0.55, 0, 1.0, 0.1, 0, C.dark), SP(0.06, C.glass, 0.12, 1.1, 0.05, 8, 6, 1, Math.PI));
+      m.muzzle = { y: 1.0, z: 0.7 };
+      break;
+    }
+    case 'h_scout2': {
+      // 侦察无人机：小型无人直升机（流线机身 + 光电球 + 起落橇）
+      L.push(SP(0.32, bs, 0, 0, 0.15, 10, 8, 0.75, Math.PI), hullGeo(0.4, 0.3, 0.7, 0.1, 0.2, 0.06, bs, 0, -0.18, -0.25), CY(0.07, 0.03, 1.0, bs, 0, 0.0, -0.95, 8, Math.PI / 2), B(0.04, 0.3, 0.22, bs, 0, 0.12, -1.42), B(0.42, 0.03, 0.14, bs, 0, -0.02, -1.38));
+      L.push(SP(0.1, C.glass, 0, -0.26, 0.32, 8, 6, 1, Math.PI), B(0.3, 0.04, 0.1, acc, 0, 0.18, 0.0));
+      for (const s of [-1, 1]) L.push(B(0.03, 0.03, 0.8, C.dark, s * 0.25, -0.42, 0.05), B(0.025, 0.2, 0.025, C.dark, s * 0.25, -0.32, 0.25), B(0.025, 0.2, 0.025, C.dark, s * 0.25, -0.32, -0.15));
+      m.rotor = rotorGeo(1.3, 2, 0.1); m.rotorY = 0.3; m.rotorZ = 0.05;
+      m.tailRotor = tailRotorGeo(0.18); m.tailPos = [0.05, 0.12, -1.42];
+      m.muzzle = { y: -0.25, z: 0.3 };
+      break;
+    }
+    case 'h_mbt': {
+      // 中型坦克：侧裙 + 楔形箭头装甲炮塔 + 尾舱 + 长炮管
+      tracks(L, 2.7, 1.74, 0.32, 7, { wr: 0.18, skirt: bs, skirtH: 0.34, stripe: acc });
+      L.push(hullGeo(1.3, 0.42, 2.7, 0.55, 0.12, 0.04, bs, 0, 0.5, 0), B(1.8, 0.05, 2.7, dk, 0, 0.6, 0));
+      T.push(polyGeo(xfFaces([[[-0.6, 0, -0.9], [0.6, 0, -0.9], [0.6, 0, 0.25], [0, 0, 0.8], [-0.6, 0, 0.25]], [[-0.55, 0.36, -0.85], [0.55, 0.36, -0.85], [0.55, 0.36, 0.2], [0, 0.36, 0.65], [-0.55, 0.36, 0.2]],
+        [[-0.6, 0, -0.9], [0.6, 0, -0.9], [0.55, 0.36, -0.85], [-0.55, 0.36, -0.85]], [[0.6, 0, -0.9], [0.6, 0, 0.25], [0.55, 0.36, 0.2], [0.55, 0.36, -0.85]], [[0.6, 0, 0.25], [0, 0, 0.8], [0, 0.36, 0.65], [0.55, 0.36, 0.2]], [[0, 0, 0.8], [-0.6, 0, 0.25], [-0.55, 0.36, 0.2], [0, 0.36, 0.65]], [[-0.6, 0, 0.25], [-0.6, 0, -0.9], [-0.55, 0.36, -0.85], [-0.55, 0.36, 0.2]]], 0, 0.92, -0.1, 0), bs));
+      T.push(B(1.12, 0.06, 0.22, acc, 0, 1.3, -0.8), barrel(0.075, 2.05, 0, 1.1, 0.5), B(0.22, 0.2, 0.22, C.glass, -0.35, 1.38, -0.2), B(0.18, 0.16, 0.18, 0x3a4044, 0.38, 1.36, 0.05));
+      m.muzzle = { y: 1.1, z: 2.6 };
+      break;
+    }
+    case 'h_aa': {
+      // 远程防空导弹车：四轴卡车 + 起竖的四联装发射筒 + 相控阵雷达板
+      wheelsAt(L, 0.7, 0.34, [1.15, 0.45, -0.45, -1.15], 0.34, 0.22);
+      L.push(B(1.3, 0.28, 3.2, C.dark, 0, 0.55, 0), hullGeo(1.4, 0.8, 0.85, 0.3, 0, 0.1, bs, 0, 0.68, 1.15), B(1.2, 0.25, 0.05, C.glass, 0, 1.22, 1.45, 0, -0.4), B(1.42, 0.08, 0.18, acc, 0, 1.46, 0.95));
+      T.push(B(0.6, 0.25, 0.8, C.steel, 0, 0.95, -0.5));
+      const can = []; for (const x of [-0.27, 0.27]) for (const yy of [-0.17, 0.17]) can.push(B(0.5, 0.32, 2.0, bs, x, yy, 0), B(0.42, 0.26, 0.02, C.dark, x, yy, 1.0));
+      const cg = MG(can); cg.rotateX(-0.6); cg.translate(0, 1.6, -0.6); T.push(cg);
+      T.push(B(0.6, 0.6, 0.08, P_HAWK_WHITE, 0, 1.25, -1.35, 0, 0.3));
+      m.muzzle = { y: 2.2, z: 0.25 };
+      break;
+    }
+    case 'h_arty': {
+      // 精确制导炮：后置巨大炮塔（带尾舱）+ 很长的身管 + 炮口制退器
+      tracks(L, 3.0, 1.78, 0.33, 7, { wr: 0.18, skirt: bs });
+      L.push(hullGeo(1.32, 0.48, 3.0, 0.6, 0.05, 0.04, bs, 0, 0.48, 0), B(1.82, 0.05, 3.0, dk, 0, 0.58, 0));
+      T.push(hullGeo(1.55, 0.75, 2.0, 0.35, 0.05, 0.08, bs, 0, 0.96, -0.55), B(1.57, 0.06, 0.25, acc, 0, 1.6, -1.4), barrel(0.085, 2.6, 0, 1.35, 0.45, 0.35), B(0.22, 0.2, 0.32, dk, 0, 2.28, 2.85, 0, -0.35), B(0.2, 0.18, 0.2, C.glass, -0.5, 1.82, -0.1));
+      m.muzzle = { y: 2.3, z: 2.95 };
+      break;
+    }
+    case 'h_elite': {
+      // 电子战车：六轮装甲厢车 + 可旋转的天线阵桅杆 + 碟形天线
+      wheelsAt(L, 0.68, 0.32, [0.95, 0.05, -0.85], 0.32, 0.22);
+      L.push(hullGeo(1.35, 0.95, 2.6, 0.55, 0.1, 0.1, bs, 0, 0.38, 0), B(1.37, 0.07, 1.2, acc, 0, 1.2, -0.6), B(0.9, 0.2, 0.05, C.glass, 0, 1.0, 0.92, 0, -0.75));
+      const d = new THREE.CylinderGeometry(0.32, 0.06, 0.14, 12, 1, true); d.rotateX(-1.1); d.translate(0.4, 1.55, -0.9); L.push(colorGeo(d, C.white), CY(0.03, 0.03, 0.25, C.steel, 0.4, 1.42, -0.95, 4));
+      T.push(CY(0.05, 0.06, 1.1, C.steel, -0.2, 1.85, -0.3, 6), B(0.9, 0.5, 0.06, P_HAWK_WHITE, -0.2, 2.45, -0.3), B(0.06, 0.6, 0.06, C.dark, -0.2, 2.95, -0.3), B(0.6, 0.04, 0.04, C.dark, -0.2, 2.75, -0.3));
+      for (const x of [-0.55, -0.35, -0.05, 0.15]) T.push(B(0.12, 0.38, 0.065, x < -0.3 ? 0xc6ccce : 0xb0b6b8, x, 2.45, -0.3));
+      T.push(B(0.2, 0.14, 0.3, 0x4c5860, 0.4, 1.4, 0.4), barrel(0.025, 0.45, 0.4, 1.42, 0.55, 0, C.dark));
+      m.muzzle = { y: 1.42, z: 1.0 };
+      break;
+    }
+    case 'h_harvester': {
+      // 采矿车：四轴流线型重卡 + 封闭矿仓
+      wheelsAt(L, 0.72, 0.34, [1.1, 0.4, -0.45, -1.1], 0.34, 0.26);
+      L.push(B(1.45, 0.3, 3.1, C.dark, 0, 0.55, 0), hullGeo(1.45, 0.8, 0.9, 0.35, 0, 0.1, bs, 0, 0.7, 1.05), B(1.2, 0.26, 0.05, C.glass, 0, 1.2, 1.38, 0, -0.45));
+      L.push(hullGeo(1.6, 0.9, 1.9, 0.15, 0.1, 0.08, bs, 0, 0.7, -0.5), B(1.62, 0.1, 0.4, acc, 0, 1.45, -0.5), B(1.5, 0.28, 0.42, C.steelLt, 0, 0.42, 1.65));
+      m.cargo = MG([B(1.3, 0.32, 1.5, C.ore, 0, 0, 0)]); m.cargoY = 1.66; m.cargoZ = -0.5;
+      break;
+    }
+    // ======================= 直升机（以 y=0 为中心） =======================
+    case 'n_heli': {
+      // 重型武装直升机：阶梯式双座舱、大机身、短翼挂四个火箭巢、五片桨叶
+      L.push(hullGeo(0.85, 0.8, 2.4, 0.3, 0.2, 0.08, bs, 0, -0.4, 0.0), B(0.6, 0.38, 0.55, C.glass, 0, 0.0, 1.05, 0, 0.2), B(0.56, 0.36, 0.5, C.glass, 0, 0.18, 0.55, 0, 0.25), B(0.42, 0.25, 0.4, bs, 0, -0.25, 1.45));
+      L.push(B(0.6, 0.35, 0.9, dk, 0, 0.45, -0.2), CY(0.2, 0.08, 2.3, bs, 0, 0.1, -2.1, 8, Math.PI / 2), plateYZ([[-2.9, 0.1], [-3.3, 0.85], [-3.55, 0.85], [-3.4, 0.1]], 0.06, bs), B(0.9, 0.05, 0.32, bs, 0, 0.15, -2.95));
+      L.push(B(2.6, 0.07, 0.42, dk, 0, -0.1, 0.0), B(0.85, 0.12, 0.3, acc, 0, 0.25, -0.75));
+      for (const s of [-1, 1]) { for (const o of [0.75, 1.15]) L.push(CY(0.11, 0.11, 0.75, C.dark, s * o, -0.22, 0.05, 8, Math.PI / 2), CY(0.12, 0.12, 0.06, acc, s * o, -0.22, 0.43, 8, Math.PI / 2)); L.push(B(0.06, 0.3, 0.08, C.dark, s * 0.3, -0.6, 0.6), wheel(s * 0.3, -0.75, 0.6, 0.1, C.rubber, 0.08)); }
+      m.rotor = rotorGeo(2.7, 5, 0.2); m.rotorY = 0.75; m.rotorZ = -0.1;
+      m.tailRotor = tailRotorGeo(0.42, 3); m.tailPos = [0.1, 0.5, -3.3];
+      m.muzzle = { y: -0.22, z: 0.5 };
+      break;
+    }
+    case 's_heli': {
+      // 轻型武装直升机：蛋形座舱、细尾梁、T 形尾翼、起落橇、两侧小火箭巢
+      L.push(SP(0.55, bs, 0, 0, 0.25, 12, 8, 0.85, Math.PI), SP(0.42, C.glass, 0, 0.08, 0.5, 10, 6, 0.85, Math.PI * 0.55), CY(0.12, 0.06, 1.7, bs, 0, 0.1, -1.1, 8, Math.PI / 2));
+      L.push(plateYZ([[-1.8, 0.1], [-2.05, 0.6], [-2.2, 0.6], [-2.05, 0.05]], 0.05, bs), B(0.7, 0.04, 0.2, bs, 0, 0.55, -2.1), B(0.6, 0.1, 0.2, acc, 0, 0.42, -0.15));
+      for (const s of [-1, 1]) L.push(B(0.04, 0.04, 1.3, C.dark, s * 0.38, -0.55, 0.15), B(0.03, 0.3, 0.03, C.dark, s * 0.3, -0.4, 0.45), B(0.03, 0.3, 0.03, C.dark, s * 0.3, -0.4, -0.15), B(0.35, 0.04, 0.08, C.dark, s * 0.5, -0.12, 0.1), CY(0.09, 0.09, 0.55, C.dark, s * 0.72, -0.15, 0.1, 8, Math.PI / 2));
+      m.rotor = rotorGeo(2.0, 5, 0.14); m.rotorY = 0.55; m.rotorZ = 0.15;
+      m.tailRotor = tailRotorGeo(0.28); m.tailPos = [0.08, 0.2, -1.95];
+      m.muzzle = { y: -0.15, z: 0.4 };
+      break;
+    }
+    case 'g_heli': {
+      // 武装直升机：串列座舱窄机身、短翼挂弹、涵道尾桨、后三点起落架
+      L.push(hullGeo(0.62, 0.62, 2.2, 0.35, 0.3, 0.06, bs, 0, -0.35, 0.1), B(0.44, 0.32, 0.5, C.glass, 0, 0.12, 0.85, 0, 0.3), B(0.44, 0.34, 0.5, C.glass, 0, 0.24, 0.38, 0, 0.18), B(0.3, 0.2, 0.35, dk, 0, -0.18, 1.35));
+      L.push(B(0.7, 0.3, 0.8, dk, 0, 0.36, -0.25), CY(0.18, 0.1, 1.9, bs, 0, 0.05, -1.75, 8, Math.PI / 2), (() => { const g = new THREE.CylinderGeometry(0.32, 0.32, 0.14, 16, 1, true); g.rotateZ(Math.PI / 2); g.translate(0, 0.18, -2.75); return colorGeo(g, bs); })(), plateYZ([[-2.85, 0.4], [-3.05, 0.95], [-3.2, 0.95], [-3.1, 0.35]], 0.05, bs), B(0.8, 0.04, 0.25, bs, 0, 0.0, -2.45));
+      L.push(B(1.9, 0.06, 0.36, dk, 0, -0.08, -0.05), B(0.72, 0.1, 0.26, acc, 0, 0.18, -0.65));
+      for (const s of [-1, 1]) { L.push(CY(0.07, 0.07, 0.8, C.white, s * 0.7, -0.2, -0.05, 8, Math.PI / 2), CY(0.1, 0.1, 0.6, C.dark, s * 0.95, -0.2, -0.05, 8, Math.PI / 2), B(0.05, 0.3, 0.05, C.dark, s * 0.3, -0.55, 0.6), wheel(s * 0.3, -0.7, 0.6, 0.09, C.rubber, 0.07)); }
+      m.rotor = rotorGeo(2.3, 4, 0.17); m.rotorY = 0.62; m.rotorZ = -0.2;
+      m.tailRotor = tailRotorGeo(0.26, 4); m.tailPos = [0, 0.18, -2.75];
+      m.muzzle = { y: -0.2, z: 0.5 };
+      break;
+    }
+    case 'h_heli': {
+      // 武装直升机：修长串列座舱、桅顶瞄具、短翼导弹、轮式起落架
+      L.push(hullGeo(0.6, 0.6, 2.3, 0.45, 0.3, 0.08, bs, 0, -0.32, 0.15), B(0.42, 0.3, 0.55, C.glass, 0, 0.12, 0.95, 0, 0.35), B(0.42, 0.32, 0.5, C.glass, 0, 0.24, 0.45, 0, 0.18));
+      L.push(B(0.66, 0.28, 0.85, dk, 0, 0.36, -0.2), CY(0.17, 0.08, 2.0, bs, 0, 0.05, -1.85, 8, Math.PI / 2), plateYZ([[-2.6, 0.1], [-2.95, 0.8], [-3.1, 0.8], [-2.95, 0.05]], 0.05, bs), B(0.85, 0.04, 0.26, bs, 0, 0.12, -2.8));
+      L.push(B(1.8, 0.06, 0.34, dk, 0, -0.06, -0.05), B(0.68, 0.1, 0.25, acc, 0, 0.18, -0.6), CY(0.12, 0.12, 0.16, 0x3a4044, 0, 1.0, -0.2, 10), CY(0.03, 0.03, 0.25, C.steel, 0, 0.85, -0.2, 6));
+      for (const s of [-1, 1]) { for (const o of [0.6, 0.85]) L.push(CY(0.06, 0.06, 0.8, C.white, s * o, -0.2, -0.05, 8, Math.PI / 2)); L.push(B(0.05, 0.28, 0.05, C.dark, s * 0.3, -0.55, 0.65), wheel(s * 0.3, -0.7, 0.65, 0.09, C.rubber, 0.07)); }
+      m.rotor = rotorGeo(2.35, 4, 0.16); m.rotorY = 0.62; m.rotorZ = -0.2;
+      m.tailRotor = tailRotorGeo(0.36); m.tailPos = [0.1, 0.45, -2.85];
+      m.muzzle = { y: -0.2, z: 0.6 };
+      break;
+    }
+    case 'h_heli2': {
+      // “雷枭”攻击直升机：粗壮串列机身、两侧发动机短舱、桅顶雷达罩、机头炮
+      L.push(hullGeo(0.78, 0.75, 2.5, 0.45, 0.3, 0.1, bs, 0, -0.38, 0.1), B(0.5, 0.36, 0.55, C.glass, 0, 0.14, 1.0, 0, 0.3), B(0.5, 0.42, 0.5, C.glass, 0, 0.3, 0.5, 0, 0.15), B(0.3, 0.22, 0.4, dk, 0, -0.2, 1.6));
+      for (const s of [-1, 1]) L.push(CY(0.2, 0.2, 0.75, dk, s * 0.45, 0.35, -0.2, 10, Math.PI / 2), CY(0.14, 0.14, 0.08, C.dark, s * 0.45, 0.35, -0.6, 10, Math.PI / 2));
+      L.push(CY(0.22, 0.1, 2.4, bs, 0, 0.08, -2.2, 8, Math.PI / 2), plateYZ([[-3.1, 0.1], [-3.45, 0.9], [-3.65, 0.9], [-3.5, 0.05]], 0.06, bs), B(1.1, 0.05, 0.35, bs, 0, 0.1, -3.2), B(2.5, 0.07, 0.42, dk, 0, -0.05, 0.0), B(0.8, 0.14, 0.3, acc, 0, 0.18, -0.9));
+      L.push(CY(0.03, 0.03, 0.4, C.steel, 0, 1.0, -0.1, 6), SP(0.22, 0xd8dcdc, 0, 1.24, -0.1, 12, 6, 0.55, Math.PI), B(0.06, 0.06, 0.45, C.dark, 0, -0.42, 1.55));
+      for (const s of [-1, 1]) { for (const o of [0.7, 1.08]) L.push(CY(0.1, 0.1, 0.8, C.dark, s * o, -0.2, 0.05, 8, Math.PI / 2), CY(0.11, 0.11, 0.08, acc, s * o, -0.2, 0.47, 8, Math.PI / 2)); L.push(B(0.12, 0.3, 0.9, C.dark, s * 0.4, -0.52, 0.2)); }
+      m.rotor = rotorGeo(2.8, 4, 0.24); m.rotorY = 0.95; m.rotorZ = -0.1;
+      m.tailRotor = tailRotorGeo(0.45, 4); m.tailPos = [0.1, 0.5, -3.4];
+      m.muzzle = { y: -0.2, z: 0.9 };
+      break;
+    }
+    // ======================= 固定翼（机头朝 +z） =======================
+    case 'n_fighter': {
+      // 截击机：方正宽机身、两侧大进气道、双垂尾外倾、梯形翼、双喷口
+      L.push(hullGeo(0.7, 0.4, 3.0, 0.2, 0.1, 0.12, bs, 0, -0.2, -0.2), CY(0.02, 0.22, 0.9, bs, 0, 0, 1.75, 8, Math.PI / 2), SP(0.16, C.glass, 0, 0.2, 0.95, 8, 6, 0.8));
+      for (const s of [-1, 1]) L.push(B(0.32, 0.36, 1.4, dk, s * 0.48, -0.08, 0.35), B(0.3, 0.32, 0.04, C.dark, s * 0.48, -0.08, 1.06), CY(0.17, 0.15, 0.3, C.dark, s * 0.2, -0.02, -1.8, 10, Math.PI / 2), plateYZ([[-0.9, 0.1], [-1.3, 0.85], [-1.6, 0.85], [-1.65, 0.1]], 0.05, bs, s * 0.32, 0, 0, s * -0.25), CY(0.05, 0.05, 0.8, C.white, s * 1.1, -0.15, -0.1, 6, Math.PI / 2));
+      wings(L, 0.45, -0.05, -0.35, 1.25, 1.5, 0.6, 0.85, 0.05, bs); wings(L, 0.3, -0.05, -1.55, 0.7, 0.55, 0.3, 0.3, 0.04, bs);
+      L.push(B(0.3, 0.02, 0.3, acc, 1.2, 0.0, -0.55), B(0.3, 0.02, 0.3, acc, -1.2, 0.0, -0.55));
+      m.muzzle = { y: -0.1, z: 1.4 };
+      break;
+    }
+    case 'n_striker': {
+      // 装甲攻击机：机身两侧的发动机短舱、几乎平直的长机翼、单垂尾、翼下满挂火箭
+      fuselage(L, 2.3, 0.22, bs, 0, 0.0, 0.6, 0.35); L.push(SP(0.16, C.glass, 0, 0.2, 0.75, 8, 6, 0.8));
+      for (const s of [-1, 1]) L.push(CY(0.17, 0.17, 1.0, dk, s * 0.38, 0.05, -0.55, 10, Math.PI / 2), CY(0.12, 0.12, 0.05, C.dark, s * 0.38, 0.05, -0.04, 10, Math.PI / 2));
+      wings(L, 0.25, 0.0, 0.05, 1.55, 0.85, 0.5, 0.15, 0.06, bs); wings(L, 0.12, 0.05, -1.45, 0.65, 0.45, 0.3, 0.12, 0.04, bs);
+      L.push(plateYZ([[-1.0, 0.15], [-1.35, 0.8], [-1.6, 0.8], [-1.6, 0.1]], 0.05, bs));
+      for (const s of [-1, 1]) for (const o of [0.65, 1.0, 1.35]) L.push(CY(0.06, 0.06, 0.55, o > 1.2 ? C.white : C.dark, s * o, -0.15, 0.05, 6, Math.PI / 2));
+      L.push(B(0.35, 0.02, 0.28, acc, 1.45, 0.04, -0.05), B(0.35, 0.02, 0.28, acc, -1.45, 0.04, -0.05));
+      m.muzzle = { y: -0.15, z: 0.6 };
+      break;
+    }
+    case 'n_bomber': {
+      // 远程重型轰炸机：长机身、后掠翼、四台涡桨发动机（对转螺旋桨）、高大后掠垂尾
+      fuselage(L, 3.8, 0.32, bs, 0, -0.1, 0.8, 0.6); L.push(B(0.4, 0.14, 0.4, C.glass, 0, 0.28, 1.6));
+      wings(L, 0.3, 0.05, 0.1, 2.3, 1.4, 0.5, 1.1, 0.08, bs, -0.05); wings(L, 0.2, 0.1, -2.1, 0.9, 0.7, 0.35, 0.45, 0.05, bs);
+      L.push(plateYZ([[-1.9, 0.2], [-2.5, 1.2], [-2.85, 1.2], [-2.75, 0.2]], 0.07, bs));
+      for (const s of [-1, 1]) for (const o of [0.85, 1.65]) { const zz = 0.55 - (o - 0.3) * 0.48; L.push(CY(0.14, 0.12, 0.9, dk, s * o, -0.02, zz, 10, Math.PI / 2), CY(0.38, 0.38, 0.02, 0x2a2a28, s * o, -0.02, zz + 0.5, 14, Math.PI / 2), CY(0.36, 0.36, 0.02, 0x2a2a28, s * o, -0.02, zz + 0.56, 14, Math.PI / 2)); }
+      L.push(B(0.5, 0.02, 0.4, acc, 2.0, 0.0, -0.75), B(0.5, 0.02, 0.4, acc, -2.0, 0.0, -0.75));
+      m.muzzle = { y: -0.4, z: 0 };
+      break;
+    }
+    case 's_fighter': {
+      // 老式截击机：圆管机身、机头进气口（激波锥）、三角翼、单后掠垂尾
+      fuselage(L, 2.6, 0.2, bs, 0, -0.15, 0.25, 0.3); L.push(CY(0.2, 0.2, 0.05, C.dark, 0, 0, 1.2, 10, Math.PI / 2), CY(0.001, 0.09, 0.3, C.steelLt, 0, 0, 1.3, 8, Math.PI / 2), SP(0.13, C.glass, 0, 0.17, 0.75, 8, 6, 0.8));
+      for (const s of [-1, 1]) L.push(plateXZ([[s * 0.15, 0.4], [s * 1.15, -1.0], [s * 0.15, -1.15]], 0.05, bs));
+      L.push(plateYZ([[-0.7, 0.15], [-1.35, 0.85], [-1.6, 0.85], [-1.55, 0.1]], 0.05, bs)); wings(L, 0.12, 0, -1.45, 0.45, 0.4, 0.2, 0.2, 0.03, bs);
+      for (const s of [-1, 1]) L.push(CY(0.05, 0.05, 0.75, C.white, s * 0.7, -0.12, -0.4, 6, Math.PI / 2), B(0.25, 0.02, 0.25, acc, s * 0.7, 0.03, -0.75));
+      m.muzzle = { y: -0.1, z: 1.0 };
+      break;
+    }
+    case 's_striker': {
+      // 火箭攻击机：教练机改装（串列双座舱、平直翼带翼尖油箱、翼下火箭巢）
+      fuselage(L, 2.2, 0.2, bs, 0, -0.05, 0.6, 0.3); L.push(B(0.24, 0.16, 0.8, C.glass, 0, 0.2, 0.55));
+      wings(L, 0.15, -0.08, -0.05, 1.25, 0.8, 0.45, 0.12, 0.05, bs, 0.06); wings(L, 0.1, 0.0, -1.3, 0.55, 0.4, 0.25, 0.12, 0.04, bs);
+      L.push(plateYZ([[-0.95, 0.1], [-1.25, 0.65], [-1.45, 0.65], [-1.45, 0.05]], 0.05, bs));
+      for (const s of [-1, 1]) L.push(CY(0.07, 0.07, 0.6, bs, s * 1.42, -0.02, 0.0, 8, Math.PI / 2), CY(0.09, 0.09, 0.5, C.dark, s * 0.75, -0.22, 0.05, 8, Math.PI / 2), B(0.25, 0.02, 0.25, acc, s * 1.0, 0.0, -0.15));
+      m.muzzle = { y: -0.2, z: 0.5 };
+      break;
+    }
+    case 's_bomber': {
+      // 中型轰炸机：玻璃机头、上单翼、两台活塞发动机、双垂尾
+      fuselage(L, 3.0, 0.28, bs, 0, -0.1, 0.5, 0.5, C.glass);
+      wings(L, 0.25, 0.25, 0.25, 1.7, 0.9, 0.5, 0.1, 0.07, bs); wings(L, 0.2, 0.1, -1.75, 0.75, 0.55, 0.35, 0.1, 0.05, bs);
+      for (const s of [-1, 1]) L.push(CY(0.16, 0.14, 0.95, dk, s * 0.85, 0.15, 0.35, 10, Math.PI / 2), CY(0.4, 0.4, 0.02, 0x2a2a28, s * 0.85, 0.15, 0.85, 14, Math.PI / 2), plateYZ([[-1.6, 0.0], [-1.85, 0.6], [-2.05, 0.6], [-2.0, -0.05]], 0.05, bs, s * 0.95, 0.1, 0), B(0.3, 0.02, 0.3, acc, s * 1.4, 0.3, 0.2));
+      m.muzzle = { y: -0.35, z: 0 };
+      break;
+    }
+    case 'g_fighter': {
+      // 截击机：腹部进气口、大三角翼 + 前翼（鸭翼）、单垂尾、单喷口
+      fuselage(L, 2.5, 0.22, bs, 0, -0.1, 0.8, 0.25); L.push(SP(0.15, C.glass, 0, 0.2, 0.85, 8, 6, 0.85), hullGeo(0.4, 0.3, 1.2, 0.3, 0, 0.05, dk, 0, -0.42, 0.2));
+      for (const s of [-1, 1]) L.push(plateXZ([[s * 0.2, 0.2], [s * 1.25, -1.05], [s * 1.25, -1.25], [s * 0.2, -1.3]], 0.05, bs), plateXZ([[s * 0.18, 0.95], [s * 0.6, 0.55], [s * 0.6, 0.45], [s * 0.18, 0.6]], 0.03, bs), CY(0.05, 0.05, 0.7, C.white, s * 0.85, -0.12, -0.55, 6, Math.PI / 2), B(0.28, 0.02, 0.22, acc, s * 1.0, 0.03, -1.05));
+      L.push(plateYZ([[-0.75, 0.15], [-1.3, 0.9], [-1.55, 0.9], [-1.45, 0.12]], 0.05, bs), CY(0.17, 0.15, 0.2, C.dark, 0, -0.1, -1.85, 10, Math.PI / 2));
+      m.muzzle = { y: -0.1, z: 1.2 };
+      break;
+    }
+    case 'g_striker': {
+      // 攻击机：长机头、串列座舱、肩部后掠翼、双发、单垂尾
+      fuselage(L, 2.8, 0.24, bs, 0, -0.1, 0.9, 0.3); L.push(B(0.26, 0.16, 0.85, C.glass, 0, 0.22, 0.85));
+      for (const s of [-1, 1]) L.push(B(0.26, 0.24, 1.0, dk, s * 0.3, -0.06, -0.2), CY(0.12, 0.11, 0.2, C.dark, s * 0.18, -0.08, -1.78, 10, Math.PI / 2));
+      wings(L, 0.25, 0.12, -0.2, 1.4, 1.1, 0.45, 0.75, 0.06, bs, -0.08); wings(L, 0.2, 0.0, -1.55, 0.7, 0.55, 0.3, 0.35, 0.04, bs, -0.05);
+      L.push(plateYZ([[-0.9, 0.15], [-1.5, 0.95], [-1.75, 0.95], [-1.7, 0.12]], 0.05, bs));
+      for (const s of [-1, 1]) for (const o of [0.7, 1.05]) L.push(CY(0.07, 0.07, 0.75, C.white, s * o, -0.1, -0.35, 8, Math.PI / 2)); L.push(B(0.3, 0.02, 0.3, acc, 1.35, 0.06, -0.75), B(0.3, 0.02, 0.3, acc, -1.35, 0.06, -0.75));
+      m.muzzle = { y: -0.1, z: 0.6 };
+      break;
+    }
+    case 'g_bomber': {
+      // 巡航导弹载机：后掠翼中型轰炸机、翼根两台发动机、翼下六枚巡航导弹
+      fuselage(L, 3.4, 0.3, bs, 0, -0.1, 0.7, 0.6); L.push(B(0.4, 0.14, 0.45, C.glass, 0, 0.27, 1.45));
+      wings(L, 0.3, 0.0, 0.0, 2.0, 1.3, 0.5, 1.0, 0.08, bs, -0.04); wings(L, 0.2, 0.1, -1.95, 0.85, 0.65, 0.3, 0.45, 0.05, bs);
+      L.push(plateYZ([[-1.7, 0.2], [-2.3, 1.1], [-2.6, 1.1], [-2.5, 0.2]], 0.07, bs));
+      for (const s of [-1, 1]) { L.push(CY(0.2, 0.18, 1.0, dk, s * 0.55, -0.12, 0.1, 10, Math.PI / 2)); for (const o of [1.0, 1.35, 1.7]) { const zz = 0.2 - (o - 0.3) * 0.5; L.push(CY(0.07, 0.07, 0.9, C.white, s * o, -0.22, zz, 8, Math.PI / 2), B(0.3, 0.02, 0.1, C.white, s * o, -0.22, zz - 0.35)); } L.push(B(0.4, 0.02, 0.35, acc, s * 1.6, 0.0, -0.75)); }
+      m.muzzle = { y: -0.35, z: 0 };
+      break;
+    }
+    case 'h_fighter': {
+      // 多用途战斗机：棱角分明的隐身机身、梯形翼、外倾双垂尾、双喷口
+      L.push(hullGeo(0.95, 0.32, 2.6, 0.3, 0.2, 0.2, bs, 0, -0.18, -0.2), hullGeo(0.5, 0.2, 1.0, 0.6, 0, 0.12, bs, 0, -0.12, 1.5), SP(0.15, C.glass, 0, 0.16, 0.8, 8, 6, 0.75));
+      for (const s of [-1, 1]) L.push(plateXZ([[s * 0.45, 0.25], [s * 1.35, -0.6], [s * 1.35, -0.95], [s * 0.45, -1.05]], 0.05, bs), plateXZ([[s * 0.4, -1.1], [s * 1.0, -1.45], [s * 1.0, -1.65], [s * 0.4, -1.6]], 0.04, bs), plateYZ([[-0.95, 0.1], [-1.35, 0.75], [-1.6, 0.75], [-1.55, 0.1]], 0.05, bs, s * 0.38, 0, 0, s * -0.42), CY(0.13, 0.12, 0.2, C.dark, s * 0.2, -0.05, -1.6, 8, Math.PI / 2), B(0.28, 0.02, 0.25, acc, s * 1.05, 0.03, -0.55));
+      m.muzzle = { y: -0.1, z: 1.4 };
+      break;
+    }
+    case 'h_striker': {
+      // 精确攻击机：平直长翼、尾部高置双发、双垂尾、机头大口径机炮
+      fuselage(L, 2.5, 0.22, bs, 0, -0.05, 0.5, 0.3); L.push(SP(0.16, C.glass, 0, 0.22, 0.8, 8, 6, 0.8), CY(0.03, 0.03, 0.3, C.dark, 0, -0.08, 1.75, 6, Math.PI / 2));
+      wings(L, 0.2, -0.08, 0.15, 1.6, 0.85, 0.5, 0.1, 0.06, bs); wings(L, 0.15, 0.25, -1.45, 0.7, 0.45, 0.4, 0.05, 0.04, bs);
+      for (const s of [-1, 1]) L.push(CY(0.17, 0.15, 0.8, dk, s * 0.38, 0.32, -0.75, 10, Math.PI / 2), B(0.06, 0.15, 0.2, dk, s * 0.28, 0.2, -0.75), plateYZ([[-1.3, 0.1], [-1.4, 0.75], [-1.65, 0.75], [-1.7, 0.05]], 0.05, bs, s * 0.85, 0.25, 0), CY(0.06, 0.06, 0.65, C.white, s * 0.8, -0.18, 0.1, 6, Math.PI / 2), B(0.3, 0.02, 0.28, acc, s * 1.4, 0.0, 0.05));
+      m.muzzle = { y: -0.1, z: 1.9 };
+      break;
+    }
+    case 'h_bomber': {
+      // 轰炸机：飞翼布局（中央机身 + 两侧外翼 + 锯齿后缘）
+      L.push(plateXZ([[0, 1.6], [0.9, 0.2], [0, -0.7], [-0.9, 0.2]], 0.32, bs), hullGeo(0.9, 0.18, 1.2, 0.4, 0.2, 0.15, bs, 0, 0.12, 0.5), B(0.4, 0.06, 0.25, C.glass, 0, 0.3, 0.75, 0, -0.3));
+      for (const s of [-1, 1]) { L.push(plateXZ([[s * 0.85, 0.3], [s * 2.6, -1.0], [s * 2.5, -1.25], [s * 1.6, -0.75], [s * 0.85, -0.45]], 0.12, bs), plateXZ([[s * 0.0, -0.6], [s * 0.85, 0.15], [s * 0.85, -0.45], [s * 0.45, -0.95]], 0.18, bs), B(0.35, 0.1, 0.4, C.dark, s * 0.5, 0.18, -0.2), B(0.4, 0.02, 0.3, acc, s * 1.9, 0.07, -0.8)); }
+      m.muzzle = { y: -0.3, z: 0 };
+      break;
+    }
+    // ======================= 舰船（吃水线 y≈0） =======================
+    case 'n_boat': case 'g_boat': case 'h_boat': case 's_boat': {
+      const nn = k[0];
+      L.push(shipHull(2.7, 1.05, 0.55, bs, -0.22), B(1.0, 0.04, 2.3, C.dark, 0, 0.34, -0.15), B(1.07, 0.06, 0.25, acc, 0, 0.3, -1.0));
+      if (nn === 'n') { L.push(B(0.7, 0.5, 0.8, dk, 0, 0.6, -0.4), B(0.6, 0.12, 0.05, C.glass, 0, 0.75, 0.01), CY(0.03, 0.03, 1.0, C.steel, 0, 1.3, -0.55, 4), B(0.3, 0.3, 0.3, C.dark, 0, 0.5, -1.1)); T.push(CY(0.24, 0.28, 0.24, dk, 0, 0.48, 0.65, 8), barrel(0.045, 0.6, -0.09, 0.56, 0.75, 0.25, C.dark), barrel(0.045, 0.6, 0.09, 0.56, 0.75, 0.25, C.dark)); m.muzzle = { y: 0.7, z: 1.35 }; }
+      else if (nn === 's') { L.push(hullGeo(0.6, 0.45, 0.8, 0.2, 0.1, 0.06, dk, 0, 0.36, 0.0), B(0.5, 0.1, 0.05, C.glass, 0, 0.66, 0.32)); for (const s of [-1, 1]) for (const z of [-0.55, -1.05]) L.push(B(0.24, 0.24, 0.75, 0xa89a7a, s * 0.32, 0.55, z, 0, -0.18)); T.push(CY(0.15, 0.18, 0.18, dk, 0, 0.45, 0.85, 8), barrel(0.035, 0.45, 0, 0.52, 0.92, 0.2, C.dark)); m.muzzle = { y: 0.6, z: -0.2 }; }
+      else if (nn === 'g') { L.push(hullGeo(0.72, 0.5, 1.0, 0.3, 0.1, 0.12, bs, 0, 0.36, -0.4), B(0.55, 0.12, 0.05, C.glass, 0, 0.72, 0.0, 0, -0.3), hullGeo(0.25, 0.5, 0.25, 0.05, 0.05, 0.06, dk, 0, 0.86, -0.5)); T.push(hullGeo(0.4, 0.22, 0.45, 0.15, 0.05, 0.06, dk, 0, 0.36, 0.7), barrel(0.04, 0.6, 0, 0.48, 0.85, 0.1, C.dark)); m.muzzle = { y: 0.5, z: 1.45 }; }
+      else { L.push(hullGeo(0.75, 0.48, 1.1, 0.4, 0.15, 0.14, bs, 0, 0.36, -0.35), B(0.6, 0.12, 0.05, C.glass, 0, 0.7, 0.1, 0, -0.5), CY(0.025, 0.025, 0.7, C.steel, 0, 1.1, -0.45, 4), SP(0.1, P_HAWK_WHITE, 0, 1.0, -0.45, 8, 6)); T.push(B(0.3, 0.2, 0.36, 0x4c5860, 0, 0.45, 0.7), barrel(0.03, 0.55, 0, 0.5, 0.85, 0.05, C.dark)); m.muzzle = { y: 0.5, z: 1.4 }; }
+      break;
+    }
+    case 'n_destroyer': case 's_destroyer': case 'g_destroyer': case 'h_destroyer': {
+      const nn = k[0], len = nn === 's' ? 3.9 : 4.5, bm = nn === 's' ? 1.3 : 1.5;
+      L.push(shipHull(len, bm, 0.62, bs, -0.25), B(bm - 0.1, 0.04, len - 0.6, C.dark, 0, 0.38, -0.2), B(bm + 0.02, 0.07, 0.3, acc, 0, 0.32, -len / 2 + 0.5));
+      if (nn === 'n') {
+        L.push(B(0.95, 0.55, 1.2, dk, 0, 0.66, -0.25), B(0.75, 0.45, 0.7, bs, 0, 1.16, -0.15), B(0.6, 0.12, 0.05, C.glass, 0, 1.25, 0.21), CY(0.22, 0.26, 0.7, C.steel, 0, 0.9, -1.1, 8), CY(0.23, 0.23, 0.12, C.dark, 0, 1.28, -1.1, 8));
+        L.push(CY(0.03, 0.04, 1.6, C.steel, 0, 2.0, -0.3, 4), B(0.8, 0.04, 0.04, C.steel, 0, 2.35, -0.3), B(0.45, 0.32, 0.5, bs, 0, 0.56, -1.75), barrel(0.06, 0.7, -0.1, 0.62, -1.7, 0.1), barrel(0.06, 0.7, 0.1, 0.62, -1.7, 0.1));
+        T.push(B(0.65, 0.38, 0.75, bs, 0, 0.58, 1.05), barrel(0.065, 1.0, -0.12, 0.62, 1.35), barrel(0.065, 1.0, 0.12, 0.62, 1.35)); m.muzzle = { y: 0.62, z: 2.4 };
+      } else if (nn === 's') {
+        L.push(B(0.8, 0.5, 1.0, dk, 0, 0.62, -0.3), B(0.6, 0.35, 0.5, bs, 0, 1.04, -0.2), B(0.5, 0.1, 0.05, C.glass, 0, 1.1, 0.06), CY(0.2, 0.22, 0.55, 0x6a5a48, 0, 0.85, -1.0, 8), CY(0.025, 0.03, 1.2, C.steel, 0, 1.75, -0.3, 4));
+        T.push(CY(0.25, 0.3, 0.3, bs, 0, 0.5, 0.95, 8), barrel(0.055, 0.85, 0, 0.6, 1.15, 0.1)); m.muzzle = { y: 0.62, z: 2.0 };
+      } else if (nn === 'g') {
+        // 导弹驱逐舰：棱角上层建筑、四面相控阵、前后垂直发射格子
+        L.push(hullGeo(1.0, 0.75, 1.5, 0.35, 0.2, 0.12, bs, 0, 0.4, -0.35), hullGeo(0.7, 0.6, 0.75, 0.15, 0.1, 0.1, bs, 0, 1.15, -0.25), B(0.68, 0.1, 0.05, C.glass, 0, 1.05, 0.31, 0, -0.3));
+        for (const [x, z, r] of [[0, 0.06, 0], [0, -0.57, Math.PI], [0.33, -0.25, Math.PI / 2], [-0.33, -0.25, -Math.PI / 2]]) L.push(B(0.32, 0.32, 0.03, 0x2a3a48, x, 1.42, z, r, -0.12));
+        L.push(hullGeo(0.6, 0.45, 0.6, 0.1, 0.1, 0.08, bs, 0, 0.4, -1.35), CY(0.03, 0.03, 0.7, C.steel, 0, 2.05, -0.25, 4));
+        for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) L.push(B(0.16, 0.02, 0.16, C.dark, (c - 1.5) * 0.19, 0.41, 0.75 + r * 0.19), B(0.16, 0.02, 0.16, C.dark, (c - 1.5) * 0.19, 0.41, -1.85 - r * 0.19));
+        T.push(hullGeo(0.45, 0.28, 0.55, 0.2, 0.05, 0.1, bs, 0, 0.4, 1.45), barrel(0.05, 0.8, 0, 0.55, 1.65, 0.1)); m.muzzle = { y: 0.6, z: 2.45 };
+      } else {
+        // 防空护卫舰：一体化桅杆（金字塔形，八角形雷达面板）、雷达罩、垂直发射格子
+        L.push(hullGeo(1.0, 0.7, 1.6, 0.4, 0.2, 0.14, bs, 0, 0.4, -0.4), polyGeo(xfFaces([[[-0.4, 0, -0.35], [0.4, 0, -0.35], [0.4, 0, 0.35], [-0.4, 0, 0.35]], [[-0.1, 1.0, -0.08], [0.1, 1.0, -0.08], [0.1, 1.0, 0.08], [-0.1, 1.0, 0.08]], [[-0.4, 0, -0.35], [0.4, 0, -0.35], [0.1, 1.0, -0.08], [-0.1, 1.0, -0.08]], [[0.4, 0, -0.35], [0.4, 0, 0.35], [0.1, 1.0, 0.08], [0.1, 1.0, -0.08]], [[0.4, 0, 0.35], [-0.4, 0, 0.35], [-0.1, 1.0, 0.08], [0.1, 1.0, 0.08]], [[-0.4, 0, 0.35], [-0.4, 0, -0.35], [-0.1, 1.0, -0.08], [-0.1, 1.0, 0.08]]], 0, 1.1, -0.35, 0), bs));
+        for (const [x, z, r] of [[0, 0.02, 0], [0, -0.72, Math.PI], [0.27, -0.35, Math.PI / 2], [-0.27, -0.35, -Math.PI / 2]]) L.push(CY(0.15, 0.15, 0.03, 0x2a3a48, x, 1.45, z, 8, Math.PI / 2 - 0.3, 0, r));
+        L.push(B(0.68, 0.1, 0.05, C.glass, 0, 1.0, 0.4, 0, -0.5), SP(0.2, P_HAWK_WHITE, 0, 2.25, -0.35, 10, 8), CY(0.025, 0.025, 0.3, C.steel, 0, 2.05, -0.35, 4), hullGeo(0.55, 0.4, 0.55, 0.1, 0.1, 0.08, bs, 0, 0.4, -1.4));
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) L.push(B(0.16, 0.02, 0.16, C.dark, (c - 1.5) * 0.19, 0.41, 0.75 + r * 0.19));
+        T.push(B(0.42, 0.2, 0.42, bs, 0, 0.5, 1.5), ...[[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]].map(([x, yy]) => CY(0.05, 0.05, 0.02, C.dark, x, 0.62 + yy, 1.72, 6, Math.PI / 2)));
+        m.muzzle = { y: 0.65, z: 1.75 };
+      }
+      break;
+    }
+    case 'n_sub': case 's_sub': case 'g_sub': case 'h_sub': {
+      const nn = k[0], len = nn === 's' ? 2.6 : nn === 'n' ? 3.6 : 3.3, r = nn === 's' ? 0.38 : nn === 'n' ? 0.52 : 0.46;
+      L.push(CY(r, r, len, dk, 0, 0, 0, 12, Math.PI / 2), SP(r, dk, 0, 0, len / 2, 12, 6, 1, Math.PI), CY(r, 0.05, r * 2.6, dk, 0, 0, -len / 2 - r * 1.3, 12, Math.PI / 2));
+      if (nn === 'n') L.push(hullGeo(0.7, 0.18, 2.4, 0.4, 0.6, 0.15, dk, 0, r - 0.05, -0.1), hullGeo(0.36, 0.6, 1.1, 0.35, 0.1, 0.05, dk, 0, r + 0.1, 0.25));
+      else if (nn === 's') L.push(B(0.26, 0.5, 0.75, dk, 0, r + 0.2, 0.3), B(0.8, 0.04, 0.25, dk, 0, r + 0.3, 0.35));
+      else if (nn === 'g') L.push(hullGeo(0.3, 0.6, 0.95, 0.2, 0.15, 0.03, dk, 0, r - 0.05, 0.45), B(0.9, 0.04, 0.25, dk, 0, r + 0.35, 0.5));
+      else L.push(hullGeo(0.3, 0.65, 0.85, 0.15, 0.3, 0.04, dk, 0, r - 0.05, 0.75), B(0.85, 0.04, 0.22, dk, 0, r + 0.42, 0.85));
+      L.push(B(0.32, 0.08, 0.5, acc, 0, r + (nn === 'n' ? 0.75 : 0.65), nn === 'n' ? 0.25 : nn === 'h' ? 0.75 : 0.4), B(0.05, r * 1.8, 0.45, dk, 0, 0, -len / 2 - r * 1.8), B(r * 2.2, 0.05, 0.45, dk, 0, 0, -len / 2 - r * 1.8));
+      m.muzzle = { y: 0, z: len / 2 + r };
+      break;
+    }
+    case 'n_cruiser': case 's_cruiser': case 'g_cruiser': case 'h_cruiser': {
+      const nn = k[0];
+      L.push(shipHull(5.4, 1.85, 0.72, bs, -0.25), B(1.75, 0.04, 4.7, C.dark, 0, 0.48, -0.25), B(1.87, 0.08, 0.3, acc, 0, 0.4, -2.3));
+      if (nn === 'n') {
+        // 北岭：两舷各四个大型斜置导弹筒、高耸的塔状上层建筑
+        for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const x = s * (0.42 + (i % 2) * 0.27), y = 0.72 + ((i / 2) | 0) * 0.26; L.push(CY(0.13, 0.13, 1.1, C.steel, x, y, 0.9, 10, Math.PI / 2 - 0.2), CY(0.14, 0.14, 0.04, C.dark, x, y + 0.11, 1.43, 10, Math.PI / 2 - 0.2)); }
+        L.push(B(1.1, 0.9, 1.3, dk, 0, 0.95, -0.7), B(0.8, 0.7, 0.7, bs, 0, 1.75, -0.7), B(0.75, 0.12, 0.05, C.glass, 0, 1.8, -0.34), CY(0.04, 0.05, 1.4, C.steel, 0, 2.8, -0.8, 4), B(1.0, 0.05, 0.05, C.steel, 0, 3.2, -0.8), CY(0.25, 0.3, 0.8, C.steel, 0, 1.1, -1.7, 8));
+      } else if (nn === 's') {
+        for (const s of [-1, 1]) for (const z of [0.9, 0.35]) L.push(B(0.32, 0.3, 0.9, 0xa89a7a, s * 0.5, 0.7, z, 0, -0.15));
+        L.push(B(1.0, 0.75, 1.2, dk, 0, 0.88, -0.8), B(0.7, 0.5, 0.6, bs, 0, 1.5, -0.75), B(0.6, 0.1, 0.05, C.glass, 0, 1.55, -0.44), CY(0.24, 0.28, 0.7, 0x6a5a48, 0, 1.0, -1.75, 8), CY(0.03, 0.04, 1.2, C.steel, 0, 2.3, -0.8, 4));
+      } else if (nn === 'g') {
+        L.push(hullGeo(1.3, 1.0, 2.0, 0.45, 0.3, 0.16, bs, 0, 0.5, -0.8), hullGeo(0.9, 0.75, 1.0, 0.2, 0.15, 0.12, bs, 0, 1.5, -0.7), B(0.85, 0.12, 0.05, C.glass, 0, 1.4, 0.1, 0, -0.3));
+        for (const [x, z, r] of [[0, -0.18, 0], [0, -1.2, Math.PI], [0.42, -0.7, Math.PI / 2], [-0.42, -0.7, -Math.PI / 2]]) L.push(B(0.42, 0.42, 0.03, 0x2a3a48, x, 1.9, z, r, -0.12));
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) L.push(B(0.16, 0.02, 0.16, C.dark, (c - 2.5) * 0.2, 0.5, 0.7 + r * 0.2), B(0.16, 0.02, 0.16, C.dark, (c - 2.5) * 0.2, 0.5, -2.0 - r * 0.2));
+        L.push(CY(0.03, 0.03, 0.8, C.steel, 0, 2.6, -0.7, 4));
+      } else {
+        // 灰鹰：前后两座上层建筑各带八角形雷达面板、前后两座垂直发射区
+        L.push(hullGeo(1.2, 1.0, 1.4, 0.3, 0.2, 0.12, bs, 0, 0.5, -0.35), hullGeo(1.0, 0.8, 1.0, 0.2, 0.2, 0.12, bs, 0, 0.5, -1.7), B(0.8, 0.12, 0.05, C.glass, 0, 1.3, 0.25, 0, -0.3));
+        for (const [x, z, r] of [[0, 0.22, 0], [0.5, -0.4, Math.PI / 2], [-0.5, -0.4, -Math.PI / 2]]) L.push(CY(0.24, 0.24, 0.03, 0x2a3a48, x, 1.2, z, 8, Math.PI / 2 - 0.25, 0, r));
+        L.push(CY(0.03, 0.04, 1.2, C.steel, 0, 2.1, -0.6, 4), B(0.9, 0.04, 0.04, C.steel, 0, 2.4, -0.6), SP(0.18, P_HAWK_WHITE, 0, 1.55, -1.7, 10, 8));
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) L.push(B(0.16, 0.02, 0.16, C.dark, (c - 2) * 0.2, 0.5, 0.75 + r * 0.2), B(0.16, 0.02, 0.16, C.dark, (c - 2) * 0.2, 0.5, -2.35 - r * 0.2));
+      }
+      T.push(B(0.7, 0.32, 0.7, bs, 0, 0.66, 1.8), B(0.6, 0.06, 0.6, dk, 0, 0.84, 1.8));
+      for (const s of [-1, 1]) T.push(CY(0.09, 0.09, 0.85, C.steelLt, s * 0.18, 1.0, 1.85, 8, -0.6));
+      m.muzzle = { y: 1.2, z: 2.2 };
+      break;
+    }
+    default: return false;
+  }
+  return true;
+}
 const unitModelCache = {};
 function getUnitModel(type, team, nation = nationKeyOf(team)) {
   const key = type + '_' + team + '_' + nation;
@@ -1544,8 +2173,8 @@ function getUnitModel(type, team, nation = nationKeyOf(team)) {
   const p = teamPal(team, nation);
   const m = { body: null, turret: null, rotor: null, tailRotor: null, cargo: null, muzzle: { y: 1, z: 1 } };
   const L = [], T = [];
-  const mt = (UNITS[type] && UNITS[type].model) || type;   // 新单位先借用相近的模型
-  switch (mt) {
+  const mt = (UNITS[type] && UNITS[type].model) || type;   // 没有专属模型时借用相近的通用模型
+  if (!styledUnit(type, team, nation, p, L, T, m)) switch (mt) {
     case 'rifle': case 'rocketInf': case 'engineer': {
       L.push(B(0.12, 0.46, 0.14, p.dark, -0.08, 0.23, 0), B(0.12, 0.46, 0.14, p.dark, 0.08, 0.23, 0));
       L.push(B(0.34, 0.4, 0.22, mt === 'engineer' ? C.yellow : p.uni, 0, 0.66, 0));
@@ -2788,6 +3417,40 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       for (let i = 0; i < 6; i++) m.parts['lt' + i] = { geo: B(0.16, 0.05, 0.16, 0xfff2b0), x: 0, y: 0.24, z: 2.6 - i * 1.04, blink: 0, chase: i, n: 6, glow: [1, 0.9, 0.6] };
       L.push(B(0.45, 1.6, 0.45, C.concrete, 2.65, 0.9, -2.65), B(0.62, 0.3, 0.62, C.glass, 2.65, 1.82, -2.65), B(0.68, 0.06, 0.68, p.accent, 2.65, 2.0, -2.65));
       L.push(CY(0.02, 0.02, 0.7, C.steel, 2.65, 2.35, -2.65, 4));
+      break;
+    }
+    case 'village': {
+      const plaster = 0xd6c9a8, stone = 0x7f786a, tile = 0x8c4632, wood = 0x5a4130;
+      L.push(B(3.8, 0.16, 3.8, 0x8a8273, 0, 0.08, 0));
+      // 主楼
+      L.push(B(3.1, 0.34, 2.1, stone, 0, 0.33, -0.55), B(3.0, 1.5, 2.0, plaster, 0, 1.25, -0.55));
+      L.push(B(3.06, 0.08, 2.06, 0xb8a888, 0, 1.24, -0.55));   // 楼层线脚
+      const rg = new THREE.ConeGeometry(2.3, 0.95, 4, 1); rg.rotateY(Math.PI / 4); rg.scale(1, 1, 0.7); rg.translate(0, 2.47, -0.55); L.push(colorGeo(rg, tile));
+      L.push(B(0.36, 0.7, 0.36, 0x9a5a40, 1.05, 2.55, -1.0), B(0.42, 0.08, 0.42, stone, 1.05, 2.92, -1.0));   // 烟囱
+      // 正面门窗（z = 0.45）
+      for (const x of [-1.15, -0.55, 0.55, 1.15]) for (const y of [0.85, 1.6]) {
+        L.push(B(0.32, 0.42, 0.05, 0x2e2a26, x, y, 0.46), B(0.4, 0.06, 0.07, 0xf0e8d8, x, y - 0.24, 0.47));
+      }
+      for (const z of [-1.1, -0.2]) for (const sx of [-1, 1]) L.push(B(0.05, 0.42, 0.32, 0x2e2a26, sx * 1.51, 1.6, z));
+      // 钟楼
+      L.push(B(0.9, 0.34, 0.9, stone, 0, 0.33, 0.15), B(0.82, 2.9, 0.82, plaster, 0, 1.95, 0.15));
+      L.push(B(0.9, 0.1, 0.9, 0xb8a888, 0, 3.42, 0.15));
+      for (const [x, z] of [[-0.36, -0.21], [0.36, -0.21], [-0.36, 0.51], [0.36, 0.51]]) L.push(B(0.1, 0.55, 0.1, plaster, x, 3.75, z));
+      L.push(CY(0.16, 0.2, 0.26, 0x6a5a3a, 0, 3.72, 0.15, 10));   // 钟
+      const tr = new THREE.ConeGeometry(0.66, 0.85, 4, 1); tr.rotateY(Math.PI / 4); tr.translate(0, 4.45, 0.15); L.push(colorGeo(tr, tile));
+      L.push(CY(0.24, 0.24, 0.04, 0xf2ecdc, 0, 2.75, 0.57, 16, Math.PI / 2), B(0.03, 0.17, 0.02, 0x222222, 0, 2.79, 0.6), B(0.13, 0.03, 0.02, 0x222222, 0.05, 2.75, 0.6));
+      L.push(B(0.42, 0.75, 0.05, wood, 0, 0.88, 0.57), B(0.5, 0.06, 0.08, stone, 0, 1.28, 0.58));   // 大门
+      // 前廊：木柱 + 瓦檐
+      for (const x of [-1.35, -0.75, 0.75, 1.35]) L.push(CY(0.06, 0.07, 1.05, wood, x, 0.68, 1.15, 8));
+      const pr = new THREE.BoxGeometry(1.0, 0.07, 0.95); pr.rotateX(0.22); pr.translate(-1.05, 1.27, 0.98); L.push(colorGeo(pr, tile));
+      const pr2 = pr.clone(); pr2.translate(2.1, 0, 0); L.push(colorGeo(pr2, tile));
+      L.push(B(1.0, 0.04, 0.95, 0x9a9282, -1.05, 0.18, 1.05), B(1.0, 0.04, 0.95, 0x9a9282, 1.05, 0.18, 1.05));
+      // 门前小广场：长凳、木箱、告示板
+      L.push(B(0.7, 0.08, 0.22, wood, -1.3, 0.38, 1.75), B(0.06, 0.22, 0.18, wood, -1.6, 0.25, 1.75), B(0.06, 0.22, 0.18, wood, -1.0, 0.25, 1.75));
+      L.push(B(0.34, 0.3, 0.34, 0x8a6a42, 1.25, 0.31, 1.7), B(0.26, 0.24, 0.26, 0x7a5c38, 1.6, 0.28, 1.55));
+      L.push(B(0.05, 0.9, 0.05, wood, 0.55, 0.6, 1.8), B(0.05, 0.9, 0.05, wood, 0.95, 0.6, 1.8), B(0.5, 0.36, 0.04, 0xc8b890, 0.75, 0.9, 1.8));
+      // 旗杆：插着占领方的旗
+      L.push(CY(0.035, 0.05, 3.2, C.steel, -1.75, 1.76, 1.75, 6), B(0.7, 0.44, 0.03, team >= 0 ? p.accent : 0xe8e4d8, -1.38, 3.1, 1.75));
       break;
     }
     case 'derrick': {
@@ -4072,14 +4735,14 @@ const hostileTeam = e => e.kind === 'b' && e.def.garrison && e.team < 0 ? (e.gar
 function attackable(team, t) {
   if (!t || !t.alive || t.inside) return false;
   const ht = hostileTeam(t);
-  if (ht >= 0) return ht !== team;
+  if (ht >= 0 || ht === MILITIA) return ht !== team;
   return t.type === 'bridge' && !t.broken;
 }
 function findTarget(src, range, w = src.weapon) {
   let best = null, bestS = 1e9;
   const minR = (w.minRange || 0) * TILE;
   queryHash(src.x, src.z, range + 2 + TILE, (o) => {
-    if (!o.alive || o.team === src.team || o.team < 0 || o.inside || !canHit(w, o)) return;
+    if (!o.alive || o.team === src.team || o.team === NEUTRAL || o.inside || !canHit(w, o)) return;
     if (o.def.sub && !detectedBy(src.team, o)) return;
     if (hiddenFrom(src.team, o)) return;
     const d = Math.max(0, Math.hypot(o.x - src.x, o.z - src.z) - o.radius * 0.5);
@@ -4369,7 +5032,8 @@ function playerAttacked(t) {
 }
 function kill(e, src) {
   if (e.kind === 'b' && e.def.derrick) {
-    if (e.team >= 0) tnotify(e.team, '油井失守', 'bad');
+    if (e.team >= 0) tnotify(e.team, e.def.village ? '村庄失守' : '油井失守', 'bad');
+    e.clearT = 0;
     fxExplosion(e.x, 0.5, e.z, 1.2);
     Sound.play('explosion', e.x, e.z);
     e.team = NEUTRAL; e.hp = e.maxHp; buildBuildingMesh(e);
@@ -4377,7 +5041,7 @@ function kill(e, src) {
   }
   e.alive = false; e.hp = 0;
   if (src && src.team >= 0 && src.team !== e.team) teams[src.team].stats[e.kind === 'b' ? 'bKills' : 'kills']++;
-  if (src && src.kind === 'u' && src.alive && src.team >= 0 && e.team >= 0 && src.team !== e.team) gainXp(src, e.kind === 'b' ? (e.def.cost || 1500) * 0.5 : e.def.cost);
+  if (src && src.kind === 'u' && src.alive && src.team >= 0 && e.team !== NEUTRAL && src.team !== e.team) gainXp(src, e.kind === 'b' ? (e.def.cost || 1500) * 0.5 : e.def.cost);
   if (e.team >= 0) teams[e.team].stats[e.kind === 'b' ? 'bLosses' : 'losses']++;
   if (Net.isHost) Net.event({ k: 'd', id: e.id });
   if (e.kind === 'b') freeGrid(e);
@@ -4679,13 +5343,46 @@ function findOreTile(h, x, z, maxR) {
   }
   return best;
 }
+// 村庄守军：民兵、反坦克组、武装皮卡、轻型坦克，站在村公所周围的空地上
+const MILITIA_SQUAD = ['s_inf', 's_inf', 's_inf', 's_inf', 's_inf', 's_at', 's_at', 's_scout', 's_mbt', 's_mbt'];
+function spawnMilitia(b) {
+  if (!b) return;
+  b.clearT = 0;
+  const cx = b.tx + 1, cz = b.tz + 1, spots = [];
+  for (let r = 2; r <= 6 && spots.length < MILITIA_SQUAD.length * 2; r++)
+    for (let i = 0; i < r * 6; i++) {
+      const a = (i / (r * 6)) * Math.PI * 2 + r, x = Math.round(cx + Math.cos(a) * r), z = Math.round(cz + Math.sin(a) * r);
+      if (walkable(x, z) && !bldGrid[z * MAP + x] && !spots.some(s => s[0] === x && s[1] === z)) spots.push([x, z]);
+    }
+  MILITIA_SQUAD.forEach((t, i) => {
+    const s = spots[(i * 2) % spots.length]; if (!s) return;
+    const u = createUnit(t, MILITIA, (s[0] + 0.5) * TILE, (s[1] + 0.5) * TILE);
+    u.angle = u.pangle = u.turretAngle = u.pturret = Math.atan2(u.x - b.x, u.z - b.z);
+    u.village = b.id; u.rank = 1; u.maxHp *= 1.3; u.hp = u.maxHp;   // 守军都是老兵，比同类单位更耐打
+  });
+}
+const villageGuarded = b => units.some(u => u.alive && u.team === MILITIA && u.village === b.id);
+function villageTick() {
+  for (const b of buildings) {
+    if (!b.alive || !b.def.village) continue;
+    if (b.team !== NEUTRAL || villageGuarded(b)) { b.clearT = 0; continue; }
+    b.clearT = (b.clearT || 0) + 1;
+    if (b.clearT >= VILLAGE_RESPAWN) spawnMilitia(b);
+  }
+}
 function engineerTick(u) {
   const o = u.order;
   if (o.type === 'enter') {
     const b = o.target;
     const valid = b.alive && (b.type === 'bridge' ? b.broken : b.def.derrick ? b.team !== u.team : (b.team === u.team && b.hp < b.maxHp));
     if (!valid) { u.order = { type: 'idle' }; u.path = null; return; }
-    if (rectDist(u.x, u.z, b) < 1.7) { engineerEnter(u, b); return; }
+    if (b.def.village && villageGuarded(b)) {
+      if (rectDist(u.x, u.z, b) < 6 * TILE) {
+        u.order = { type: 'idle' }; u.path = null;
+        tnotify(u.team, '村庄还有守军，先把他们消灭', 'bad');
+        return;
+      }
+    } else if (rectDist(u.x, u.z, b) < 1.7) { engineerEnter(u, b); return; }
     chase(u, b);
   } else {
     if (followPath(u) && o.type === 'move') u.order = { type: 'idle' };
@@ -4695,7 +5392,11 @@ function engineerEnter(u, b) {
   if (b.type === 'bridge') repairBridge(b);
   else if (b.def.derrick) {
     b.team = u.team; b.hp = b.maxHp; buildBuildingMesh(b);
-    tnotify(u.team, '已占领油井', 'good', 'ready');
+    if (b.def.village && !b.bountyPaid) {
+      b.bountyPaid = true;
+      teams[u.team].credits += VILLAGE_BOUNTY; teams[u.team].stats.harvested += VILLAGE_BOUNTY;
+      tnotify(u.team, `已攻下村庄，获得赏金 $${VILLAGE_BOUNTY}`, 'good', 'ready');
+    } else tnotify(u.team, b.def.village ? '已占领村庄' : '已占领油井', 'good', 'ready');
   } else {
     b.hp = b.maxHp;
     tnotify(u.team, b.def.name + ' 已修复', 'good', 'ready');
@@ -4738,7 +5439,7 @@ function buildingTick(b) {
       if (d <= 5.5 && d < bd) { bd = d; best = z * MAP + x; }
     }
     if (best >= 0) {
-      const take = Math.min(gem[best] ? 30 : 15, ore[best]);
+      const take = Math.min(gem[best] ? 10 : 5, ore[best]);
       ore[best] -= take; updateOreTile(best);
       const inc = take * natOf(b.team).incomeMul * (hasUpg(b.team, 'upRefine') ? 1.2 : 1) * (T.isAI ? DIFFS[G.difficulty].income : 1) * G.pace.income;
       T.credits += inc; T.stats.harvested += inc;
@@ -5184,14 +5885,14 @@ function useAbility(T, x, z) {
   x = clampPlay(x); z = clampPlay(z);
   abilityEffect(T.id, key, x, z);
   if (Net.isHost) Net.event({ k: 'ab', team: T.id, ab: key, x, z });
-  if (key === 'grant') tnotify(T.id, '紧急拨款到账：+$3000', 'good', 'ready');
+  if (key === 'grant') tnotify(T.id, '紧急拨款到账：+$2000', 'good', 'ready');
   else tnotify(T.id, `已释放「${ab.name}」`, 'good');
   if (key === 'barrage') for (const o of teams) if (o !== T) tnotify(o.id, '警告：侦测到火箭炮覆盖！', 'bad', 'alert', { x, z, marker: 3.5 });
 }
 // 技能的实际效果；联机客户端只播放画面，不结算伤害或创建单位
 function abilityEffect(team, key, x, z) {
   const sim = !Net.isClient;
-  if (key === 'grant') { if (sim) teams[team].credits += 3000; return; }
+  if (key === 'grant') { if (sim) teams[team].credits += 2000; return; }
   if (key === 'fieldRepair') {
     const r = ABILITIES.fieldRepair.radius * TILE;
     for (let k = 0; k < 10; k++) {
@@ -5299,6 +6000,7 @@ function gameTick() {
   for (const T of teams) { productionTick(T); superTick(T); abilityTick(T); }
   if (G.tick % 4 === 0) updateFog();
   if (G.tick % 20 === 0) oreRegen();
+  if (G.tick % TPS === 9) villageTick();
   for (const T of teams) if (T.ai && G.tick % 20 === (7 + T.id * 3) % 20) T.ai.update();
   if (G.tick % 20 === 13) checkVictory();
   if (Net.isHost && G.tick % 2 === 0) Net.sendSnapshot();
@@ -5344,7 +6046,7 @@ const AI_PLAN = [
   ['radar', 1, 220], ['power', 3, 220], ['power', 4, 360], ['helipad', 1, 450], ['tech', 1, 560], ['power', 5, 600],
   ['refinery', 3, 780], ['factory', 2, 950], ['power', 6, 950], ['silo', 1, 'silo'], ['power', 7, 'silo'], ['barracks', 2, 1100],
   // 国家专属建筑（别的国家造不了，会被 isUnlocked 自动跳过）
-  ['airBarracks', 1, 260], ['minePlatform', 1, 330], ['repairDepot', 1, 420], ['minePlatform', 2, 700], ['repairDepot', 2, 1000],
+  ['airBarracks', 1, 260], ['minePlatform', 1, 330], ['repairDepot', 1, 420], ['repairDepot', 2, 1000],
   // 船厂只在内海地图可建；机场所有地图都有
   ['shipyard', 1, 470], ['airfield', 1, 640], ['power', 8, 900],
   // 人口：副部和第二座兵营、工厂都会提高人口上限
@@ -5355,7 +6057,7 @@ const AI_PLAN = [
 const AI_DEF_PLAN = [
   ['mgTurret', 1, 160], ['bunker', 1, 200], ['atTurret', 1, 260], ['bunker', 2, 600], ['mgTurret', 2, 320], ['atTurret', 2, 380], ['aaGun', 1, 470], ['atTurret', 3, 560],
   ['mgTurret', 3, 640], ['aaGun', 2, 700], ['atTurret', 4, 800], ['atTurret', 5, 1000], ['aaGun', 3, 1050], ['mgTurret', 4, 1150], ['atTurret', 6, 1350],
-  ['fortress', 1, 720], ['fortress', 2, 1000], ['fortress', 3, 1400],
+  ['fortress', 1, 720], ['fortress', 2, 1200],
 ];
 class AIController {
   constructor(team) {
@@ -5399,8 +6101,8 @@ class AIController {
   taskEngineer(u) {
     let best = null, bd = 1e9;
     for (const b of buildings) {
-      if (!b.alive || !b.def.derrick || b.team === this.team) continue;
-      const d = Math.hypot(b.x - u.x, b.z - u.z) + (b.team >= 0 ? 30 : 0);
+      if (!b.alive || !b.def.derrick || b.team === this.team || (b.def.village && villageGuarded(b))) continue;
+      const d = Math.hypot(b.x - u.x, b.z - u.z) + (b.team >= 0 ? 30 : 0) - (b.def.village ? 25 : 0);
       if (d < bd) { bd = d; best = b; }
     }
     if (best) commandEnter([u], best);
@@ -5524,7 +6226,7 @@ class AIController {
           teams.some(o => this.isEnemy(o.id) && o.counts.silo > 0)) { if (T.credits > 800) enqueue(T, 'abm'); }
       else for (const [type, n, at] of AI_DEF_PLAN) {
         if (time < at || (this.skip[type] || 0) > time) continue;
-        const need = Math.max(1, Math.round(n * dif.defMul * (T.nation === 'gold' ? 1.15 : 1)));
+        const need = Math.max(1, Math.round(n * dif.defMul));
         if (this.count(type) < need && isUnlocked(T, type)) { if (T.credits > 600 + reserve) enqueue(T, type); break; }
       }
     }
@@ -5613,6 +6315,13 @@ class AIController {
     } else {
       const r = this.rally();
       for (const u of home) if (u.order.type === 'idle' && !u.target && Math.hypot(u.x - r.x, u.z - r.z) > 24) commandMove([u], r.x + rnd(-6, 6), r.z + rnd(-6, 6));
+    }
+    // --- 清村庄守军：家里兵够了就去打最近的有守军的村庄 ---
+    if (time > 150 && G.tick - (this.lastVillageCmd || 0) > 25 * TPS) {
+      const idle = home.filter(u => !u.def.harvester && !u.def.air && !u.def.naval && !u.def.engineer && u.order.type !== 'attackMove');
+      let vb = null, vd = 1e9;
+      for (const b of buildings) if (b.alive && b.def.village && b.team === NEUTRAL && villageGuarded(b)) { const d = Math.hypot(b.x - this.base.x, b.z - this.base.z); if (d < vd) { vd = d; vb = b; } }
+      if (vb && vd < 150 && idle.length >= 7) { this.lastVillageCmd = G.tick; commandMove(idle, vb.x, vb.z, true); }
     }
     // --- 进攻波次 ---
     if (time >= this.nextWave) {
@@ -5724,7 +6433,7 @@ window.addEventListener('resize', resize);
 function updateCamera(dt) {
   const sp = cam.h * 1.4 * dt;
   let dx = 0, dz = 0;
-  if (keys.ArrowLeft) dx -= 1; if (keys.ArrowRight) dx += 1; if (keys.ArrowUp) dz -= 1; if (keys.ArrowDown) dz += 1;
+  if (keys.ArrowLeft || keys.a || keys.A) dx -= 1; if (keys.ArrowRight || keys.d || keys.D) dx += 1; if (keys.ArrowUp || keys.w || keys.W) dz -= 1; if (keys.ArrowDown || keys.s || keys.S) dz += 1;   // 方向键或 WASD 移动视野
   if (mouse.inWindow && !mouse.mid && document.hasFocus()) {
     const ex = mouse.mx, ey = mouse.my, W = window.innerWidth, H = window.innerHeight;
     if (ex <= 3) dx -= 1; if (ex >= W - 4) dx += 1; if (ey <= 3) dz -= 1; if (ey >= H - 4) dz += 1;
@@ -6006,8 +6715,8 @@ window.addEventListener('keydown', (e) => {
   if (k === 'F9') { revealAll = !revealAll; updateFog(); notify(revealAll ? '调试：全图可见' : '调试：恢复迷雾'); return; }
   if (k === 'F10') { if (!Net.isClient) { teams[PLAYER].credits += 10000; notify('调试：资金 +10000'); } return; }
   const lk = k.toLowerCase();
-  if (lk === 'a' && !e.ctrlKey && ownUnitsSelected().length) { setMode('attackMove'); return; }
-  if (lk === 's' && !e.ctrlKey) { const own = ownUnitsSelected(); if (own.length) issueCommand({ c: 'stop', ids: idsOf(own) }); return; }
+  if (lk === 'q' && !e.ctrlKey && ownUnitsSelected().length) { setMode('attackMove'); return; }
+  if (lk === 'x' && !e.ctrlKey) { const own = ownUnitsSelected(); if (own.length) issueCommand({ c: 'stop', ids: idsOf(own) }); return; }
   if (lk === 'h') { const hq = buildings.find(b => b.alive && b.team === PLAYER && b.type === 'hq') || buildings.find(b => b.alive && b.team === PLAYER); if (hq) centerOn(hq.x, hq.z); return; }
   if (/^[1-9]$/.test(k) || /^Digit[1-9]$/.test(e.code)) {
     const n = e.code.startsWith('Digit') ? e.code.slice(5) : k;
@@ -6841,9 +7550,9 @@ function renderSelPanel() {
   p.style.display = 'block';
   if (selection.length === 1) {
     const e = selection[0], d = e.def;
-    const teamName = e.team === PLAYER ? '' : e.team >= 0 ? `<span style="color:${teamColor(e.team)}">（${teams[e.team].name}·${NATIONS[teams[e.team].nation].short}）</span>` : '<span style="color:#aaa">（中立）</span>';
+    const teamName = e.team === PLAYER ? '' : e.team >= 0 ? `<span style="color:${teamColor(e.team)}">（${teams[e.team].name}·${NATIONS[teams[e.team].nation].short}）</span>` : e.team === MILITIA ? '<span style="color:#b05a48">（村庄守军）</span>' : '<span style="color:#aaa">（中立）</span>';
     let cmds = '';
-    if (e.team === PLAYER && e.kind === 'u') cmds = `<button data-c="stop">停止 (S)</button><button data-c="amove">攻击移动 (A)</button>`;
+    if (e.team === PLAYER && e.kind === 'u') cmds = `<button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>`;
     if (e.team === PLAYER && e.kind === 'b') {
       if (e.type !== 'hq' && !d.derrick) cmds += `<button data-c="sell">出售</button>`;
       if (!d.derrick) cmds += `<button data-c="repair">${e.repairing ? '停止维修' : '维修'}</button>`;
@@ -6860,7 +7569,7 @@ function renderSelPanel() {
     let html = '<div class="multi">';
     for (const t in counts) html += `<div class="mi" data-t="${t}" title="${defOf(t, PLAYER).name}"><img src="${ICONS[t] || ''}"><span>${counts[t]}</span></div>`;
     html += `</div><div class="sub" style="margin-top:4px">已选择 ${selection.length} 个单位（点击图标只选该类）</div>`;
-    html += `<div class="cmds"><button data-c="stop">停止 (S)</button><button data-c="amove">攻击移动 (A)</button></div>`;
+    html += `<div class="cmds"><button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button></div>`;
     p.innerHTML = html;
     p.querySelectorAll('.mi').forEach(el => el.addEventListener('click', () => setSelection(selection.filter(e => e.type === el.dataset.t))));
   }
@@ -6886,7 +7595,8 @@ function updateSelPanel() {
   let s = `生命 ${Math.ceil(e.hp)} / ${Math.round(e.maxHp)}`;
   if (e.def.harvester) s += `　载货 ${Math.round(e.cargo)} / ${HARV_CAP}`;
   if (e.kind === 'b' && e.def.power) s += `　电力 ${e.def.power > 0 ? '+' : ''}${e.def.power}`;
-  if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
+  if (e.def.village && e.team === NEUTRAL) s += villageGuarded(e) ? '　有守军，先消灭守军' : '　派工程师占领' + (e.bountyPaid ? '' : `（赏金 $${VILLAGE_BOUNTY}）`);
+  else if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
   if (e.def.garrison) s += `　进驻 ${garrisonCount(e)}/${e.def.garrison}`;
@@ -7021,7 +7731,7 @@ const GUIDE = [
       <h3>怎么指挥部队</h3>
       <ul>
         <li>左键点选或拖框选中部队，右键点地面移动，右键点敌人攻击。</li>
-        <li>按 <kbd>A</kbd> 再点地面是“攻击移动”：沿途遇到敌人会自动开火，进攻时最常用。</li>
+        <li>按 <kbd>Q</kbd> 再点地面是“攻击移动”：沿途遇到敌人会自动开火，进攻时最常用。</li>
         <li><kbd>Ctrl</kbd>+数字 编队，按数字快速选中这队；双击某个单位可以选中屏幕内所有同类单位。</li>
       </ul>`,
   },
@@ -7033,6 +7743,7 @@ const GUIDE = [
         <li>每车最多装 <b>$${HARV_CAP}</b>。<b>宝石矿</b>（青色晶体，在地图中央）每次采到的价值是普通矿的两倍。</li>
         <li>每座精炼厂附送 1 辆采矿车。<b>一座精炼厂配 2 辆采矿车</b>效率最高，可以在战车工厂里补造采矿车（$${UNITS.harvester.cost}）。</li>
         <li>矿石会慢慢长回来，但速度很慢，矿区迟早会被采光。中后期要把精炼厂建到新矿区旁边，并派兵保护采矿车。</li>
+        <li><b>村庄</b>：每个小镇有一座村公所，由老兵民兵、反坦克组、武装皮卡和两辆轻型坦克把守，开局的小部队打不下来。消灭守军后派<b>工程师</b>占领：第一次攻下奖励 $${VILLAGE_BOUNTY}，之后每秒 $${BUILDINGS.village.income}。村公所被打爆会变回中立；没人占领 ${VILLAGE_RESPAWN} 秒后守军会回来。</li>
         <li><b>油井</b>：地图上有 4 座中立油井。派<b>工程师</b>右键点击油井即可占领，之后每秒稳定提供 $${BUILDINGS.derrick.income}，不用采矿。油井被打爆会变回中立，可以再占领。</li>
         <li>选中采矿车后右键点矿区可以指定去哪里采矿；右键点精炼厂可以让它立刻回去卸货。</li>
       </ul>
@@ -7092,7 +7803,7 @@ const GUIDE = [
           <div class="gm">${d.cost ? '$' + d.cost + '　' : ''}${d.power ? '电力 ' + (d.power > 0 ? '+' : '') + d.power + '　' : ''}生命 ${d.hp}${extra}</div>
           <div class="gm">前置：${req}</div><div class="gd">${d.desc}</div></div></div>`;
       }
-      h += '</div><h3>各国建筑对照</h3><p>上面是基础数值。各国建筑的名字、造价、生命和防御塔的武器不同：北岭建筑生命 +20%、建得慢 10%；赤砂便宜 15%、建得快、生命 -15%；金穗防御建筑便宜 15%、生命 +15%；灰鹰直升机坪和机场便宜 20%，其他略贵。</p>';
+      h += '</div><h3>各国建筑对照</h3><p>上面是基础数值。各国建筑的名字、造价、生命和防御塔的武器不同：北岭建筑生命 +20%；赤砂便宜 15%、建得快、生命 -18%；金穗防御建筑便宜 15%、生命 +8%；灰鹰直升机坪和机场便宜 20%。</p>';
       h += '<table class="gtable"><tr><th>建筑</th>' + NATION_KEYS.map(n => `<th>${NATIONS[n].short}</th>`).join('') + '</tr>';
       for (const k in BUILDINGS) {
         const d = BUILDINGS[k];
@@ -7289,7 +8000,7 @@ const GUIDE = [
       <ul>
         <li><kbd>左键</kbd> 选择，拖动框选，<kbd>Shift</kbd>+点击 加选/取消，双击 选中屏幕内同类单位</li>
         <li><kbd>右键</kbd> 地面：移动；敌人：攻击；矿区：采矿车去采矿；油井/受损建筑：工程师占领/修复</li>
-        <li><kbd>A</kbd> 攻击移动　<kbd>S</kbd> 停止</li>
+        <li><kbd>WASD</kbd> 移动视野　<kbd>Q</kbd> 攻击移动　<kbd>X</kbd> 停止</li>
         <li><kbd>Ctrl</kbd>/<kbd>Alt</kbd>+<kbd>1-9</kbd> 编队，<kbd>1-9</kbd> 选中编队，连按两次 镜头跳过去</li>
         <li>选中兵营/工厂/直升机坪后右键地面：设置集结点，新单位造好后自动去那里</li>
         <li>有雷达时，选中部队后右键小地图也能下达移动命令</li>
@@ -7555,6 +8266,11 @@ function startGame(cfg) {
       let ok = true;
       for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
       if (ok) createBuilding('house', NEUTRAL, s.tx, s.tz, { instant: true });
+    }
+    for (const s of villageSites) {
+      let ok = true;
+      for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
+      if (ok) spawnMilitia(createBuilding('village', NEUTRAL, s.tx, s.tz, { instant: true }));
     }
     for (const u of units) { u.guardX = u.x; u.guardZ = u.z; }
   }
@@ -8006,7 +8722,8 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, sellBuilding, kill, damage, get ruins() { return ruins; }, get bldFx() { return bldFx; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, startGame, NAT_OVERRIDE, sellBuilding, kill, damage, get ruins() { return ruins; }, get bldFx() { return bldFx; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+
 resize();
 try {
   makeIcons('north');
