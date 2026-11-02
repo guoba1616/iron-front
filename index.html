@@ -426,7 +426,7 @@ const BUILDABLE_T = [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0];
 const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1;
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.0';
+const GAME_VERSION = 'iron-4.1';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -1505,6 +1505,19 @@ const barrel = (r, len, x, y, z, elev = 0, hex = C.steel) => {
   const g = new THREE.CylinderGeometry(r * 0.85, r, len, 8);
   g.translate(0, len / 2, 0); g.rotateX(Math.PI / 2 - elev); g.translate(x, y, z); return colorGeo(g, hex);
 };
+// 卷帘门（几何体原点在门顶，开门时向上卷起）
+function rollDoor(m, w, h, x, yTop, z, col) {
+  const L = [B(w, h, 0.06, col, 0, -h / 2, 0)];
+  for (let y = 0.15; y < h; y += 0.2) L.push(B(w, 0.03, 0.08, C.steel, 0, -y, 0));
+  L.push(B(w, 0.08, 0.09, C.yellow, 0, -h + 0.04, 0));
+  m.parts.gate = { geo: MG(L), x, y: yTop, z, door: 'roll' };
+}
+// 对开门（两扇门板各绕外侧门轴向外开）
+function swingDoors(m, w, h, x, y, z, col) {
+  for (const s of [-1, 1]) m.parts[s < 0 ? 'gateL' : 'gateR'] = { geo: MG([B(w / 2 - 0.02, h, 0.05, col, -s * w / 4, 0, 0), B(0.05, 0.05, 0.08, C.steel, -s * (w / 2 - 0.1), 0, 0.03)]), x: x + s * w / 2, y, z, door: 'swing', side: s };
+}
+// 航空障碍灯 / 信标（闪烁，夜里发光）
+const beacon = (m, k, x, y, z, phase = 0, hex = 0xff3020) => { m.parts[k] = { geo: B(0.12, 0.1, 0.12, hex), x, y, z, blink: phase, glow: [1, 0.2, 0.1] }; };
 function sandbagRing(list, r, y, n, gapFront = false) {
   for (let i = 0; i < n; i++) {
     const a = i / n * Math.PI * 2;
@@ -1746,6 +1759,29 @@ function getUnitModel(type, team, nation = nationKeyOf(team)) {
 }
 
 const bldModelCache = {};
+const hash1 = x => { const s = Math.sin(x) * 43758.5453; return s - Math.floor(s); };
+// 建造 / 坍塌动画用：每个部件记下底面中心、高度、出场时间和两个随机数（着色器按部件逐个升起、倾倒）
+function tagPieces(L) {
+  const info = [];
+  let top = 0.5;
+  for (const g of L) { g.computeBoundingBox(); info.push(g.boundingBox.clone()); top = Math.max(top, g.boundingBox.max.y); }
+  const n = L.length, rank = new Float32Array(n);
+  info.map((b, i) => i).sort((a, b) => (info[a].min.y - info[b].min.y) || (info[a].min.x + info[a].min.z - info[b].min.x - info[b].min.z))
+    .forEach((k, r) => { rank[k] = n > 1 ? r / (n - 1) : 0; });
+  L.forEach((g, i) => {
+    const b = info[i], cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2, h = b.max.y - b.min.y;
+    const lvl = clamp(b.min.y / top, 0, 1);
+    // 贴地的大块地基最先铺好，其余部件按高度从下往上依次出场
+    const base = b.min.y < 0.05 && (b.max.x - b.min.x) * (b.max.z - b.min.z) > 6;
+    const s = base ? 0 : 0.08 + 0.54 * (0.35 * rank[i] + 0.65 * lvl);
+    const r1 = hash1(i * 12.99 + cx * 78.23 + cz * 37.72), r2 = hash1(i * 4.14 + cz * 9.17 + cx * 3.31);
+    const grow = h > 0.9 && (b.max.x - b.min.x) * (b.max.z - b.min.z) > 1.2;
+    const cnt = g.attributes.position.count, pa = new Float32Array(cnt * 4), pb = new Float32Array(cnt * 4);
+    for (let v = 0; v < cnt * 4; v += 4) { pa[v] = cx; pa[v + 1] = b.min.y; pa[v + 2] = cz; pa[v + 3] = s; pb[v] = grow ? -h : h; pb[v + 1] = r1; pb[v + 2] = r2; pb[v + 3] = lvl; }
+    g.setAttribute('aPa', new THREE.BufferAttribute(pa, 4)); g.setAttribute('aPb', new THREE.BufferAttribute(pb, 4));
+  });
+  return top;
+}
 function getBuildingModel(type, team, nation = nationKeyOf(team)) {
   const key = type + '_' + team + '_' + nation;
   if (bldModelCache[key]) return bldModelCache[key];
@@ -1763,6 +1799,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(1.0, 0.85, 0.08, C.dark, 0, 0.66, 1.24), B(1.3, 0.1, 0.4, C.concreteLt, 0, 1.15, 1.4));
       L.push(CY(0.36, 0.42, 1.4, C.concreteDk, -1.6, 2.9, -1.5, 10), CY(0.4, 0.4, 0.1, p.accent, -1.6, 3.63, -1.5, 10));
       L.push(CY(0.04, 0.07, 3.0, C.steel, 1.7, 4.4, -1.6, 6), CY(0.02, 0.02, 0.8, C.steel, 1.7, 4.5, -1.6, 4, 0, Math.PI / 2));
+      beacon(m, 'bcn', 1.7, 5.95, -1.6);
       L.push(B(2.6, 0.05, 1.3, C.dark, 0, 0.27, 2.2), B(0.15, 0.06, 1.3, C.yellow, -1.35, 0.28, 2.2), B(0.15, 0.06, 1.3, C.yellow, 1.35, 0.28, 2.2));
       for (let i = 0; i < 4; i++) { L.push(B(0.55, 0.3, 0.32, C.sand, -2.5 + i * 0.6 + (i > 1 ? 3.2 : 0) - (i > 1 ? 1.2 : 0), 0.39, 2.6)); }
       L.push(B(0.7, 0.5, 0.5, C.steel, 2.3, 0.5, -2.3), B(0.7, 0.5, 0.5, C.steel, 1.5, 0.5, -2.3));
@@ -1801,6 +1838,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
         L.push(CY(0.62, 0.88, 2.6, C.concrete, s * 0.9, 1.54, -0.75, 16), CY(0.66, 0.66, 0.14, p.accent, s * 0.9, 2.85, -0.75, 16));
         L.push(CY(0.55, 0.55, 0.05, C.dark, s * 0.9, 2.93, -0.75, 16));
         m.smoke.push([s * 0.9, 3.0, -0.75]);
+        beacon(m, s < 0 ? 'bcn' : 'bcn2', s * 0.9 + s * 0.62, 2.96, -0.75, s < 0 ? 0 : 0.6);
       }
       L.push(B(3.3, 1.15, 1.35, C.concrete, 0, 0.82, 1.05), B(3.4, 0.1, 1.45, p.base, 0, 1.45, 1.05));
       L.push(B(3.31, 0.12, 0.02, C.yellow, 0, 1.25, 1.73), CY(0.12, 0.12, 1.8, C.steel, 0, 0.75, 0.15, 8, 0, Math.PI / 2));
@@ -1815,6 +1853,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       }
       L.push(B(2.4, 1.7, 2.6, C.concrete, 1.6, 1.09, -0.6), B(2.5, 0.1, 2.7, p.base, 1.6, 1.99, -0.6));
       L.push(B(0.4, 0.2, 2.8, C.steel, -0.9, 1.4, 0.3, 0, 0.45), B(0.6, 0.9, 0.6, C.steel, -0.9, 0.7, 1.2));
+      for (let i = 0; i < 5; i++) m.parts['ore' + i] = { geo: B(0.24, 0.12, 0.22, i % 2 ? C.ore : 0xa88a34, 0, 0, 0, 0, 0.45), x: -0.9, y: 1.4, z: 0.3, conv: { i, n: 5, a: [-0.9, 0.94, 1.63], b: [-0.9, 2.16, -0.89] } };
       L.push(B(3.0, 0.06, 1.5, C.dark, -0.2, 0.27, 2.15), B(3.0, 0.03, 0.12, C.yellow, -0.2, 0.31, 1.45), B(3.0, 0.03, 0.12, C.yellow, -0.2, 0.31, 2.85));
       L.push(CY(0.15, 0.2, 1.6, C.steel, 2.4, 2.6, -1.6, 8));
       m.smoke.push([2.4, 3.5, -1.6]);
@@ -1827,7 +1866,10 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(colorGeo(hut, p.base));
       L.push(B(0.8, 0.95, 0.1, C.dark, 0, 0.7, 1.42), B(1.0, 0.08, 0.3, p.dark, 0, 1.22, 1.5));
       L.push(B(2.4, 0.08, 0.3, p.accent, 0, 1.44, 0.6));
-      L.push(CY(0.03, 0.03, 2.2, C.steel, 1.55, 1.34, 1.5, 4), B(0.6, 0.36, 0.02, p.accent, 1.86, 2.25, 1.5));
+      L.push(CY(0.03, 0.03, 2.2, C.steel, 1.55, 1.34, 1.5, 4), SP(0.045, C.steelLt, 1.55, 2.46, 1.5, 6, 4));
+      swingDoors(m, 0.8, 0.92, 0, 0.7, 1.49, p.dark); m.door = { x: 0, z: 1.42 };
+      m.parts.flag = { geo: B(0.3, 0.36, 0.015, p.accent, 0.15, 0, 0), x: 1.57, y: 2.25, z: 1.5, wave: 1 };
+      m.parts.flag2 = { geo: B(0.3, 0.34, 0.015, p.accent, 0.15, 0, 0), x: 1.87, y: 2.25, z: 1.5, wave: 2, chain: 'flag', len: 0.3 };
       sandbagRing(L, 0.45, 0.35, 0);
       for (let i = 0; i < 3; i++) L.push(B(0.5, 0.28, 0.3, C.sand, -1.5 + i * 0.52, 0.38, 1.75));
       break;
@@ -1839,6 +1881,8 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       for (let i = 0; i < 3; i++) L.push(B(0.06, 0.5, 4.0, C.glass, -1.68 + i * 1.68 + 0.85, 2.82, -0.6));
       L.push(B(5.04, 0.2, 4.04, p.accent, 0, 2.5, -0.6));
       L.push(B(2.8, 1.95, 0.1, C.dark, 0, 1.22, 1.42), B(0.15, 2.0, 0.15, C.yellow, -1.45, 1.24, 1.45), B(0.15, 2.0, 0.15, C.yellow, 1.45, 1.24, 1.45));
+      L.push(B(2.95, 0.26, 0.28, C.steel, 0, 2.33, 1.54));
+      rollDoor(m, 2.72, 1.92, 0, 2.2, 1.5, C.steelLt); m.door = { x: 0, z: 1.45 };
       L.push(B(1.0, 1.4, 1.4, C.concreteDk, 2.25, 0.94, 1.8), B(0.8, 0.2, 0.05, C.glass, 2.25, 1.2, 2.51));
       L.push(CY(0.2, 0.26, 2.2, C.steel, -2.0, 3.3, -2.0, 8));
       L.push(B(3.0, 0.04, 1.3, C.dark, 0, 0.26, 2.3));
@@ -1858,6 +1902,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(CY(1.45, 1.45, 0.02, C.yellow, 0, 0.19, 0, 24), CY(1.3, 1.3, 0.03, C.concreteDk, 0, 0.2, 0, 24));
       L.push(B(0.22, 0.03, 1.1, C.white, -0.35, 0.22, 0), B(0.22, 0.03, 1.1, C.white, 0.35, 0.22, 0), B(0.5, 0.03, 0.22, C.white, 0, 0.22, 0));
       L.push(B(0.6, 1.3, 0.6, C.concrete, 1.55, 0.8, -1.55), B(0.7, 0.3, 0.7, C.glass, 1.55, 1.6, -1.55), B(0.75, 0.06, 0.75, p.accent, 1.55, 1.78, -1.55));
+      beacon(m, 'bcn', 1.55, 1.86, -1.55);
       for (const [x, z] of [[-1.8, -1.8], [1.8, 1.8], [-1.8, 1.8]]) L.push(CY(0.06, 0.06, 0.15, 0xff5030, x, 0.25, z, 6));
       break;
     }
@@ -1866,6 +1911,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(3.0, 1.5, 2.6, C.lab, 0, 0.99, 0.2), B(3.06, 0.12, 2.66, p.accent, 0, 1.6, 0.2));
       L.push(SP(0.85, C.white, -0.6, 1.74, -0.1, 14, 8, 1, Math.PI / 2), CY(0.1, 0.1, 0.4, C.steel, -0.6, 2.7, -0.1, 6));
       L.push(B(0.9, 0.7, 0.9, C.concrete, 0.9, 2.0, -0.3), CY(0.02, 0.02, 1.6, C.steel, 1.1, 3.1, -0.5, 4), CY(0.02, 0.02, 1.2, C.steel, 0.7, 2.9, -0.6, 4));
+      beacon(m, 'bcn', 1.1, 3.93, -0.5, 0.3);
       L.push(B(2.4, 0.3, 0.05, C.glass, 0, 0.9, 1.51), B(2.4, 0.3, 0.05, C.glass, 0, 1.3, 1.51));
       break;
     }
@@ -1961,7 +2007,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(2.6, 0.12, 2.6, C.dark, 0, 0.24, 0.2), B(2.6, 0.03, 0.14, C.yellow, 0, 0.31, -1.1), B(2.6, 0.03, 0.14, C.yellow, 0, 0.31, 1.5));
       for (const s of [-1, 1]) L.push(B(0.25, 2.4, 0.25, C.steel, s * 1.55, 1.3, -1.4), B(0.25, 2.4, 0.25, C.steel, s * 1.55, 1.3, 1.6));
       L.push(B(3.4, 0.25, 0.3, p.base, 0, 2.55, -1.4), B(3.4, 0.25, 0.3, p.base, 0, 2.55, 1.6), B(0.3, 0.25, 3.3, p.accent, 0, 2.7, 0.1));
-      L.push(B(0.5, 0.35, 0.5, C.yellow, 0.3, 2.35, 0.1), CY(0.02, 0.02, 0.9, C.dark, 0.3, 1.8, 0.1, 4));
+      m.parts.hoist = { geo: MG([B(0.5, 0.35, 0.5, C.yellow, 0, 0, 0), CY(0.02, 0.02, 0.9, C.dark, 0, -0.55, 0, 4), B(0.22, 0.14, 0.22, C.dark, 0, -1.05, 0)]), x: 0.3, y: 2.35, z: 0.1, slide: 1.1 };
       L.push(B(0.9, 1.0, 0.9, C.concrete, -1.4, 0.7, -1.5), B(0.6, 0.2, 0.05, C.glass, -1.4, 0.95, -1.04));
       L.push(B(0.5, 0.5, 0.4, C.steel, 1.5, 0.45, -1.6), CY(0.18, 0.18, 0.7, C.rust, 1.6, 0.55, 0.9, 8));
       break;
@@ -1981,6 +2027,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       const hut = new THREE.CylinderGeometry(1.15, 1.15, 2.6, 14, 1, false, 0, Math.PI);
       hut.rotateZ(Math.PI / 2); hut.rotateY(Math.PI / 2); hut.translate(-0.5, 0.22, 0.2);
       L.push(colorGeo(hut, p.base), B(0.7, 0.9, 0.1, C.dark, -0.5, 0.65, 1.52));
+      swingDoors(m, 0.7, 0.88, -0.5, 0.65, 1.59, p.dark); m.door = { x: -0.5, z: 1.52 };
       L.push(B(0.7, 3.0, 0.7, C.steel, 1.35, 1.6, -1.2), B(1.0, 0.15, 1.0, p.accent, 1.35, 3.15, -1.2), B(0.9, 0.5, 0.9, C.glass, 1.35, 2.85, -1.2));
       L.push(SP(0.7, C.white, 1.35, 3.25, -1.2, 10, 6, 0.6, Math.PI / 2));
       L.push(B(0.9, 0.4, 0.6, C.sand, 1.3, 0.42, 1.2), B(1.6, 0.06, 0.25, p.accent, -0.5, 1.4, 0.2));
@@ -2014,6 +2061,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
         L.push(CY(0.05, 0.05, 0.08, 0xff5030, px - 1.0, 0.24, pz - 1.0, 6));
       }
       L.push(B(5.8, 0.02, 0.1, C.yellow, 0, 0.2, 0), B(0.1, 0.02, 5.8, C.yellow, 0, 0.2, 0), B(5.9, 0.05, 0.15, p.accent, 0, 0.17, 2.88));
+      for (let i = 0; i < 6; i++) m.parts['lt' + i] = { geo: B(0.16, 0.05, 0.16, 0xfff2b0), x: 0, y: 0.24, z: 2.6 - i * 1.04, blink: 0, chase: i, n: 6, glow: [1, 0.9, 0.6] };
       L.push(B(0.45, 1.6, 0.45, C.concrete, 2.65, 0.9, -2.65), B(0.62, 0.3, 0.62, C.glass, 2.65, 1.82, -2.65), B(0.68, 0.06, 0.68, p.accent, 2.65, 2.0, -2.65));
       L.push(CY(0.02, 0.02, 0.7, C.steel, 2.65, 2.35, -2.65, 4));
       break;
@@ -2028,7 +2076,9 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       break;
     }
   }
-  m.body = MG(L.length ? L : [B(0.01, 0.01, 0.01, C.dark)]);
+  if (!L.length) L.push(B(0.01, 0.01, 0.01, C.dark));
+  m.top = tagPieces(L);
+  m.body = MG(L);
   m.W = W; m.D = D;
   bldModelCache[key] = m;
   return m;
@@ -2066,6 +2116,185 @@ const texCamo = grimeTexture(true), texGrime = grimeTexture(false);
 const matVehicle = fogify(new THREE.MeshStandardMaterial({ vertexColors: true, map: texCamo, roughness: 0.72, metalness: 0.35 }));
 const matInf = fogify(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.0 }));
 const matBld = fogify(new THREE.MeshStandardMaterial({ vertexColors: true, map: texGrime, roughness: 0.85, metalness: 0.15 }));
+// 建筑材质每座一份（共用同一个着色器程序）：uBuild 建造进度、uCol 坍塌进度、uDmg 受损程度（0 完好 / 1 中度 / 2 重度）
+const bldTime = { value: 0 };
+const BLD_VERT = `attribute vec4 aPa; attribute vec4 aPb;
+uniform float uBuild; uniform float uCol; uniform float uDmg; uniform vec2 uCorner;
+varying vec3 vBP; varying float vClip;
+mat3 bldRot(vec3 a, float g) { float s = sin(g), c = cos(g), o = 1.0 - c;
+  return mat3(o*a.x*a.x + c, o*a.x*a.y + a.z*s, o*a.z*a.x - a.y*s, o*a.x*a.y - a.z*s, o*a.y*a.y + c, o*a.y*a.z + a.x*s, o*a.z*a.x + a.y*s, o*a.y*a.z - a.x*s, o*a.z*a.z + c); }
+void bldXf(inout vec3 p, inout vec3 n) {
+  vec3 piv = aPa.xyz; float h = abs(aPb.x), r1 = aPb.y, lvl = aPb.w;
+  vec3 ax = vec3(cos(aPb.z * 6.2832), 0.0, sin(aPb.z * 6.2832));
+  vClip = 1e5;
+  if (aPb.x < 0.0) {
+    // 建造（墙体、塔体）：从底往上一层层砌高，没砌到的部分不画
+    float t = clamp((uBuild - aPa.w) / 0.32, 0.0, 1.0);
+    if (t <= 0.0) { p = piv; return; }
+    if (t < 1.0) vClip = piv.y + h * (1.0 - (1.0 - t) * (1.0 - t));
+  } else {
+    // 建造（小部件）：从地面下顶上来，到位时轻轻回弹
+    float t = clamp((uBuild - aPa.w) / 0.26, 0.0, 1.0);
+    if (t <= 0.0) { p = piv; return; }
+    float u = t - 1.0, e = 1.0 + 2.4 * u * u * u + 1.4 * u * u;
+    p.y -= (1.0 - e) * (h + 0.6);
+    p.xz = piv.xz + (p.xz - piv.xz) * mix(0.82, 1.0, min(1.0, t * 1.5));
+  }
+  // 受损：中度时上层少数部件歪斜；重度时被打塌的一角下陷，高处的烟囱、天线倒下
+  float d1 = clamp(uDmg, 0.0, 1.0), d2 = clamp(uDmg - 1.0, 0.0, 1.0);
+  float corner = step(0.0, piv.x * uCorner.x) * step(0.0, piv.z * uCorner.y);
+  float g2 = d2 * max(step(0.45, lvl) * corner, step(0.55, r1) * step(0.6, lvl));
+  float g1 = d1 * step(0.7, r1) * step(0.35, lvl) * 0.13;
+  if (g1 > 0.0) { mat3 R = bldRot(ax, g1); p = piv + R * (p - piv); n = R * n; }
+  if (g2 > 0.0) {
+    // 塌下去的部件朝外侧往下歪，整体下沉，不会往上翘
+    vec3 ao = normalize(vec3(piv.z, 0.0, -piv.x) + vec3(0.001, 0.0, 0.0));
+    mat3 R = bldRot(ao, g2 * (0.35 + r1 * 0.2)); p = piv + R * (p - piv); n = R * n; p.y -= g2 * (0.3 * h + 0.4);
+  }
+  // 坍塌：高处先倒，各自朝随机方向倾倒、往外散、沉进地里
+  float ct = clamp((uCol - (1.0 - lvl) * 0.25 - r1 * 0.15) / 0.6, 0.0, 1.0);
+  if (ct > 0.0) {
+    float k = ct * ct;
+    mat3 R = bldRot(ax, k * (0.6 + r1 * 0.9));
+    p = piv + R * (p - piv); n = R * n;
+    p.xz += normalize(piv.xz + vec2(0.001, 0.0)) * k * (0.4 + lvl * 1.2);
+    p.y -= k * (h + piv.y + 0.6);
+  }
+}
+`;
+const BLD_FRAG = `uniform float uDmg; uniform float uSeed; uniform float uTime; varying vec3 vBP; varying float vClip;
+float bldHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float bldNoise(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(bldHash(i), bldHash(i + vec3(1,0,0)), f.x), mix(bldHash(i + vec3(0,1,0)), bldHash(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(bldHash(i + vec3(0,0,1)), bldHash(i + vec3(1,0,1)), f.x), mix(bldHash(i + vec3(0,1,1)), bldHash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+`;
+function bldMaterial(b) {
+  const U = { uBuild: { value: 1 }, uCol: { value: 0 }, uDmg: { value: 0 }, uCorner: { value: new THREE.Vector2(b.id & 1 ? 1 : -1, b.id & 2 ? 1 : -1) }, uSeed: { value: (b.id * 7.31) % 13 }, uTime: bldTime };
+  // 双面：墙体砌到一半时能看到内侧
+  const mat = fogify(new THREE.MeshStandardMaterial({ vertexColors: true, map: texGrime, roughness: 0.85, metalness: 0.15, side: THREE.DoubleSide }));
+  const fog = mat.onBeforeCompile;
+  mat.onBeforeCompile = sh => {
+    fog(sh); Object.assign(sh.uniforms, U);
+    sh.vertexShader = BLD_VERT + sh.vertexShader
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vec3 bldP = position; vBP = position; bldXf(bldP, objectNormal);')
+      .replace('#include <begin_vertex>', 'vec3 transformed = bldP;');
+    sh.fragmentShader = BLD_FRAG + sh.fragmentShader
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      if (vBP.y > vClip) discard;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      diffuseColor.rgb *= 1.0 - 0.35 * (1.0 - smoothstep(0.0, 0.12, vClip - vBP.y));   // 正在砌的那一层颜色深一点（新抹的水泥）
+      float bldN = 0.0;
+      if (uDmg > 0.01) {
+        // 受损：弹着点周围熏黑，黑痕往上拖；重度时出现焦黑的破洞，洞口零星有余火
+        vec3 q = vBP * vec3(1.0, 0.55, 1.0) + uSeed, qb = q - vec3(0.0, 0.45, 0.0);
+        bldN = bldNoise(q * 1.1) * 0.6 + bldNoise(q * 2.7) * 0.3 + bldNoise(q * 6.0) * 0.1;
+        float nb = bldNoise(qb * 1.1) * 0.6 + bldNoise(qb * 2.7) * 0.4;
+        float d1 = clamp(uDmg, 0.0, 1.0), d2 = clamp(uDmg - 1.0, 0.0, 1.0);
+        float soot = max(smoothstep(0.5, 0.68, bldN), smoothstep(0.55, 0.72, nb) * 0.7) * (0.75 * d1 + 0.25 * d2);
+        diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - 0.08 * d1), vec3(0.07, 0.06, 0.055), soot * 0.85);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02), smoothstep(0.665, 0.685, bldN) * d2 * 0.9);
+      }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      if (uDmg > 1.01) totalEmissiveRadiance += vec3(0.9, 0.25, 0.04) * (smoothstep(0.645, 0.66, bldN) - smoothstep(0.668, 0.685, bldN)) * step(0.62, bldNoise(vBP * 9.0 + uSeed))
+        * clamp(uDmg - 1.0, 0.0, 1.0) * (0.35 + 0.35 * sin(uTime * 5.0 + bldN * 60.0));`);
+  };
+  mat.customProgramCacheKey = () => 'bldAnim';
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  depth.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = BLD_VERT + sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position; vec3 bldN0 = vec3(0.0, 1.0, 0.0); vBP = position; bldXf(transformed, bldN0);');
+    sh.fragmentShader = 'varying vec3 vBP; varying float vClip;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (vBP.y > vClip) discard;');
+  };
+  depth.customProgramCacheKey = () => 'bldDepth';
+  return { mat, depth, U };
+}
+// 脚手架（按占地和高度缓存）：立杆、横杆、脚手板、斜撑、绿色防护网，地上有警示栏和材料堆
+const scafCache = {};
+function scaffoldGeo(w, h, H) {
+  const key = w + '_' + h + '_' + Math.round(H * 4);
+  if (scafCache[key]) return scafCache[key];
+  const W = w * TILE + 0.1, D = h * TILE + 0.1, L = [], pole = 0x8a8a82, plank = 0x86683f, net = 0x3c5a3e;
+  const lv = Math.max(1, Math.round(H / 0.9)), dy = H / lv, PH = H + 0.3;
+  const nx = Math.max(2, Math.round(W / 1.1)), nz = Math.max(2, Math.round(D / 1.1));
+  for (let i = 0; i <= nx; i++) for (const s of [-1, 1]) L.push(CY(0.035, 0.035, PH, pole, -W / 2 + i * W / nx, PH / 2, s * D / 2, 4));
+  for (let i = 1; i < nz; i++) for (const s of [-1, 1]) L.push(CY(0.035, 0.035, PH, pole, s * W / 2, PH / 2, -D / 2 + i * D / nz, 4));
+  for (let l = 1; l <= lv; l++) {
+    const y = l * dy, sd = l % 2 ? 1 : -1;
+    for (const s of [-1, 1]) L.push(B(W, 0.04, 0.04, pole, 0, y, s * D / 2), B(0.04, 0.04, D, pole, s * W / 2, y, 0));
+    L.push(B(W, 0.04, 0.32, plank, 0, y + 0.03, sd * (D / 2 - 0.18)), B(0.32, 0.04, D, plank, -sd * (W / 2 - 0.18), y + 0.03, 0));
+  }
+  for (const s of [-1, 1]) {
+    L.push(B(0.03, Math.hypot(W, H), 0.03, pole, 0, H / 2, s * D / 2, 0, 0, s * Math.atan2(W, H)));
+    L.push(B(0.03, Math.hypot(D, H), 0.03, pole, s * W / 2, H / 2, 0, 0, s * Math.atan2(D, H), 0));
+  }
+  const nh = Math.min(H, dy * 2) - 0.1;
+  L.push(B(W * 0.7, nh, 0.02, net, -W * 0.12, nh / 2 + 0.05, D / 2 + 0.05), B(0.02, nh, D * 0.5, net, -W / 2 - 0.05, nh / 2 + 0.05, D * 0.2));
+  for (const s of [-1, 1]) L.push(B(0.9, 0.16, 0.05, C.yellow, s * (W / 2 - 0.5), 0.25, D / 2 + 0.45), B(0.05, 0.35, 0.05, C.dark, s * (W / 2 - 0.92), 0.17, D / 2 + 0.45), B(0.05, 0.35, 0.05, C.dark, s * (W / 2 - 0.08), 0.17, D / 2 + 0.45));
+  L.push(B(0.9, 0.22, 0.5, plank, W / 2 + 0.55, 0.11, -D / 4), B(0.8, 0.12, 0.45, plank, W / 2 + 0.55, 0.28, -D / 4, 0.2), CY(0.18, 0.18, 0.5, C.rust, -W / 2 - 0.45, 0.25, D / 4, 8));
+  return (scafCache[key] = MG(L));
+}
+// 大型建筑工地的塔吊：塔身 + 可以转动的吊臂
+const craneCache = {};
+function craneMastGeo(mh) {
+  const key = Math.round(mh * 4);
+  if (craneCache[key]) return craneCache[key];
+  const L = [B(0.9, 0.3, 0.9, C.concreteDk, 0, 0.15, 0)];
+  for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) L.push(B(0.06, mh, 0.06, C.yellow, x, mh / 2, z));
+  for (let y = 0.5; y < mh; y += 0.5) for (const s of [-1, 1]) L.push(B(0.44, 0.04, 0.04, C.yellow, 0, y, s * 0.2), B(0.04, 0.04, 0.44, C.yellow, s * 0.2, y, 0), B(0.03, 0.62, 0.03, C.yellow, 0, y - 0.25, s * 0.2, 0, 0, 0.8 * s));
+  return (craneCache[key] = MG(L));
+}
+let craneJib = null;
+function craneJibGeo() {
+  if (craneJib) return craneJib;
+  const L = [B(6.0, 0.16, 0.24, C.yellow, 2.2, 0.08, 0), B(5.0, 0.05, 0.05, C.yellow, 2.6, 0.4, 0), B(0.08, 0.8, 0.08, C.yellow, 0, 0.45, 0)];
+  for (let x = 0.6; x < 5; x += 0.6) L.push(B(0.03, 0.32, 0.03, C.yellow, x, 0.24, 0));
+  L.push(B(Math.hypot(5, 0.62), 0.02, 0.02, C.dark, 2.5, 0.54, 0, 0, 0, Math.atan2(-0.62, 5)), B(Math.hypot(2, 0.6), 0.02, 0.02, C.dark, -1, 0.55, 0, 0, 0, Math.atan2(0.6, 2)));
+  L.push(B(1.8, 0.14, 0.32, C.yellow, -1.3, 0.08, 0), B(0.6, 0.5, 0.55, C.concreteDk, -2.0, -0.12, 0));
+  L.push(B(0.45, 0.42, 0.45, C.white, 0.35, -0.2, 0.32), B(0.46, 0.16, 0.3, C.glass, 0.35, -0.12, 0.33));
+  L.push(B(0.26, 0.1, 0.26, C.dark, 3.6, 0, 0), CY(0.015, 0.015, 1.8, C.dark, 3.6, -0.9, 0, 4), B(0.22, 0.22, 0.22, C.yellow, 3.6, -1.85, 0));
+  return (craneJib = MG(L));
+}
+function makeScaffold(b, H) {
+  const g = new THREE.Group(), m = new THREE.Mesh(scaffoldGeo(b.w, b.h, H), matBld);
+  m.castShadow = true; g.add(m);
+  let top = H + 0.4;
+  if (b.w >= 3) {
+    const W = b.w * TILE, D = b.h * TILE, mh = H + 2.4;
+    const mast = new THREE.Mesh(craneMastGeo(mh), matBld); mast.position.set(W / 2 + 0.7, 0, -D / 2 - 0.7); mast.castShadow = true; g.add(mast);
+    const jib = new THREE.Mesh(craneJibGeo(), matBld); jib.position.set(W / 2 + 0.7, mh, -D / 2 - 0.7); jib.castShadow = true; g.add(jib);
+    g.userData.jib = jib; top = mh + 1;
+  }
+  g.userData.h = top;
+  return g;
+}
+// 废墟：烧黑的地基、碎块堆、几段参差的残墙、钢筋和扭曲的钢梁；有烟囱的建筑还会留下倒下的烟囱
+function makeRubble(b) {
+  const W = b.w * TILE, D = b.h * TILE, L = [], p = teamPal(b.team, nationKeyOf(b.team)), burnt = 0x2e2a26;
+  const cols = [C.concreteDk, C.concrete, 0x5a5650, burnt, p.dark, C.concreteDk];
+  L.push(B(W - 0.3, 0.14, D - 0.3, 0x4a4844, 0, 0.07, 0));
+  const n = 10 + b.w * b.h * 4, pileH = 0.25 + b.w * 0.22;
+  for (let i = 0; i < n; i++) {
+    const r = Math.sqrt(Math.random()) * 0.5, a = Math.random() * 6.283, s = rnd(0.25, 0.5 + b.w * 0.25);
+    L.push(B(s, rnd(0.12, 0.4), s * rnd(0.6, 1.4), cols[i % cols.length], Math.cos(a) * r * (W - 0.6), 0.14 + (1 - r * 2) * pileH * rnd(0.4, 1), Math.sin(a) * r * (D - 0.6), rnd(0, 3), rnd(-0.5, 0.5), rnd(-0.5, 0.5)));
+  }
+  for (let i = 0; i <= b.w; i++) {
+    const side = (i + b.id) % 4, along = side < 2, sx = side % 2 ? 1 : -1, len = rnd(0.8, (along ? W : D) * 0.45), hh = rnd(0.5, 0.6 + b.w * 0.35), t = rnd(-0.3, 0.3);
+    const x0 = along ? t * W : sx * (W / 2 - 0.35), z0 = along ? sx * (D / 2 - 0.35) : t * D;
+    for (let k = 0; k < 3; k++) {
+      const seg = len / 3, h2 = hh * rnd(0.4, 1), c = -len / 2 + seg * (k + 0.5), x = along ? x0 + c : x0, z = along ? z0 : z0 + c;
+      L.push(B(along ? seg : 0.22, h2, along ? 0.22 : seg, C.concrete, x, h2 / 2 + 0.1, z, 0, rnd(-0.06, 0.06), rnd(-0.06, 0.06)));
+      L.push(B(along ? seg * 0.9 : 0.24, 0.08, along ? 0.24 : seg * 0.9, burnt, x, h2 + 0.1, z));
+    }
+  }
+  for (let i = 0; i < 4 + b.w * 2; i++) L.push(CY(0.02, 0.02, rnd(0.5, 1.1), 0x3a2a20, rnd(-0.35, 0.35) * W, rnd(0.3, 0.7), rnd(-0.35, 0.35) * D, 4, rnd(-0.9, 0.9), rnd(-0.9, 0.9)));
+  for (let i = 0; i < b.w; i++) L.push(B(0.14, 0.18, rnd(1.5, W * 0.8), C.rust, rnd(-0.25, 0.25) * W, rnd(0.35, 0.6), rnd(-0.25, 0.25) * D, rnd(0, 3), rnd(-0.25, 0.25), rnd(-0.15, 0.15)));
+  const bm = getBuildingModel(b.type, b.team);
+  if (bm.smoke && bm.smoke.length) L.push(CY(0.3, 0.38, Math.min(3, W * 0.6), C.concreteDk, rnd(-0.2, 0.2) * W, 0.45, rnd(-0.2, 0.2) * D, 10, Math.PI / 2, 0, rnd(0, 6.28)));
+  const m = new THREE.Mesh(MG(L), matBld);
+  m.position.set(b.x, groundH(b.x, b.z), b.z); m.castShadow = true; m.receiveShadow = true;
+  worldRoot.add(m);
+  return m;
+}
 const matWreck = fogify(new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1, metalness: 0.2 }));
 const ringGeo = new THREE.RingGeometry(0.9, 1.0, 32).rotateX(-Math.PI / 2);
 // 降落伞：伞面 + 伞绳
@@ -2322,6 +2551,7 @@ function updateGlows(dark) {
       add(b.x - W * 0.28, 1.1, b.z + D + 0.05, 1, 0.78, 0.45, 0.95 * k, 0.55);
       add(b.x + W * 0.28, 1.1, b.z + D + 0.05, 1, 0.78, 0.45, 0.95 * k, 0.55);
       add(b.x, 0.15, b.z + D + 1.2, 1, 0.7, 0.4, 0.22 * k, W * 0.9);
+      for (const pk in b.parts) { const pm = b.parts[pk], g = pm.userData.glow; if (g && pm.visible) add(b.x + pm.position.x, b.mesh.position.y + pm.position.y + 0.05, b.z + pm.position.z, g[0], g[1], g[2], 0.9, 0.45); }
     }
     for (const u of units) {
       if (!u.alive || u.def.inf || !u.mesh.visible) continue;
@@ -2502,7 +2732,7 @@ const Sound = {
       if (v <= 0.02) return;
     }
     const now = this.ctx.currentTime;
-    const gap = { rifle: 0.07, mg: 0.06, cannon: 0.08, flak: 0.07, explosion: 0.06, hit: 0.05 }[type] || 0.03;
+    const gap = { rifle: 0.07, mg: 0.06, cannon: 0.08, flak: 0.07, explosion: 0.06, hit: 0.05, build: 0.1 }[type] || 0.03;
     if (this.last[type] && now - this.last[type] < gap) return;
     this.last[type] = now;
     switch (type) {
@@ -2520,6 +2750,8 @@ const Sound = {
       case 'explosion': this.burst(0.9 * v, 0.9, 'lowpass', 1200, 80, 0.6); this.tone(0.5 * v, 0.5, 'sine', 80, 30); break;
       case 'bigExplosion': this.burst(1.0 * v, 1.8, 'lowpass', 900, 40, 0.5); this.tone(0.7 * v, 1.2, 'sine', 60, 20); break;
       case 'nuke': this.burst(1.0, 3.5, 'lowpass', 1500, 30, 0.4); this.tone(0.9, 3, 'sine', 50, 15); break;
+      case 'build': this.burst(0.1 * v, 0.05, 'bandpass', rnd(2500, 4200), 0, 9); this.tone(0.04 * v, 0.07, 'triangle', rnd(700, 1100), 0); break;
+      case 'collapse': this.burst(0.9 * v, 2.6, 'lowpass', 500, 40, 0.5); this.burst(0.35 * v, 1.8, 'bandpass', 1400, 300, 0.6, 0.3); this.tone(0.5 * v, 2.0, 'sine', 45, 20); break;
       case 'click': this.tone(0.12, 0.05, 'square', 900, 0); break;
       case 'place': this.burst(0.4, 0.3, 'lowpass', 400, 100); this.tone(0.2, 0.15, 'square', 200, 120); break;
       case 'ready': this.tone(0.15, 0.12, 'triangle', 660, 0); this.tone(0.15, 0.18, 'triangle', 990, 0, 0.12); break;
@@ -2558,6 +2790,7 @@ const entById = new Map();
 let selection = [];
 let groups = {};
 let wrecks = [], corpses = [], delayed = [], pings = [], markers = [], reveals = [];
+let bldFx = [], ruins = [];   // 正在拆除 / 坍塌的建筑；地上的废墟
 const WRECK_MAX = 40;   // 残骸 5 秒消失，同时最多保留 40 个
 const oreClaim = new Int32Array(MAP * MAP);
 
@@ -2641,6 +2874,10 @@ function createBuilding(type, team, tx, tz, opts = {}) {
   b.hasTurret = !!def.weapon; b.baseW = b.weapon;
   // 桥不占格子（桥面本身就是可通行的地块）
   if (type !== 'bridge') for (let z = tz; z < tz + h; z++) for (let x = tx; x < tx + w; x++) bldGrid[z * MAP + x] = b.id;
+  for (let i = ruins.length - 1; i >= 0; i--) {
+    const r = ruins[i];
+    if (!r.keep && r.tx < tx + w && r.tx + r.w > tx && r.tz < tz + h && r.tz + r.h > tz) { worldRoot.remove(r.mesh); r.mesh.geometry.dispose(); ruins.splice(i, 1); }
+  }
   buildBuildingMesh(b);
   buildings.push(b); entById.set(b.id, b);
   if (team >= 0) { recalcTeam(team); if (!opts.instant) teams[team].stats.bBuilt++; }
@@ -2653,9 +2890,13 @@ function createBuilding(type, team, tx, tz, opts = {}) {
 }
 function buildBuildingMesh(b) {
   if (b.mesh) scene.remove(b.mesh);
-  const m = b.type === 'bridge' ? bridgeModel(b) : getBuildingModel(b.type, b.team);
+  const anim = b.type !== 'bridge';
+  const m = anim ? getBuildingModel(b.type, b.team) : bridgeModel(b);
+  if (anim && !b.bm) b.bm = bldMaterial(b);
   const g = new THREE.Group();
-  const body = new THREE.Mesh(m.body, matBld); body.castShadow = true; body.receiveShadow = true; g.add(body);
+  const body = new THREE.Mesh(m.body, anim ? b.bm.mat : matBld); body.castShadow = true; body.receiveShadow = true; g.add(body);
+  if (anim) body.customDepthMaterial = b.bm.depth;
+  b.top = m.top || 2; b.scaf = null; b.partsBuilt = false; b.door = m.door || null;
   b.parts = {};
   for (const k in m.parts) {
     const p = m.parts[k];
@@ -2725,6 +2966,7 @@ function houseRuin(b) {
   const m = new THREE.Mesh(MG(L), matBld); m.position.set(b.x, groundH(b.x, b.z), b.z); m.castShadow = true; m.receiveShadow = true;
   worldRoot.add(m);
   for (let z = b.tz; z < b.tz + b.h; z++) for (let x = b.tx; x < b.tx + b.w; x++) { const i = z * MAP + x; passable[i] = 0; refreshTileCost(i); }
+  return m;
 }
 function freeGrid(b) {
   for (let z = b.tz; z < b.tz + b.h; z++) for (let x = b.tx; x < b.tx + b.w; x++) if (bldGrid[z * MAP + x] === b.id) bldGrid[z * MAP + x] = 0;
@@ -3454,8 +3696,7 @@ function deathFx(e) {
     }
     if (visibleAt(e.x, e.z)) { Sound.play('bigExplosion', e.x, e.z); shake = Math.max(shake, 0.35); }
     addScorch(e.x, e.z, Math.max(W, D) * 1.3);
-    if (e.type === 'house') houseRuin(e);
-    scene.remove(e.mesh);
+    startCollapse(e, e.bm ? (e.type === 'house' ? houseRuin(e) : makeRubble(e)) : null);
   }
   if (e.ring) e.ring.visible = false;
   const si = selection.indexOf(e);
@@ -3469,6 +3710,7 @@ function unitTick(u) {
   if (u.cd > 0) u.cd--;
   if (u.recoil > 0) u.recoil = Math.max(0, u.recoil - 0.2);
   u.anchored = false;
+  if (u.holdT > 0) { u.holdT--; return; }   // 正在从厂房里开出来
   if (u.chute) {
     // 伞降：落地前不能行动
     u.y = Math.max(0, u.y - 5.5 * TICK);
@@ -3738,7 +3980,7 @@ function engineerEnter(u, b) {
   const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
 }
 function buildingTick(b) {
-  if (b.buildAnim < 1) b.buildAnim = Math.min(1, b.buildAnim + TICK / 1.2);
+  if (b.buildAnim < 1) b.buildAnim = Math.min(1, b.buildAnim + TICK / bldAnimDur(b));
   if (b.team < 0) return;
   const T = teams[b.team];
   if (b.repairing) {
@@ -4007,6 +4249,7 @@ function spawnProduced(T, type) {
   else { const e = exitPos(prod); x = e.x; z = e.z; }
   const u = createUnit(type, T.id, x, z);
   u.angle = u.pangle = u.turretAngle = u.pturret = 0;
+  if (!d.plane && !(prod.type === 'airBarracks' && T.rally[prod.id])) startEmerge(u, prod, true);
   T.stats.unitsBuilt++;
   const rally = T.rally[prod.id];
   if (d.plane) {
@@ -4081,7 +4324,7 @@ function sellBuilding(b) {
   const T = teams[b.team];
   const refund = Math.round(costOf(b.team, b.type) * 0.5 * b.hp / b.maxHp);
   T.credits += refund;
-  b.alive = false; freeGrid(b); scene.remove(b.mesh);
+  b.alive = false; freeGrid(b); startDismantle(b);
   for (let i = 0; i < 8; i++) fxDust(b.x + rnd(-b.w, b.w), b.z + rnd(-b.h, b.h), 1.6);
   recalcTeam(b.team);
   const si = selection.indexOf(b); if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
@@ -5115,12 +5358,13 @@ function updateGhost() {
 // =====================================================================
 function syncMeshes(alpha, rdt, gdt) {
   updateAbmSelRing();
+  bldTime.value = G.time;
   for (const u of units) {
     if (!u.alive) continue;
     const show = canSeeEntity(u);
     u.mesh.visible = show;
     if (!show) continue;
-    const x = lerp(u.px, u.x, alpha), z = lerp(u.pz, u.z, alpha);
+    let x = lerp(u.px, u.x, alpha), z = lerp(u.pz, u.z, alpha);
     let y = lerp(u.py ?? u.y, u.y, alpha);
     const gy = u.def.naval ? 0 : groundH(x, z);   // 地面高度（舰船在水面上）
     y += gy;
@@ -5153,6 +5397,17 @@ function syncMeshes(alpha, rdt, gdt) {
       u.walkT += gdt * 12;
       y += Math.abs(Math.sin(u.walkT)) * 0.08;
     }
+    if (u.em) {
+      // 出兵动画：显示位置从门里（或停机坪上、船台上）过渡到实际位置
+      const e = u.em; e.t += gdt;
+      const k = clamp((e.t - e.delay) / e.dur, 0, 1), s = 1 - k * k * (3 - 2 * k);
+      x += e.dx * s; z += e.dz * s; y += e.dy * s;
+      u.mesh.visible = show && e.t >= e.delay;
+      if (u.def.inf && e.t >= e.delay) { u.walkT += gdt * 12; y += Math.abs(Math.sin(u.walkT)) * 0.08; }
+      if (u.def.air && k < 0.6 && gdt > 0 && Math.random() < gdt * 20 && visibleAt(x, z)) fxDust(x + rnd(-1.5, 1.5), z + rnd(-1.5, 1.5), 1.2);
+      if (u.def.naval && !e.sp && k > 0.55) { e.sp = true; fxSplash(x, z, 1.2); }
+      if (e.t >= e.delay + e.dur) u.em = null;
+    }
     u.mesh.position.set(x, y, z);
     u.mesh.rotation.y = ang;
     if (u.turretMesh) {
@@ -5180,14 +5435,22 @@ function syncMeshes(alpha, rdt, gdt) {
     const show = canSeeEntity(b);
     b.mesh.visible = show;
     if (!show) continue;
-    const e = 1 - Math.pow(1 - b.buildAnim, 3);
-    b.mesh.scale.y = 0.04 + 0.96 * e;
+    if (b.bm) {
+      // 建造进度的显示值连续推进，不超前实际进度太多（客户端在两次快照之间也平滑）
+      const was = b.va ?? b.buildAnim;
+      b.va = b.buildAnim >= 1 && was >= 0.999 ? 1 : clamp(was + gdt / bldAnimDur(b), b.buildAnim - 0.04, Math.min(1, b.buildAnim + 0.05));
+      bldVisual(b, b.va, gdt);
+      if (was < 1 && b.va >= 1 && visibleAt(b.x, b.z)) settleFx(b);
+      bldDamage(b, gdt);
+    }
     const powered = b.team < 0 || !teams[b.team].lowPower;
     for (const k in b.parts) {
       const pm = b.parts[k], p = pm.userData;
-      if (p.spin && powered) pm.rotation.y += p.spin * gdt;
+      if (p.spin && powered) pm.rotation.y += p.spin * gdt * (b.dmgT === 2 ? 0.25 : 1);
+      if (p.spin && b.bm) pm.rotation.x = clamp(b.bm.U.uDmg.value - 1, 0, 1) * 0.35;   // 重伤时雷达盘歪掉、转得慢
       if (p.rock && b.team >= 0) pm.rotation.x = Math.sin(G.time * 2.2 + b.id) * 0.32;
     }
+    if (b.bm) bldWork(b, powered, gdt);
     if (b.type === 'silo') {
       if (b.doorOpen > 0) b.doorOpen -= gdt;
       const T = teams[b.team];
@@ -5205,7 +5468,8 @@ function syncMeshes(alpha, rdt, gdt) {
     if (b.turretMesh) {
       b.turretMesh.rotation.y = b.turretAngle;
       const r = b.recoil || 0;
-      b.turretMesh.position.set(-Math.sin(b.turretAngle) * r * 0.15, 0, -Math.cos(b.turretAngle) * r * 0.15);
+      b.turretMesh.position.set(-Math.sin(b.turretAngle) * r * 0.15, b.turY || 0, -Math.cos(b.turretAngle) * r * 0.15);
+      b.turretMesh.scale.setScalar(b.turS ?? 1);
     }
     if (gdt > 0 && visibleAt(b.x, b.z)) {
       b.smokeT -= gdt;
@@ -5223,6 +5487,7 @@ function syncMeshes(alpha, rdt, gdt) {
       }
     }
   }
+  updateBldFx(gdt);
   for (let i = corpses.length - 1; i >= 0; i--) {
     const c = corpses[i];
     c.t += gdt;
@@ -5237,6 +5502,200 @@ function syncMeshes(alpha, rdt, gdt) {
     if (w.t < 3 && Math.random() < gdt * 6 && visibleAt(w.x, w.z)) pSmoke.spawn(w.x + rnd(-0.5, 0.5), 1, w.z + rnd(-0.5, 0.5), 0, rnd(1, 2), 0, 2.5, 0.8, 2.6, 0.15, 0.14, 0.13, 0.55, -0.2, 0.3);
     if (w.t > 3.5) w.mesh.position.y -= gdt * (w.sink ? 1.5 : 1.2);
     if (w.t > 5) { scene.remove(w.mesh); wrecks.splice(i, 1); }
+  }
+}
+// ---------------------------------------------------------------------
+// 建筑动画：分段组装（脚手架、塔吊、焊花、扬尘）、出售拆解、受损、坍塌与废墟
+// ---------------------------------------------------------------------
+const easeOutBack = t => { const u = t - 1; return 1 + 2.4 * u * u * u + 1.4 * u * u; };
+const bldAnimDur = b => 1 + b.w;   // 1×1 防御塔 2 秒，2×2 建筑 3 秒，3×3 建筑 4 秒
+// va：组装进度（建造时 0→1，出售时 1→0）
+function bldVisual(b, va, gdt) {
+  b.bm.U.uBuild.value = va;
+  const building = va < 1;
+  // 脚手架：开工时从地下升起，主体完工后收回地下
+  if (building && !b.scaf) { b.scaf = makeScaffold(b, clamp(b.top * 0.85, 1, 4.6)); b.mesh.add(b.scaf); }
+  if (b.scaf) {
+    const up = va < 0.12 ? 1 - Math.pow(1 - va / 0.12, 3) : va > 0.86 ? 1 - Math.pow((va - 0.86) / 0.14, 2) : 1;
+    b.scaf.position.y = -(1 - up) * b.scaf.userData.h;
+    if (b.scaf.userData.jib) b.scaf.userData.jib.rotation.y = 0.8 + Math.sin(G.time * 0.35 + b.id) * 1.3;
+    if (!building) { b.mesh.remove(b.scaf); b.scaf = null; }
+  }
+  // 雷达盘、门、吊臂这些活动部件：跟着所在高度依次出场
+  for (const k in b.parts) {
+    const pm = b.parts[k], p = pm.userData;
+    if (building) {
+      const t = clamp((va - 0.2 - 0.5 * clamp(p.y / b.top, 0, 1)) / 0.26, 0, 1);
+      pm.scale.setScalar(t > 0 ? 0.7 + 0.3 * Math.min(1, t * 1.5) : 1e-3);
+      pm.position.y = p.y - (1 - easeOutBack(t)) * 1.2;
+    } else if (!b.partsBuilt) { pm.scale.setScalar(1); pm.position.y = p.y; }
+  }
+  b.partsBuilt = !building;
+  // 炮塔最后装上
+  const tt = clamp((va - 0.6) / 0.3, 0, 1);
+  b.turS = building ? (tt > 0 ? 0.6 + 0.4 * tt : 1e-3) : 1;
+  b.turY = building ? -(1 - easeOutBack(tt)) * 1.4 : 0;
+  if (!building || gdt <= 0 || !visibleAt(b.x, b.z)) return;
+  const W = b.w * TILE, D = b.h * TILE, gy = b.mesh.position.y;
+  // 焊接：施工高度上一闪蓝白电弧，带一簇往下掉的火花
+  if (va > 0.08 && Math.random() < gdt * (6 + b.w * 4)) {
+    const x = b.x + rnd(-0.42, 0.42) * W, z = b.z + rnd(-0.42, 0.42) * D, y = gy + 0.3 + b.top * 0.9 * clamp((va - 0.1) / 0.7, 0, 1);
+    pFire.spawn(x, y, z, 0, 0, 0, 0.06, 0.8, 0.3, 0.7, 0.85, 1, 1);
+    for (let i = 0; i < 7; i++) pFire.spawn(x, y, z, rnd(-1.6, 1.6), rnd(0.4, 2.6), rnd(-1.6, 1.6), rnd(0.35, 0.7), 0.15, 0.04, 1, rnd(0.55, 0.85), 0.25, 1, 9, 0.3);
+  }
+  // 部件从地里顶出来时的扬尘
+  if (va < 0.55 && Math.random() < gdt * (5 + b.w * 4)) { const a = Math.random() * 6.283; fxDust(b.x + Math.cos(a) * W * 0.55, b.z + Math.sin(a) * D * 0.55, 1 + b.w * 0.3); }
+  if ((b.clankT = (b.clankT || 0) - gdt) <= 0) { b.clankT = rnd(0.22, 0.45); Sound.play('build', b.x, b.z); }
+}
+// 工作动画（停电时停下）：出兵开门、旗子飘、信标闪、传送带运矿、维修吊钩移动、工厂里的焊接闪光
+function bldWorking(b) {
+  const T = teams[b.team];
+  if (!T) return false;
+  if (b.type === 'factory' || b.type === 'shipyard' || b.type === 'barracks') {
+    const q = T.queues[b.type === 'factory' ? 'vehicle' : b.type === 'shipyard' ? 'naval' : 'infantry'];
+    return !!(q && q.length && !q[0].ready && q[0].progress > 0 && pickProducer(T, b.type) === b);
+  }
+  if (b.type === 'refinery') { const dk = dockPos(b); return units.some(u => u.alive && u.def.harvester && u.team === b.team && !u.moving && u.cargo > 0 && Math.hypot(u.x - dk.x, u.z - dk.z) < 2.6); }
+  if (b.type === 'repairDepot') return units.some(u => u.alive && u.team === b.team && !u.def.inf && u.hp < u.maxHp && Math.hypot(u.x - b.x, u.z - b.z) < 10);
+  return false;
+}
+function bldWork(b, powered, gdt) {
+  if (b.va < 1) return;
+  const P = b.parts, t = G.time;
+  if (b.gateT > 0) b.gateT -= gdt;
+  b.gate = clamp((b.gate || 0) + (b.gateT > 0 ? 1 : -1) * gdt * 2.4, 0, 1);
+  if ((uiFrameN + b.id) % 10 === 0) b.work = bldWorking(b);
+  const on = powered && b.team >= 0;
+  for (const k in P) {
+    const pm = P[k], p = pm.userData;
+    if (p.door === 'roll') pm.scale.y = 1 - 0.94 * b.gate;
+    else if (p.door === 'swing') pm.rotation.y = p.side * b.gate * 1.6;
+    else if (p.wave) {
+      const a = Math.sin(t * 4.2 + b.id + p.wave * 1.1) * (0.18 + p.wave * 0.12) + Math.sin(t * 7.3 + b.id * 2) * 0.06;
+      if (p.chain) { const c = P[p.chain]; pm.rotation.y = c.rotation.y + a; pm.position.x = c.position.x + Math.cos(c.rotation.y) * p.len; pm.position.z = c.position.z - Math.sin(c.rotation.y) * p.len; }
+      else pm.rotation.y = a;
+    } else if (p.blink !== undefined) pm.visible = on && (p.chase !== undefined ? Math.floor(t * 8) % p.n === p.chase : (t + p.blink) % 1.2 < 0.25);
+    else if (p.conv) {
+      pm.visible = on && b.work;
+      if (pm.visible) { const f = (t * 0.45 + p.conv.i / p.conv.n) % 1, A = p.conv.a, Bb = p.conv.b; pm.position.set(lerp(A[0], Bb[0], f), lerp(A[1], Bb[1], f), lerp(A[2], Bb[2], f)); }
+    } else if (p.slide && on && b.work) pm.position.x = p.x + Math.sin(t * 0.9 + b.id) * p.slide;
+  }
+  if (!on || !b.work || gdt <= 0 || !visibleAt(b.x, b.z)) return;
+  const gy = b.mesh.position.y;
+  if (b.type === 'factory' && Math.random() < gdt * 5) {
+    // 厂房天窗里透出的焊接闪光
+    const x = b.x + [-0.83, 0.85, 2.53][(Math.random() * 3) | 0], z = b.z + rnd(-2.2, 1.0);
+    pFire.spawn(x, gy + 2.95, z, 0, 0.2, 0, 0.08, 1.3, 0.5, 0.65, 0.8, 1, 0.9);
+  } else if (b.type === 'refinery' && Math.random() < gdt * 6) {
+    // 卸矿扬起的黄土
+    const dk = dockPos(b);
+    pSmoke.spawn(dk.x + rnd(-0.6, 0.6), gy + 0.6, dk.z - 0.8 + rnd(-0.3, 0.3), rnd(-0.3, 0.3), rnd(0.5, 1.2), rnd(-0.3, 0.3), rnd(1, 1.6), 0.5, 1.8, 0.66, 0.56, 0.3, 0.45, 0, 1);
+  } else if (b.type === 'repairDepot' && Math.random() < gdt * 8) {
+    const h = P.hoist, x = b.x + h.position.x, z = b.z + h.position.z;
+    for (let i = 0; i < 5; i++) pFire.spawn(x, gy + 1.1, z, rnd(-1.4, 1.4), rnd(0.3, 2), rnd(-1.4, 1.4), rnd(0.3, 0.6), 0.14, 0.04, 1, rnd(0.55, 0.85), 0.25, 1, 9, 0.3);
+  }
+}
+// 出兵动画：战车从工厂卷帘门里开出来、步兵从兵营门口走出来、舰船从船台滑进水里、直升机从停机坪升空
+function startEmerge(u, prod, host) {
+  const dr = prod.door;
+  let dx = 0, dz = 0, dy = 0, delay = 0, dur;
+  if (u.def.air) { dy = -(AIR_Y - 0.3); dur = 2; }
+  else if (u.def.naval) { dx = (prod.x - u.x) * 0.5; dz = (prod.z - u.z) * 0.5; dur = 1.8; }
+  else if (dr) { dx = prod.x + dr.x - u.x; dz = prod.z + dr.z - (u.def.inf ? 0.25 : u.radius + 0.3) - u.z; delay = u.def.inf ? 0.3 : 0.55; dur = u.def.inf ? 1 : 1.5; }
+  else return;
+  if (Math.hypot(dx, dz) > 9) return;
+  u.em = { dx, dy, dz, delay, dur, t: 0 };
+  if (dr) prod.gateT = delay + dur + 0.5;
+  if (!u.def.air && Math.hypot(dx, dz) > 0.3) u.angle = u.pangle = u.turretAngle = u.pturret = Math.atan2(-dx, -dz);
+  if (host) u.holdT = Math.ceil((delay + dur) * TPS);
+}
+// 客户端：新出现在己方生产建筑门口的单位也播出兵动画
+function clientEmerge(u) {
+  if (u.def.plane || (u.y > 1 && !u.def.air)) return;
+  const pt = prodOf(u.def);
+  const b = buildings.find(b => b.alive && b.team === u.team && (b.type === pt || (pt === 'barracks' && b.type === 'airBarracks')) && rectDist(u.x, u.z, b) < 4);
+  if (b) startEmerge(u, b, false);
+}
+// 完工：一圈贴地扩散的尘土
+function settleFx(b) {
+  const W = b.w * TILE, D = b.h * TILE, gy = b.mesh.position.y, n = 14 + b.w * 6;
+  for (let i = 0; i < n; i++) {
+    const a = i / n * 6.283, c = Math.cos(a), s = Math.sin(a);
+    pSmoke.spawn(b.x + c * W * 0.5, gy + 0.2, b.z + s * D * 0.5, c * rnd(1.2, 2.6), rnd(0.1, 0.5), s * rnd(1.2, 2.6), rnd(1, 1.8), 0.6, 2.2 + b.w * 0.3, 0.55, 0.5, 0.4, 0.4, 0, 1.5);
+  }
+}
+// 受损程度：生命低于 50% 中度，低于 25% 重度；变化时平滑过渡，变得更重时崩下一块
+function bldDamage(b, gdt) {
+  const U = b.bm.U, f = b.hp / b.maxHp, tgt = f < 0.25 ? 2 : f < 0.5 ? 1 : 0;
+  if (tgt > (b.dmgT || 0) && b.va >= 1 && visibleAt(b.x, b.z)) {
+    const W = b.w * TILE, D = b.h * TILE, gy = b.mesh.position.y, x = b.x + rnd(-0.3, 0.3) * W, z = b.z + rnd(-0.3, 0.3) * D;
+    fxExplosion(x, gy + b.top * 0.7, z, 0.6 + tgt * 0.2);
+    for (let i = 0; i < 14; i++) pSmoke.spawn(x, gy + b.top * 0.7, z, rnd(-3, 3), rnd(2, 6), rnd(-3, 3), rnd(0.8, 1.4), 0.26, 0.2, 0.18, 0.17, 0.15, 1, 14, 0.1);
+    Sound.play('explosion', b.x, b.z);
+  }
+  b.dmgT = tgt;
+  const v = U.uDmg.value;
+  U.uDmg.value = v + clamp(tgt - v, -gdt * 0.6, gdt * 3);
+}
+function startDismantle(b) {
+  if (b.ring) b.ring.visible = false;
+  if (!b.bm) { scene.remove(b.mesh); return; }
+  bldFx.push({ b, kind: 'sell', t: 0, dur: 0.8 + b.w * 0.45, va0: b.va ?? 1 });
+}
+function startCollapse(b, rub) {
+  if (!b.bm) { scene.remove(b.mesh); return; }
+  bldFx.push({ b, kind: 'col', t: 0, dur: 2.2 + b.w * 0.25, rub });
+  if (rub) {
+    rub.scale.y = 0.15;
+    ruins.push({ mesh: rub, tx: b.tx, tz: b.tz, w: b.w, h: b.h, x: b.x, z: b.z, gy: rub.position.y, s: b.w * TILE, t: 0, keep: b.type === 'house' });
+    if (ruins.length > 80) { const i = ruins.findIndex(r => !r.keep); if (i >= 0) { worldRoot.remove(ruins[i].mesh); ruins.splice(i, 1); } }
+  }
+  if (visibleAt(b.x, b.z)) delayed.push({ t: 0.25, fn: () => Sound.play('collapse', b.x, b.z) });
+}
+function collapseVisual(b, f, k, gdt) {
+  b.bm.U.uCol.value = k;
+  const e = clamp((k - 0.05) / 0.6, 0, 1), e2 = e * e;
+  for (const key in b.parts) {
+    const pm = b.parts[key], p = pm.userData, s = hash1(b.id + key.charCodeAt(0) * 3.7) - 0.5;
+    pm.rotation.z = e2 * s * 2.2; pm.position.y = p.y - e2 * (p.y + 1.5);
+  }
+  if (b.turretMesh) { b.turretMesh.rotation.z = e2 * 0.8; b.turretMesh.rotation.x = e2 * 0.4; b.turretMesh.position.y = -e2 * 2.2; }
+  if (f.rub) f.rub.scale.y = 0.15 + 0.85 * clamp((k - 0.1) / 0.65, 0, 1);
+  if (gdt <= 0 || !visibleAt(b.x, b.z)) return;
+  const W = b.w * TILE, D = b.h * TILE, gy = b.mesh.position.y;
+  // 坍塌扬起的尘土贴着地面往外涌
+  if (k < 0.7 && Math.random() < gdt * (20 + b.w * 12)) {
+    const a = Math.random() * 6.283, c = Math.cos(a), s = Math.sin(a);
+    pSmoke.spawn(b.x + c * W * 0.45, gy + rnd(0.3, 1.2), b.z + s * D * 0.45, c * rnd(1.5, 4), rnd(0.2, 1), s * rnd(1.5, 4), rnd(2.5, 4), 1.2, 3.5 + b.w, 0.52, 0.47, 0.4, 0.6, -0.05, 1.2);
+  }
+  // 飞溅的碎块
+  if (k < 0.4 && Math.random() < gdt * 25) pSmoke.spawn(b.x + rnd(-0.4, 0.4) * W, gy + rnd(0.5, b.top), b.z + rnd(-0.4, 0.4) * D, rnd(-4, 4), rnd(2, 7), rnd(-4, 4), rnd(0.8, 1.5), 0.28, 0.22, 0.16, 0.15, 0.14, 1, 14, 0.1);
+  // 主体砸到地面的一刻：一圈尘浪
+  if (!f.ring && k > 0.45) {
+    f.ring = true; shake = Math.max(shake, 0.25);
+    const n = 24 + b.w * 8;
+    for (let i = 0; i < n; i++) { const a = i / n * 6.283, c = Math.cos(a), s = Math.sin(a); pSmoke.spawn(b.x + c * W * 0.4, gy + 0.3, b.z + s * D * 0.4, c * rnd(3, 6), rnd(0.2, 0.8), s * rnd(3, 6), rnd(1.8, 3), 1, 3 + b.w * 0.6, 0.5, 0.45, 0.38, 0.55, 0, 1.6); }
+  }
+}
+function updateBldFx(gdt) {
+  for (let i = bldFx.length - 1; i >= 0; i--) {
+    const f = bldFx[i], b = f.b;
+    f.t += gdt;
+    const k = Math.min(1, f.t / f.dur);
+    b.mesh.visible = b.team === PLAYER || visibleAt(b.x, b.z);
+    if (f.kind === 'sell') bldVisual(b, f.va0 * (1 - k), gdt);
+    else collapseVisual(b, f, k, gdt);
+    if (k >= 1) { scene.remove(b.mesh); b.bm.mat.dispose(); b.bm.depth.dispose(); bldFx.splice(i, 1); }
+  }
+  // 废墟：探索过就能看到；刚塌的 30 秒内冒烟，前 10 秒还有余火
+  for (const r of ruins) {
+    r.mesh.visible = exploredAt(r.x, r.z);
+    if (gdt <= 0 || r.t > 30) continue;
+    r.t += gdt;
+    if (!visibleAt(r.x, r.z)) continue;
+    const life = 1 - r.t / 30, s = r.s;
+    if (Math.random() < gdt * 7 * life) pSmoke.spawn(r.x + rnd(-0.3, 0.3) * s, r.gy + 0.6, r.z + rnd(-0.3, 0.3) * s, rnd(-0.2, 0.2), rnd(1, 1.8), rnd(-0.2, 0.2), rnd(2.5, 4), 0.6, 3 + s * 0.4, 0.14, 0.13, 0.12, 0.5 * life + 0.1, -0.12, 0.3);
+    if (r.t < 10 && Math.random() < gdt * 9 * (1 - r.t / 10)) pFire.spawn(r.x + rnd(-0.35, 0.35) * s, r.gy + 0.4, r.z + rnd(-0.35, 0.35) * s, 0, rnd(0.6, 1.4), 0, rnd(0.3, 0.5), 0.7, 0.2, 1, 0.5, 0.12, 0.9, -1);
   }
 }
 function updateDelayed(dt) {
@@ -6724,6 +7183,7 @@ function applySnapshot(m) {
     if (!u || !u.alive) {
       u = createUnit(UNIT_TYPES[ud[o]], ud[o + 1], x, z, id);
       u.angle = ud[o + 5] / 10000; u.turretAngle = ud[o + 6] / 10000; u.y = ud[o + 4] / 50;
+      if (G.state === 'playing') clientEmerge(u);
     }
     u.px = u.x; u.pz = u.z; u.py = u.y; u.pangle = u.angle; u.pturret = u.turretAngle;
     u.x = x; u.z = z; u.y = ud[o + 4] / 50; u.angle = ud[o + 5] / 10000; u.turretAngle = ud[o + 6] / 10000;
@@ -6773,8 +7233,7 @@ function removeClientEntity(e, died) {
   if (e.kind === 'b') freeGrid(e);
   if (died) deathFx(e);
   else {
-    scene.remove(e.mesh);
-    if (e.kind === 'b') for (let i = 0; i < 6; i++) fxDust(e.x + rnd(-e.w, e.w), e.z + rnd(-e.h, e.h), 1.4);
+    if (e.kind === 'b') startDismantle(e); else scene.remove(e.mesh);
     const si = selection.indexOf(e);
     if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
   }
@@ -6823,7 +7282,7 @@ function frame(now) {
 }
 
 // 启动
-window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, heightAdv, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, sellBuilding, kill, damage, get ruins() { return ruins; }, get bldFx() { return bldFx; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 resize();
 try {
   makeIcons('north');
