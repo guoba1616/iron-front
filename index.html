@@ -444,7 +444,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.9';
+const GAME_VERSION = 'iron-5.0';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -464,6 +464,7 @@ const ARMOR_IDX = { inf: 0, light: 1, heavy: 2, bld: 3, air: 4, naval: 5 };
 const WARHEAD = {
   small:   [1.0, 0.45, 0.18, 0.22, 0.3, 0.15],
   ap:      [0.3, 0.9, 1.0, 0.75, 0, 0.9],
+  cannon:  [0.3, 0.9, 1.0, 0.75, 0.45, 0.9],   // 机关炮：和穿甲弹一样，另外能打飞机（比专职防空弱）
   he:      [1.0, 0.75, 0.5, 1.0, 0, 0.6],
   rocket:  [0.35, 1.0, 0.9, 0.8, 1.0, 0.75],
   flak:    [0.5, 0.3, 0.1, 0.1, 1.0, 0.1],
@@ -521,7 +522,7 @@ const WEAPONS = {
   boatMsl:    { dmg: 60, range: 8.5, cd: 2.2, wh: 'rocket', proj: 'rocket', speed: 26, ground: true, sfx: 'rocket' },
   // 金穗
   mortar:     { dmg: 42, range: 9, minRange: 2, cd: 3.2, wh: 'he', proj: 'arty', speed: 13, splash: 1.3, ground: true, sfx: 'cannon' },
-  autoCannon: { dmg: 16, range: 6, cd: 0.55, wh: 'ap', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
+  autoCannon: { dmg: 16, range: 6, cd: 0.55, wh: 'cannon', proj: 'bullet', ground: true, air: true, sfx: 'mg' },
   gunMissile: { dmg: 30, range: 10, cd: 0.5, wh: 'flak', proj: 'flak', air: true, sfx: 'flak' },
   gunHow:     { dmg: 110, range: 14.5, minRange: 3, cd: 5.6, wh: 'he', proj: 'arty', speed: 19, splash: 1.6, ground: true, sfx: 'arty' },
   gun105:     { dmg: 48, range: 6.5, cd: 1.8, wh: 'ap', proj: 'shell', speed: 45, ground: true, sfx: 'cannon' },
@@ -656,7 +657,7 @@ const BUILDINGS = {
   repairDepot: { name: '装甲维修站', cat: 'building', w: 2, h: 2, hp: 1000, power: -30, cost: 1200, time: 14, sight: 6, nation: 'north', req: ['factory'], desc: '北岭专属。免费自动修理附近 5 格内的己方载具和直升机。' },
   minePlatform: { name: '自动采矿平台', cat: 'building', w: 2, h: 2, hp: 800, power: -20, cost: 1800, time: 15, sight: 6, nation: 'gold', req: ['refinery'], desc: '金穗专属。必须建在矿区旁（3 格以内），自动开采周围 5 格内的矿石并直接换成资金。' },
   camoNet:  { name: '伪装网阵地', cat: 'building', w: 2, h: 2, hp: 600, power: -10, cost: 800, time: 10, sight: 6, nation: 'south', req: ['barracks'], desc: '赤砂专属。给周围 5 格内的己方建筑盖上伪装网：敌人除非有单位或建筑靠近到 6 格以内，否则在战场和小地图上都看不到它们。' },
-  airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
+  airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点（集结点要在探索过的地面上，否则步兵照常从营房走出去）。' },
   bridge:   { name: '桥', w: 3, h: 6, hp: 1500, power: 0, cost: 0, time: 0, sight: 0, desc: '河上的公路桥。可以用炮弹、火箭、炸弹炸断（右键下令攻击），断了以后谁都过不去；派工程师右键断桥可以修好。' },
   house:    { name: '民房', w: 2, h: 2, hp: 1200, power: 0, cost: 0, time: 0, sight: 6, garrison: 4, desc: '小镇里的民房。最多进驻 4 名步兵（射程 +1 格、伤害 +20%），有人进驻后算作那一方的据点。被打爆后变成废墟。' },
   village:  { name: '村公所', w: 2, h: 2, hp: 1500, power: 0, cost: 0, time: 0, sight: 6, derrick: true, village: true, income: 6, anchor: 6, desc: '村庄的中心。先消灭守军，再派工程师占领：第一次攻下奖励 $' + 1500 + '，之后每秒提供 6 资金，还能在村子周围 6 格内建造（前线据点）。被打爆会变回中立；没人占领时守军会慢慢回来。' },
@@ -4654,7 +4655,7 @@ function buildBuildingMesh(b) {
 // ---------------------------------------------------------------------
 // 桥：模型按桥址长度生成；炸断 / 修复会改变桥面的通行性
 // ---------------------------------------------------------------------
-const BRIDGE_WH = new Set(['he', 'ap', 'rocket', 'bomb', 'nuke']);
+const BRIDGE_WH = new Set(['he', 'ap', 'cannon', 'rocket', 'bomb', 'nuke']);
 function bridgeModel(b) {
   const along = b.h >= b.w, Ln = (along ? b.h : b.w) * TILE, Wd = (along ? b.w : b.h) * TILE;
   const L = [];
@@ -5083,13 +5084,14 @@ function attackable(team, t) {
   if (ht >= 0 || ht === MILITIA) return ht !== team;
   return t.type === 'bridge' && !t.broken;
 }
+// 现在还能不能锁定：潜艇要被探测到、隐蔽的单位要被发现、伪装网下的建筑要有人靠近
+const canLock = (team, t) => !(t.def.sub && !detectedBy(team, t)) && !hiddenFrom(team, t) && !(t.kind === 'b' && camoHidden(t, team));
 function findTarget(src, range, w = src.weapon) {
   let best = null, bestS = 1e9;
   const minR = (w.minRange || 0) * TILE;
   queryHash(src.x, src.z, range + 2 + TILE, (o) => {
     if (!o.alive || o.team === src.team || o.team === NEUTRAL || o.inside || !canHit(w, o)) return;
-    if (o.def.sub && !detectedBy(src.team, o)) return;
-    if (hiddenFrom(src.team, o)) return;
+    if (!canLock(src.team, o)) return;
     const d = Math.max(0, Math.hypot(o.x - src.x, o.z - src.z) - o.radius * 0.5);
     if (d > range || d < minR) return;
     let s = d; if (o.weapon) s -= 6; if (o.def.harvester) s -= 1;
@@ -5100,7 +5102,7 @@ function findTarget(src, range, w = src.weapon) {
       const bt = hostileTeam(b);
       if (!b.alive || bt === src.team || bt < 0) continue;
       const d = rectDist(src.x, src.z, b);
-      if (d > range || d < minR) continue;
+      if (d > range || d < minR || camoHidden(b, src.team)) continue;
       let s = d + 4; if (b.weapon) s -= 10;
       if (s < bestS) { bestS = s; best = b; }
     }
@@ -5111,14 +5113,17 @@ function updateTarget(u) {
   const o = u.order, w = u.weapon;
   if (o.type === 'attack') {
     if (!attackable(u.team, o.target)) { u.order = { type: 'idle' }; u.target = null; u.guardX = u.x; u.guardZ = u.z; u.path = null; }
+    else if (!canLock(u.team, o.target)) {
+      // 目标重新隐蔽了：不再追着打，攻击移动到最后看到它的地方去搜
+      const t = o.target; u.target = null; u.order = { type: 'attackMove', x: t.x, z: t.z }; requestPath(u, t.x, t.z);
+    }
     else { u.target = o.target; return; }
   }
   const t = u.target;
   if (t) {
     const d = distTo(u, t);
     if (!attackable(u.team, t) || !canHit(w, t) || d > (u.def.sight + 3) * TILE || (w.minRange && d < w.minRange * TILE) ||
-      (t.def.sub && !detectedBy(u.team, t)) || hiddenFrom(u.team, t) ||
-      (o.type === 'move' && d > w.range * TILE)) {
+      !canLock(u.team, t) || (o.type === 'move' && d > w.range * TILE)) {
       u.target = null;
       if (o.type === 'attackMove') requestPath(u, o.x, o.z);
       else if (o.type === 'idle' && Math.hypot(u.x - u.guardX, u.z - u.guardZ) > 2) requestPath(u, u.guardX, u.guardZ);
@@ -5320,7 +5325,7 @@ function impact(p) {
 function splashDamage(x, z, r, dmg, wh, team, src) {
   if (Net.isClient) return;
   queryHash(x, z, r + 1.5, (o) => {
-    if (!o.alive || o.team === team || o.team < 0 || o.inside) return;
+    if (!o.alive || o.team === team || o.team === NEUTRAL || o.inside) return;
     if (o.def.air && wh !== 'nuke') return;
     const d = Math.hypot(o.x - x, o.z - z) - o.radius * 0.5;
     if (d > r) return;
@@ -5328,8 +5333,10 @@ function splashDamage(x, z, r, dmg, wh, team, src) {
     damage(o, dmg * (1 - 0.5 * clamp(d / r, 0, 1)) * (o.def.inf && wh !== 'nuke' ? 0.6 : 1), wh, src, true);
   });
   for (const b of buildings) {
+    if (!b.alive) continue;
     const bt = hostileTeam(b);
-    if (!b.alive || bt === team || bt < 0) continue;
+    // 敌方（含守军）建筑会被波及；桥只有正被瞄准（或战略导弹）时才算，免得在桥边交火时误炸
+    if (bt >= 0 || bt === MILITIA ? bt === team : !(b.type === 'bridge' && (wh === 'nuke' || (src && src.target === b)))) continue;
     const d = rectDist(x, z, b);
     if (d <= r) damage(b, dmg * (1 - 0.5 * d / r), wh, src, true);
   }
@@ -5530,7 +5537,7 @@ function planeTick(u) {
   u.parked = false;
   if (o.type === 'attack') {
     const t = o.target;
-    if (!t.alive || t.team === u.team || t.team < 0 || !canHit(w, t) || u.ammo <= 0 || (t.def.sub && !detectedBy(u.team, t))) {
+    if (!attackable(u.team, t) || !canHit(w, t) || u.ammo <= 0 || !canLock(u.team, t)) {
       u.order = { type: 'idle' }; u.pst = 'fly';
     } else { planeAttack(u, t); return; }
   }
@@ -5763,7 +5770,7 @@ function buildingTick(b) {
   if (b.repairing) {
     if (b.hp >= b.maxHp) b.repairing = false;
     else {
-      const heal = b.maxHp / (20 * TPS), cost = (costOf(b.team, b.type) || 2000) * 0.3 * heal / b.maxHp;
+      const heal = b.maxHp / (20 * TPS) * (G.tick - (b.lastHit ?? -1e9) < 3 * TPS ? 0.35 : 1), cost = (costOf(b.team, b.type) || 2000) * 0.3 * heal / b.maxHp;
       if (T.credits >= cost) { T.credits -= cost; b.hp = Math.min(b.maxHp, b.hp + heal); }
     }
   }
@@ -5803,7 +5810,7 @@ function buildingTick(b) {
     if (b.recoil > 0) b.recoil = Math.max(0, b.recoil - 0.2);
     if (T.lowPower || b.buildAnim < 1) { b.target = null; return; }
     const range = b.weapon.range * TILE;
-    if (b.target && (!b.target.alive || b.target.team === b.team || distTo(b, b.target) > range)) b.target = null;
+    if (b.target && (!b.target.alive || b.target.team === b.team || distTo(b, b.target) > range || !canLock(b.team, b.target))) b.target = null;
     if (!b.target && (G.tick + b.id) % 5 === 0) b.target = findTarget(b, range);
     if (b.target) aimAndFire(b, b.target);
   }
@@ -5911,7 +5918,7 @@ function garrisonTick(u) {
     if (!b.def.fireOut || !u.weapon) { u.target = null; return; }
   }
   const range = (u.weapon.range + (b.kind === 'u' ? 0 : 1)) * TILE + b.radius * 0.5;
-  if (u.target && (!u.target.alive || u.target.inside || u.target.team === u.team || distTo(u, u.target) > range)) u.target = null;
+  if (u.target) { const d = distTo(u, u.target); if (!u.target.alive || u.target.inside || u.target.team === u.team || d > range || (u.weapon.minRange && d < u.weapon.minRange * TILE) || !canLock(u.team, u.target)) u.target = null; }
   if (!u.target && (G.tick + u.id) % 5 === 0) u.target = findTarget(u, range);
   if (u.target && u.cd <= 0) {
     u.angle = Math.atan2(u.target.x - u.x, u.target.z - u.z);
@@ -6031,19 +6038,26 @@ function spawnProduced(T, type) {
   } else if (d.air) { x = prod.x; z = prod.z; }
   else if (d.naval) { const e = exitPosNaval(prod); if (!e) return; x = e.x; z = e.z; }
   else { const e = exitPos(prod); x = e.x; z = e.z; }
+  const rally = T.rally[prod.id];
+  // 空降步兵营：集结点要在探索过的地方，落在附近能走的空地上；不行就照常从营房走出去
+  let drop = null;
+  if (prod.type === 'airBarracks' && rally) {
+    const n = exploredBy(T.id, rally.x, rally.z) && nearestWalkable(tileOf(rally.x), tileOf(rally.z), 3);
+    if (n) drop = { x: tc(n.x), z: tc(n.z) };
+    else if (T.human && G.tick - (T.lastDropWarn ?? -1e9) > 10 * TPS) { T.lastDropWarn = G.tick; tnotify(T.id, '集结点没探索过或不能落地，步兵改为从营房走出去', 'bad'); }
+  }
   const u = createUnit(type, T.id, x, z);
   u.angle = u.pangle = u.turretAngle = u.pturret = 0;
-  if (!d.plane && !(prod.type === 'airBarracks' && T.rally[prod.id])) startEmerge(u, prod, true);
+  if (!d.plane && !drop) startEmerge(u, prod, true);
   T.stats.unitsBuilt++;
-  const rally = T.rally[prod.id];
   if (d.plane) {
     // 飞机直接停在停机位上
     u.pad = pad;
     if (pad) { u.pst = 'parked'; u.parked = true; u.y = u.py = 0.35; u.angle = u.pangle = Math.PI; }
     if (rally) commandMove([u], rally.x, rally.z);
-  } else if (prod.type === 'airBarracks' && rally) {
+  } else if (drop) {
     // 空降步兵营：直接伞降到集结点
-    u.x = u.px = rally.x + rnd(-2, 2); u.z = u.pz = rally.z + rnd(-2, 2); u.guardX = u.x; u.guardZ = u.z;
+    u.x = u.px = drop.x + rnd(-0.8, 0.8); u.z = u.pz = drop.z + rnd(-0.8, 0.8); u.guardX = u.x; u.guardZ = u.z;
     startChute(u);
   } else if (d.harvester) u.hstate = 'seek';
   else if (rally) commandMove([u], rally.x, rally.z);
@@ -6338,7 +6352,15 @@ function updateFog() {
     fogData[i * 4] = revealAll || vis[i] ? 255 : explored[i] ? 100 : 0;
   }
   fogTex.needsUpdate = true;
-  for (const b of buildings) if (b.alive && !b.seen && visibleTile(tileOf(b.x), tileOf(b.z)) && !camoHidden(b, PLAYER)) b.seen = true;
+  for (const b of buildings) {
+    if (!b.alive || b.team === PLAYER) continue;
+    if (!b.seen) { if (visibleTile(tileOf(b.x), tileOf(b.z)) && !camoHidden(b, PLAYER)) b.seen = true; }
+    else if (!revealAll && camoHidden(b, PLAYER)) {
+      // 伪装网下的建筑：我方单位离开 6 格后又会看不到
+      b.seen = false;
+      const si = selection.indexOf(b); if (si >= 0) { selection.splice(si, 1); selectionChanged(); }
+    }
+  }
 }
 
 // =====================================================================
@@ -8103,7 +8125,7 @@ $('btnResume').addEventListener('click', () => togglePauseMenu());
 // 游戏指南（问号按钮 / F1）
 // =====================================================================
 const ARMOR_NAME = { inf: '步兵', light: '轻甲', heavy: '重甲', bld: '建筑', air: '空中', naval: '舰船' };
-const WARHEAD_NAME = { small: '机枪', ap: '穿甲炮弹', he: '高爆炮弹', rocket: '火箭/导弹', flak: '高射炮', torpedo: '鱼雷', aam: '防空导弹', bomb: '航空炸弹', fire: '火焰', sniper: '狙击' };
+const WARHEAD_NAME = { small: '机枪', ap: '穿甲炮弹', cannon: '机关炮', he: '高爆炮弹', rocket: '火箭/导弹', flak: '高射炮', torpedo: '鱼雷', aam: '防空导弹', bomb: '航空炸弹', fire: '火焰', sniper: '狙击' };
 // 指南里的“我的国家”（没开局时按北岭显示）
 const gNat = () => (teams[PLAYER] && teams[PLAYER].nation) || 'north';
 const ROLE_NAME = { inf: '基础步兵', at: '反坦克步兵', spec: '特种步兵', scout: '侦察车', scout2: '侦察（二）', apc: '运兵车', mbt: '主战坦克', aa: '防空', arty: '火炮', elite: '科技中心单位',
@@ -8185,7 +8207,7 @@ const GUIDE = [
       <ul>
         <li>生产是<b>边造边扣钱</b>的，钱不够时进度会暂停，等有钱再继续。</li>
         <li>同类生产建筑造得越多，生产越快（每多一座 +50% 速度）。</li>
-        <li><b>出售</b>建筑返还一半造价（按剩余生命折算）；<b>维修</b>建筑会持续花一点钱。</li>
+        <li><b>出售</b>建筑返还一半造价（按剩余生命折算）；<b>维修</b>建筑会持续花一点钱；正在挨打的建筑修得慢，只有平时的 35%。</li>
       </ul>
       <h3>电力</h3>
       <ul>
@@ -8269,7 +8291,7 @@ const GUIDE = [
           <li><b>部署</b>（赤砂战术导弹车）：停稳 3 秒展开发射架后才能发射。</li>
           <li><b>电子干扰</b>（灰鹰电子战车）：周围 6 格内敌方单位和防御塔射程 -20%。</li>
           <li><b>两栖</b>（金穗两栖突击车）：能开进河里和海里，水中速度减半。</li>
-          <li><b>伪装网</b>（赤砂专属建筑）：周围 5 格内的己方建筑，敌人 6 格以内才看得到。</li>
+          <li><b>伪装网</b>（赤砂专属建筑）：周围 5 格内的己方建筑，敌人 6 格以内才看得到、才能瞄准；敌人走开后又会看不到。</li>
         </ul>
         <h3>兵营升级</h3><p>在步兵栏研究，研究期间该兵营暂停生产步兵。研究一次永久生效。</p><div class="gcards">`;
       for (const k in UPGRADES) {
@@ -8294,7 +8316,7 @@ const GUIDE = [
       const cell = v => { const p = Math.round(v * 100); const c = p >= 90 ? '#7fe07a' : p >= 50 ? '#e8d070' : p > 0 ? '#e08060' : '#666'; return `<td style="color:${c}">${p ? p + '%' : '无效'}</td>`; };
       let h = `<p>每种武器对不同护甲造成的伤害倍率不同。<b>用对兵种比数量更重要。</b>“谁在用”一栏列的是${NATIONS[me].short}的单位和防御塔。</p>
         <table class="gtable"><tr><th>武器</th><th>步兵</th><th>轻甲</th><th>重甲</th><th>建筑</th><th>空中</th><th>舰船</th><th>谁在用</th></tr>`;
-      for (const wh of ['small', 'ap', 'he', 'rocket', 'flak', 'torpedo', 'aam', 'bomb', 'fire', 'sniper']) {
+      for (const wh of ['small', 'ap', 'cannon', 'he', 'rocket', 'flak', 'torpedo', 'aam', 'bomb', 'fire', 'sniper']) {
         const m = WARHEAD[wh];
         h += `<tr><td>${WARHEAD_NAME[wh]}</td>${[0, 1, 2, 3, 4, 5].map(i => cell(m[i])).join('')}<td style="text-align:left;color:var(--ui-dim)">${(users[wh] || []).join('、')}</td></tr>`;
       }
@@ -9252,6 +9274,7 @@ function applySnapshot(m) {
     for (const k of d.ug || []) if (UPGRADES[k] && !T.upg[k]) {
       T.upg[k] = true;
       if (k === 'upArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.inf) u.maxHp *= ARMOR_UPG;
+      if (k === 'upVArmor') for (const u of units) if (u.alive && u.team === T.id && u.def.cat === 'vehicle') u.maxHp *= VARMOR_UPG;
     }
     if (d.ai && !T.isAI) { T.isAI = true; T.human = false; }
     if (d.d && !T.defeated) { T.defeated = true; if (i === PLAYER) revealAll = true; }
