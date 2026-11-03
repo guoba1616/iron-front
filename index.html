@@ -427,7 +427,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.6';
+const GAME_VERSION = 'iron-4.7';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -638,8 +638,9 @@ const BUILDINGS = {
   airBarracks: { name: '空降步兵营', cat: 'building', w: 2, h: 2, hp: 900, power: -20, cost: 700, time: 10, sight: 6, nation: 'hawk', req: ['power'], desc: '灰鹰专属。可代替兵营训练步兵；设置集结点后，步兵直接伞降到集结点。' },
   bridge:   { name: '桥', w: 3, h: 6, hp: 1500, power: 0, cost: 0, time: 0, sight: 0, desc: '河上的公路桥。可以用炮弹、火箭、炸弹炸断（右键下令攻击），断了以后谁都过不去；派工程师右键断桥可以修好。' },
   house:    { name: '民房', w: 2, h: 2, hp: 1200, power: 0, cost: 0, time: 0, sight: 6, garrison: 4, desc: '小镇里的民房。最多进驻 4 名步兵（射程 +1 格、伤害 +20%），有人进驻后算作那一方的据点。被打爆后变成废墟。' },
-  village:  { name: '村公所', w: 2, h: 2, hp: 1500, power: 0, cost: 0, time: 0, sight: 6, derrick: true, village: true, income: 6, desc: '村庄的中心。先消灭守军，再派工程师占领：第一次攻下奖励 $' + 1500 + '，之后每秒提供 6 资金。被打爆会变回中立；没人占领时守军会慢慢回来。' },
+  village:  { name: '村公所', w: 2, h: 2, hp: 1500, power: 0, cost: 0, time: 0, sight: 6, derrick: true, village: true, income: 6, anchor: 6, desc: '村庄的中心。先消灭守军，再派工程师占领：第一次攻下奖励 $' + 1500 + '，之后每秒提供 6 资金，还能在村子周围 6 格内建造（前线据点）。被打爆会变回中立；没人占领时守军会慢慢回来。' },
   derrick:  { name: '油井', w: 2, h: 2, hp: 700, power: 0, cost: 0, time: 0, sight: 4, derrick: true, income: 4, desc: '派工程师占领后，每秒提供 4 资金。' },
+  quarry:   { name: '采矿场', w: 2, h: 2, hp: 900, power: 0, cost: 0, time: 0, sight: 5, derrick: true, quarry: true, income: 5, desc: '村庄旁边的采石矿场，不需要矿区。村庄守军清完后，派工程师占领，每秒提供 5 资金。被打爆会变回中立，可以再占领。' },
   shipyard: { name: '船厂', cat: 'building', w: 3, h: 3, hp: 1500, power: -30, cost: 1500, time: 16, sight: 7, naval: true, req: ['refinery'], desc: '生产舰船。必须建在岸边（紧挨水面），可以离己方建筑稍远（8 格以内）。只在内海地图上可建。' },
   airfield: { name: '机场', cat: 'building', w: 3, h: 3, hp: 1300, power: -40, cost: 1500, time: 16, sight: 7, req: ['radar'], desc: '生产固定翼飞机。有 4 个停机位，飞机在这里补充弹药和修理；每个机场最多停 4 架。' },
 };
@@ -947,7 +948,22 @@ const navigable = new Uint8Array(MAP * MAP);   // 舰船能走的水面（与中
 const bldGrid = new Int32Array(MAP * MAP);
 let oreFields = [];
 let derrickSites = [];
-let bridgeSites = [], houseSites = [], villageSites = [];   // 桥（{tx,tz,w,h}）和民房（2×2）位置，由地图生成，联机各方一致
+let bridgeSites = [], houseSites = [], villageSites = [], quarrySites = [];   // 桥（{tx,tz,w,h}）、民房、村公所、采矿场（2×2）位置，由地图生成，联机各方一致
+// 采矿场：在小镇中心 (cx, cz) 周围挑第一个不压公路、不压房子的 2×2 空地；给了 near 就挑离那一点最近的
+const QUARRY_SPOTS = [[-6, -2], [4, 1], [-6, 1], [4, -2], [1, 4], [-3, 4], [1, -6], [-3, -6]];
+function pickQuarrySite(cx, cz, taken, near) {
+  const free = (tx, tz) => {
+    for (let z = tz; z < tz + 2; z++) for (let x = tx; x < tx + 2; x++) {
+      if (!inMap(x, z)) return false;
+      const t = terrain[z * MAP + x];
+      if (t === T_ROAD || t === T_WATER || t === T_ROCK || t === T_VOID) return false;
+    }
+    return !taken.some(r => { const g = r.gap || 0; return tx < r.tx + 2 + g && tx + 2 + g > r.tx && tz < r.tz + 2 + g && tz + 2 + g > r.tz; });   // gap：和村公所之间至少空一格
+  };
+  const spots = near ? [...QUARRY_SPOTS].sort((a, b) => Math.hypot(cx + a[0] + 1 - near[0], cz + a[1] + 1 - near[1]) - Math.hypot(cx + b[0] + 1 - near[0], cz + b[1] + 1 - near[1])) : QUARRY_SPOTS;
+  for (const [dx, dz] of spots) if (free(cx + dx, cz + dz)) return { tx: cx + dx, tz: cz + dz, w: 2, h: 2 };
+  return { tx: cx + QUARRY_SPOTS[0][0], tz: cz + QUARRY_SPOTS[0][1], w: 2, h: 2 };
+}
 // 高度场：存放在 (MAP+1)² 个格点上，单位是世界坐标
 const HG = MAP + 1;
 const hgt = new Float32Array(HG * HG);
@@ -1071,6 +1087,8 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   for (const h of houseSites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
   villageSites = [{ tx: townC[0] + 4, tz: townC[1] - 2 }];
   for (const h of villageSites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
+  quarrySites = [pickQuarrySite(townC[0], townC[1], [...houseSites, ...villageSites.map(r => ({ ...r, gap: 1 }))])];
+  for (const h of quarrySites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
 
   // 河流（只在大陆地图）：沿象限边缘从地图边流向中央，中央留出一片空地；一座桥 + 一处浅滩
   bridgeSites = [];
@@ -1161,6 +1179,7 @@ function generateMap(seed, mapType = 'land', size = 'large') {
   bridgeSites = bridgeSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect(r, k)));
   houseSites = houseSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect({ ...r, w: 2, h: 2 }, k)));
   villageSites = villageSites.flatMap(r => [0, 1, 2, 3].map(k => rotRect({ ...r, w: 2, h: 2 }, k)));
+  quarrySites = quarrySites.flatMap(r => [0, 1, 2, 3].map(k => rotRect(r, k)));
 
   finishMap(sea);
 }
@@ -1333,12 +1352,24 @@ function generateTriMap(seed, size) {
     const [tx, tz] = town(j).map(Math.round);
     clearDisc(tx, tz, 8);
     for (let d = -7; d <= 7; d++) { setT(tx + d, tz, T_ROAD); setT(tx, tz + d, T_ROAD); }
-    for (const [dx, dz] of [[-4, -4], [2, -4], [-4, 2], [2, 2]]) houseSites.push({ tx: tx + dx, tz: tz + dz, w: 2, h: 2 });
-    const [vx, vz] = rot(C, C + Rt + 5, j + 0.5);   // 村公所在小镇外侧的角平分线上，到两家一样远
-    villageSites.push({ tx: Math.round(vx) - 1, tz: Math.round(vz) - 1, w: 2, h: 2 });
+    const hs = [[-4, -4], [2, -4], [-4, 2], [2, 2]].map(([dx, dz]) => ({ tx: tx + dx, tz: tz + dz, w: 2, h: 2 }));
+    houseSites.push(...hs);
+    // 村公所在小镇外侧的角平分线上，到两家一样远；压到民房就再往外挪一点
+    let site;
+    for (let r = Rt + 5; r <= Rt + 9; r += 0.5) {
+      const [vx, vz] = rot(C, C + r, j + 0.5);
+      site = { tx: Math.round(vx) - 1, tz: Math.round(vz) - 1, w: 2, h: 2 };
+      if (!hs.some(h => site.tx < h.tx + 3 && site.tx + 3 > h.tx && site.tz < h.tz + 3 && site.tz + 3 > h.tz)) break;
+    }
+    clearDisc(site.tx + 1, site.tz + 1, 2.5);
+    villageSites.push(site);
   });
   villageSites.push({ tx: Math.round(C) - 1, tz: Math.round(C) - 1, w: 2, h: 2 });   // 要塞中心
   for (const h of [...houseSites, ...villageSites]) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
+  // 每个小镇一座采矿场（要塞中心不配）
+  quarrySites = [];
+  each(j => { const [tx, tz] = town(j).map(Math.round), v = villageSites[j]; quarrySites.push(pickQuarrySite(tx, tz, [...houseSites, ...villageSites.map(r => ({ ...r, gap: 1 }))], [v.tx + 1, v.tz + 1])); });   // 挨着本镇村公所，三家一样
+  for (const h of quarrySites) for (let z = h.tz; z < h.tz + 2; z++) for (let x = h.tx; x < h.tx + 2; x++) setT(x, z, T_DIRT);
 
   // 放矿：三家的矿 + 要塞里三片宝石矿（在缺口之间）
   ore.fill(0); oreMax.fill(0); gem.fill(0);
@@ -2739,6 +2770,122 @@ function eaveRoof(L, w, d, x, y, z, P, opt = {}) {
   return ry + 0.2;
 }
 
+// 民房：欧式乡村风格，4 种房型（平房、两层小楼、L 形农舍、带棚屋），墙 / 屋顶 / 百叶窗配色各自随机
+// v = 房型 + 4 × 配色编号；前面朝 +z。窗户玻璃另做成 win 部件，有人进驻时亮灯
+const HOUSE_WALL = [0xe0d6be, 0xd6c28c, 0xa45e48, 0x9c978a], HOUSE_ROOF = [0x9a4a32, 0x4e5258, 0x6e4c34], HOUSE_SHUT = [0x4a6a42, 0x3e5a7a, 0x6a4a30];
+function houseModel(L, m, v) {
+  const shape = v % 4, c = Math.floor(v / 4);
+  const wall = HOUSE_WALL[c % 4], roof = HOUSE_ROOF[Math.floor(c / 4) % 3], shut = HOUSE_SHUT[Math.floor(c / 12) % 3];
+  const plaster = c % 4 < 2;   // 灰泥墙带木框架；砖墙和石墙改成浅色墙角石
+  const stone = 0x6e685c, timber = 0x4a3626, wood = 0x5a3e2a, trimC = 0xe8e2d4, brick = 0x8a4a34;
+  const roofDk = new THREE.Color(roof).multiplyScalar(0.7).getHex(), quoin = new THREE.Color(wall).lerp(new THREE.Color(0xf0ece0), 0.45).getHex();
+  const lit = [];
+  // 墙体（含墙基、框架或墙角石），返回墙顶高度
+  const body = (w, h, d, x, z) => {
+    L.push(B(w + 0.12, 0.3, d + 0.12, stone, x, 0.15, z), B(w, h, d, wall, x, 0.3 + h / 2, z));
+    if (plaster) {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) L.push(B(0.1, h, 0.1, timber, x + sx * (w / 2 - 0.02), 0.3 + h / 2, z + sz * (d / 2 - 0.02)));
+      L.push(B(w + 0.04, 0.08, d + 0.04, timber, x, 0.3 + h - 0.04, z));
+      if (h > 2) L.push(B(w + 0.05, 0.09, d + 0.05, timber, x, 0.3 + h * 0.5, z));
+    } else {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (let y = 0.42; y < 0.3 + h - 0.15; y += 0.36) L.push(B(0.16, 0.16, 0.16, quoin, x + sx * (w / 2 - 0.06), y, z + sz * (d / 2 - 0.06)));
+      L.push(B(w + 0.06, 0.07, d + 0.06, quoin, x, 0.3 + h - 0.035, z));
+    }
+    return 0.3 + h;
+  };
+  // 双坡屋顶：山墙 + 两片外伸的瓦面 + 屋脊；alongX 时屋脊沿 x
+  const gable = (len, span, pitch, x, y, z, alongX) => {
+    const h = span * pitch, ry = alongX ? 0 : Math.PI / 2;
+    L.push(roofGeo(len, span, h, len, wall, x, y, z, ry));
+    const a = span / 2 + 0.22, th = Math.atan2(h, span / 2), sl = a / Math.cos(th) + 0.04, cy = y + h - (a / 2) * Math.tan(th) + 0.05;
+    for (const s of [-1, 1]) {
+      const off = (a / 2) * s;
+      if (alongX) L.push(B(len + 0.32, 0.09, sl, roof, x, cy, z + off, 0, s * th, 0));
+      else L.push(B(sl, 0.09, len + 0.32, roof, x + off, cy, z, 0, 0, -s * th));
+      // 两道瓦缝
+      for (const u of [-0.2, 0.22]) {
+        const du = u * sl, hz = du * Math.cos(th) * s, hy = -du * Math.sin(th) + 0.05;
+        if (alongX) L.push(B(len + 0.32, 0.025, 0.05, roofDk, x, cy + hy, z + off + hz, 0, s * th, 0));
+        else L.push(B(0.05, 0.025, len + 0.32, roofDk, x + off + hz, cy + hy, z, 0, 0, -s * th));
+      }
+    }
+    L.push(alongX ? B(len + 0.36, 0.1, 0.14, roofDk, x, y + h + 0.04, z) : B(0.14, 0.1, len + 0.36, roofDk, x, y + h + 0.04, z));
+    return y + h;
+  };
+  // 窗（face：'z' 朝前，'x' 朝 +x 侧面），带窗台和一对百叶窗
+  const win = (x, y, z, face = 'z', w = 0.42, h = 0.48) => {
+    if (face === 'z') {
+      L.push(B(w, h, 0.05, C.glass, x, y, z), B(w + 0.12, 0.06, 0.12, trimC, x, y - h / 2 - 0.03, z + 0.03), B(w + 0.08, 0.05, 0.06, trimC, x, y + h / 2 + 0.02, z + 0.01), B(0.03, h, 0.06, trimC, x, y, z + 0.01));
+      for (const s of [-1, 1]) L.push(B(w * 0.48, h + 0.02, 0.04, shut, x + s * (w * 0.74 + 0.02), y, z + 0.02));
+      lit.push(B(w - 0.04, h - 0.04, 0.02, 0xffd070, x, y, z + 0.035));
+    } else {
+      L.push(B(0.05, h, w, C.glass, x, y, z), B(0.12, 0.06, w + 0.12, trimC, x + 0.03, y - h / 2 - 0.03, z), B(0.06, 0.05, w + 0.08, trimC, x + 0.01, y + h / 2 + 0.02, z));
+      for (const s of [-1, 1]) L.push(B(0.04, h + 0.02, w * 0.48, shut, x + 0.02, y, z + s * (w * 0.74 + 0.02)));
+      lit.push(B(0.02, h - 0.04, w - 0.04, 0xffd070, x + 0.035, y, z));
+    }
+  };
+  // 门：门框 + 门板 + 门头小雨棚 + 石台阶
+  const door = (x, z) => {
+    L.push(B(0.66, 1.0, 0.05, trimC, x, 0.8, z), B(0.54, 0.92, 0.06, wood, x, 0.76, z + 0.01), B(0.06, 0.06, 0.04, C.yellow, x + 0.17, 0.75, z + 0.05));
+    L.push(B(0.8, 0.05, 0.36, roofDk, x, 1.38, z + 0.16, 0, 0.25), B(0.84, 0.14, 0.4, stone, x, 0.07, z + 0.24));
+  };
+  const chimney = (x, z, top) => L.push(B(0.38, top - 0.8, 0.38, brick, x, 0.8 + (top - 0.8) / 2, z), B(0.46, 0.08, 0.46, stone, x, top + 0.04, z), B(0.2, 0.1, 0.2, C.dark, x, top + 0.12, z));
+  // 篱笆（沿 x，从 x0 到 x1）
+  const fence = (x0, x1, z) => {
+    for (let x = x0; x <= x1 + 0.01; x += 0.36) L.push(B(0.06, 0.48, 0.06, 0x8a6e4e, x, 0.24, z));
+    for (const y of [0.17, 0.36]) L.push(B(x1 - x0 + 0.06, 0.04, 0.03, 0x8a6e4e, (x0 + x1) / 2, y, z));
+  };
+  const logs = (x, z) => { for (let r = 0; r < 3; r++) for (let i = 0; i < 3 - r; i++) L.push(CY(0.1, 0.1, 0.7, 0x7a5a3a, x, 0.1 + r * 0.17, z + (i - (2 - r) / 2) * 0.2, 7, 0, Math.PI / 2)); };
+  if (shape === 0) {
+    // 平房：横向屋脊，门前一段篱笆和花箱
+    const t = body(3.4, 1.4, 2.5, 0, -0.35);
+    const top = gable(3.4, 2.5, 0.52, 0, t, -0.35, true);
+    chimney(1.05, -0.85, top + 0.45);
+    door(0.35, 0.92);
+    win(-0.9, 1.0, 0.92); win(1.25, 1.0, 0.92); win(1.73, 1.0, -0.35, 'x');
+    L.push(B(0.6, 0.14, 0.16, 0x7a5a3a, -0.9, 0.62, 1.04), B(0.54, 0.08, 0.12, 0xb84a4a, -0.9, 0.72, 1.04));
+    fence(-1.7, -0.2, 1.75); fence(0.9, 1.7, 1.75);
+  } else if (shape === 1) {
+    // 两层小楼：山墙朝前，二楼小阳台
+    const t = body(2.5, 2.6, 2.8, 0, -0.3);
+    const top = gable(2.8, 2.5, 0.62, 0, t, -0.3, false);
+    chimney(-0.85, -1.0, top + 0.3);
+    door(-0.5, 1.1);
+    win(0.55, 1.0, 1.1); win(-0.5, 2.25, 1.1); win(0.55, 2.25, 1.1); win(1.25, 1.0, -0.3, 'x'); win(1.25, 2.25, -0.3, 'x');
+    L.push(B(0.46, 0.46, 0.05, trimC, 0, t + 0.45, 1.11), B(0.36, 0.36, 0.05, C.glass, 0, t + 0.45, 1.12));   // 山墙上的阁楼小窗
+    L.push(B(1.0, 0.07, 0.42, timber, -0.5, 1.68, 1.31));
+    for (const x of [-0.95, -0.5, -0.05]) L.push(B(0.04, 0.38, 0.04, timber, x, 1.88, 1.5));
+    L.push(B(1.0, 0.05, 0.05, timber, -0.5, 2.06, 1.5));
+    L.push(CY(0.18, 0.18, 0.42, 0x6a4a30, 1.0, 0.21, 1.5, 10), CY(0.19, 0.19, 0.04, C.steel, 1.0, 0.36, 1.5, 10));
+  } else if (shape === 2) {
+    // L 形农舍：主屋在后，左前方伸出一个矮一点的侧翼，门口堆柴
+    const t = body(3.4, 1.4, 1.9, 0, -0.85);
+    const top = gable(3.4, 1.9, 0.55, 0, t, -0.85, true);
+    const t2 = body(1.5, 1.15, 1.75, -0.95, 0.95);
+    gable(1.75, 1.5, 0.55, -0.95, t2, 0.95, false);
+    chimney(1.2, -1.15, top + 0.4);
+    door(0.75, 0.11);
+    win(1.45, 1.0, 0.11); win(-0.95, 0.9, 1.83); win(-0.2, 0.9, 0.95, 'x', 0.38); win(1.73, 1.0, -0.85, 'x');
+    logs(0.6, 1.2);
+    L.push(B(0.32, 0.5, 0.06, 0x8a6e4e, 1.55, 0.3, 1.3), B(0.06, 0.5, 0.32, 0x8a6e4e, 1.4, 0.3, 1.15));
+  } else {
+    // 带棚屋：主屋 + 右侧单坡储物棚，棚下放草垛和手推车
+    const t = body(2.5, 1.5, 2.6, -0.6, -0.2);
+    const top = gable(2.5, 2.6, 0.55, -0.6, t, -0.2, true);
+    chimney(-1.45, -0.7, top + 0.4);
+    door(-1.0, 1.1);
+    win(0.05, 1.05, 1.1);
+    // 棚：4 根木柱 + 向外倾斜的木板屋面
+    const sx = 1.4, sw = 1.15;
+    for (const [x, z] of [[sx - sw / 2 + 0.1, -1.2], [sx + sw / 2 - 0.1, -1.2], [sx - sw / 2 + 0.1, 1.05], [sx + sw / 2 - 0.1, 1.05]]) L.push(B(0.1, 1.45 - (x - sx + sw / 2) * 0.3, 0.1, timber, x, (1.45 - (x - sx + sw / 2) * 0.3) / 2, z));
+    L.push(B(sw + 0.25, 0.07, 2.65, roofDk, sx, 1.38, -0.08, 0, 0, -0.28), B(sw, 0.04, 2.3, 0x8a7a5a, sx, 0.02, -0.08));
+    L.push(CY(0.32, 0.32, 0.55, 0xc8aa5a, sx - 0.05, 0.32, -0.6, 12, 0, Math.PI / 2), CY(0.33, 0.33, 0.04, 0x9a8040, sx - 0.05, 0.32, -0.6, 12, 0, Math.PI / 2));
+    L.push(B(0.6, 0.22, 0.85, 0x7a5a3a, sx, 0.42, 0.45), CY(0.2, 0.2, 0.05, C.dark, sx - 0.33, 0.22, 0.45, 10, 0, Math.PI / 2), CY(0.2, 0.2, 0.05, C.dark, sx + 0.33, 0.22, 0.45, 10, 0, Math.PI / 2));
+    L.push(B(0.04, 0.04, 0.7, 0x7a5a3a, sx - 0.18, 0.4, 1.15, 0, -0.35), B(0.04, 0.04, 0.7, 0x7a5a3a, sx + 0.18, 0.4, 1.15, 0, -0.35));
+  }
+  m.parts.win = { geo: MG(lit), x: 0, y: 0, z: 0 };
+}
+
 // 按国家生成建筑；返回 false 时用通用模型（民房、油井、桥、伪装网阵地）
 function styledBuilding(type, team, N, p, L, m, W, D) {
   if (team < 0 || !NPAL[N]) return false;
@@ -3244,8 +3391,8 @@ function tagPieces(L) {
   });
   return top;
 }
-function getBuildingModel(type, team, nation = nationKeyOf(team)) {
-  const key = type + '_' + team + '_' + nation;
+function getBuildingModel(type, team, nation = nationKeyOf(team), variant = 0) {
+  const key = type + '_' + team + '_' + nation + '_' + variant;
   if (bldModelCache[key]) return bldModelCache[key];
   const p = teamPal(team, nation);
   const d = BUILDINGS[type];
@@ -3270,16 +3417,7 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       m.muzzle = { y: 3.4, z: 0 };   // 总部防空炮从屋顶开火
       break;
     }
-    case 'house': {
-      // 民房：砖墙 + 坡屋顶，按位置换几种颜色；窗户在有人进驻时亮灯
-      const v = (team + 7) % 3, wall = [0xb8a888, 0xa89070, 0xc0b8a0][v], roof = [0x8a3a2a, 0x5a5048, 0x6a4a30][v];
-      L.push(B(3.4, 1.6, 3.2, wall, 0, 0.8, 0));
-      const rg = new THREE.ConeGeometry(2.6, 1.2, 4, 1); rg.rotateY(Math.PI / 4); rg.scale(1, 1, 0.93); rg.translate(0, 2.2, 0); L.push(colorGeo(rg, roof));
-      L.push(B(0.7, 1.1, 0.06, C.dark, 0.9, 0.55, 1.61), B(0.32, 0.6, 0.6, 0x7a6a58, -1.1, 2.4, -0.6));
-      for (const [x, y] of [[-0.8, 1.0], [0.9, 1.25]]) L.push(B(0.55, 0.45, 0.05, C.dark, x, y + (x > 0 ? -0.0 : 0), 1.61));
-      m.parts.win = { geo: MG([B(0.5, 0.4, 0.05, 0xffd070, -0.8, 0, 0), B(0.5, 0.4, 0.05, 0xffd070, 0.9, 0.25, 0), B(0.05, 0.4, 0.5, 0xffd070, 1.72, 0.1, -0.5)]), x: 0, y: 1.0, z: 1.63 };
-      break;
-    }
+    case 'house': houseModel(L, m, variant); break;
     case 'subhq': {
       // 副部：缩小版的指挥部，带沙袋和雷达盘
       plinth();
@@ -3560,6 +3698,38 @@ function getBuildingModel(type, team, nation = nationKeyOf(team)) {
       L.push(B(0.05, 0.9, 0.05, wood, 0.55, 0.6, 1.8), B(0.05, 0.9, 0.05, wood, 0.95, 0.6, 1.8), B(0.5, 0.36, 0.04, 0xc8b890, 0.75, 0.9, 1.8));
       // 旗杆：插着占领方的旗
       L.push(CY(0.035, 0.05, 3.2, C.steel, -1.75, 1.76, 1.75, 6), B(0.7, 0.44, 0.03, team >= 0 ? p.accent : 0xe8e4d8, -1.38, 3.1, 1.75));
+      break;
+    }
+    case 'quarry': {
+      // 采矿场：后方切出台阶的岩壁、成堆的方石、小铁轨和矿车、工棚、木吊臂（占领后会来回摆动）
+      const rock = 0x7a7468, cut = 0xa8a090, block = 0xb4ac9c, wood = 0x6a4c32;
+      L.push(B(3.8, 0.12, 3.8, 0x8a8478, 0, 0.06, 0));
+      // 岩壁切成三级台阶，每级正面是新切开的浅色石面，顶上和脚下散着乱石
+      const tiers = [[3.7, 1.7, 0.75, -1.0, 0x7a7468], [3.1, 1.25, 0.65, -1.25, 0x857d6e], [2.2, 0.85, 0.6, -1.45, 0x6e695e]];
+      let ty = 0.1;
+      for (const [w, d, h, z, col] of tiers) {
+        L.push(frustum(w, d, w - 0.25, d - 0.2, h, col, 0, ty, z), B(w - 0.5, h - 0.12, 0.05, cut, 0, ty + h / 2, z + d / 2 - 0.06, 0, -0.14));
+        L.push(B(w - 0.3, 0.03, 0.05, 0x5e594f, 0, ty + h * 0.55, z + d / 2 - 0.02));
+        ty += h;
+      }
+      for (const [x, y, z, sz, r] of [[1.5, 0.12, -0.12, 0.42, 0.4], [-1.6, 0.12, -0.1, 0.36, 1.1], [1.15, 0.12, 0.15, 0.24, 2.0], [-1.25, 0.12, 0.12, 0.22, 0.7], [-0.7, ty, -1.45, 0.4, 0.3], [0.6, ty, -1.5, 0.32, 1.4], [1.3, 0.85, -1.25, 0.34, 2.4], [-1.4, 0.85, -1.2, 0.3, 0.9]]) L.push(B(sz, sz * 0.7, sz * 0.9, rock, x, y + sz * 0.33, z, r, 0.25, 0.15));
+      // 方石堆
+      for (const [x, y, z, r] of [[-1.35, 0.28, 0.85, 0], [-0.82, 0.28, 0.9, 0.08], [-1.35, 0.28, 1.45, 0.04], [-1.08, 0.6, 1.05, -0.1], [-1.3, 0.6, 1.5, 0.15]]) L.push(B(0.5, 0.32, 0.5, block, x, y, z, r));
+      // 铁轨 + 矿车
+      for (const z of [0.12, 0.42]) L.push(B(3.3, 0.04, 0.05, C.steel, 0.15, 0.15, z));
+      for (let i = 0; i < 8; i++) L.push(B(0.12, 0.04, 0.5, 0x5a4430, -1.45 + i * 0.44, 0.12, 0.27));
+      L.push(frustum(0.65, 0.42, 0.8, 0.52, 0.38, C.rust, 0.55, 0.26, 0.27), B(0.66, 0.1, 0.42, 0x8a8478, 0.55, 0.64, 0.27, 0.2));
+      for (const x of [0.33, 0.77]) for (const z of [0.12, 0.42]) L.push(CY(0.09, 0.09, 0.05, C.dark, x, 0.24, z, 8, Math.PI / 2));
+      // 工棚
+      L.push(B(1.05, 0.95, 0.9, 0x7a5c3c, 1.25, 0.6, 1.25), B(1.2, 0.05, 1.08, C.steelLt, 1.25, 1.12, 1.25, 0, 0, 0.14));
+      for (let i = 0; i < 4; i++) L.push(B(0.04, 0.03, 1.08, C.steel, 1.25 - 0.45 + i * 0.3, 1.16 - (i - 1.5) * 0.04, 1.25));
+      L.push(B(0.36, 0.7, 0.05, 0x4a3626, 1.05, 0.47, 1.71), B(0.28, 0.24, 0.05, C.glass, 1.52, 0.75, 1.71));
+      // 吊臂：立柱固定，臂杆和吊着的石块是活动部件
+      L.push(CY(0.08, 0.1, 2.5, wood, -0.35, 1.3, 0.05, 8), B(0.5, 0.12, 0.5, 0x5a4430, -0.35, 0.12, 0.05));
+      L.push(beam([-0.35, 0.15, 0.3], [-0.35, 1.4, 0.07], 0.06, wood), beam([-0.1, 0.15, 0.05], [-0.33, 1.4, 0.05], 0.06, wood));
+      m.parts.crane = { geo: MG([B(0.1, 0.1, 2.0, wood, 0, 0, 0.75), B(0.14, 0.14, 0.4, wood, 0, 0, -0.35), B(0.28, 0.28, 0.3, C.steel, 0, -0.05, -0.55), CY(0.012, 0.012, 1.1, C.dark, 0, -0.55, 1.6, 4), B(0.38, 0.3, 0.38, block, 0, -1.25, 1.6)]), x: -0.35, y: 2.55, z: 0.05, swing: 1 };
+      // 旗杆：占领方的旗，没人占领时是白旗
+      L.push(CY(0.03, 0.045, 2.6, C.steel, 1.7, 1.42, -1.65, 6), B(0.6, 0.38, 0.03, team >= 0 ? p.accent : 0xe8e4d8, 2.0, 2.5, -1.65));
       break;
     }
     case 'derrick': {
@@ -4352,6 +4522,13 @@ function buildUnitMesh(u) {
 // =====================================================================
 // 实体：建筑
 // =====================================================================
+// 民房外形 + 配色：同一个小镇里的 4 栋按位置排序后各用一种房型（起始房型每镇不同），配色按位置随机；只看地图数据，联机各方一致
+function houseVariant(tx, tz) {
+  const near = houseSites.filter(s => Math.abs(s.tx - tx) <= 9 && Math.abs(s.tz - tz) <= 9).sort((a, b) => a.tz - b.tz || a.tx - b.tx);
+  const rank = Math.max(0, near.findIndex(s => s.tx === tx && s.tz === tz)), o = near[0] || { tx, tz };
+  const shape = (rank + Math.floor(hash1(o.tx * 3.17 + o.tz * 7.71) * 4)) % 4;
+  return shape + 4 * Math.floor(hash1(tx * 12.9898 + tz * 78.233) * 36);
+}
 function createBuilding(type, team, tx, tz, opts = {}) {
   const def = defOf(type, team);
   const hpMul = natOf(team).hpMul;
@@ -4367,6 +4544,7 @@ function createBuilding(type, team, tx, tz, opts = {}) {
     smokeT: 0, doorOpen: 0, angle: 0, abmReady: type === 'abm', abmCharge: 0,
   };
   b.hasTurret = !!def.weapon; b.baseW = b.weapon;
+  if (type === 'house') b.variant = houseVariant(tx, tz);
   // 桥不占格子（桥面本身就是可通行的地块）
   if (type !== 'bridge') for (let z = tz; z < tz + h; z++) for (let x = tx; x < tx + w; x++) bldGrid[z * MAP + x] = b.id;
   for (let i = ruins.length - 1; i >= 0; i--) {
@@ -4386,7 +4564,7 @@ function createBuilding(type, team, tx, tz, opts = {}) {
 function buildBuildingMesh(b) {
   if (b.mesh) scene.remove(b.mesh);
   const anim = b.type !== 'bridge';
-  const m = anim ? getBuildingModel(b.type, b.team) : bridgeModel(b);
+  const m = anim ? getBuildingModel(b.type, b.team, undefined, b.variant || 0) : bridgeModel(b);
   if (anim && !b.bm) b.bm = bldMaterial(b);
   const g = new THREE.Group();
   const body = new THREE.Mesh(m.body, anim ? b.bm.mat : matBld); body.castShadow = true; body.receiveShadow = true; g.add(body);
@@ -5128,7 +5306,7 @@ function playerAttacked(t) {
 }
 function kill(e, src) {
   if (e.kind === 'b' && e.def.derrick) {
-    if (e.team >= 0) tnotify(e.team, e.def.village ? '村庄失守' : '油井失守', 'bad');
+    if (e.team >= 0) tnotify(e.team, (e.def.village ? '村庄' : e.def.name) + '失守', 'bad');
     e.clearT = 0;
     fxExplosion(e.x, 0.5, e.z, 1.2);
     Sound.play('explosion', e.x, e.z);
@@ -5458,6 +5636,14 @@ function spawnMilitia(b) {
   });
 }
 const villageGuarded = b => units.some(u => u.alive && u.team === MILITIA && u.village === b.id);
+// 村公所和它旁边的采矿场：所属村庄还有守军时都不能占领
+function guardHall(b) {
+  if (b.def.village) return b;
+  if (!b.def.quarry) return null;
+  if (!b.villageId) { let bd = 1e9; for (const v of buildings) if (v.def.village) { const d = Math.hypot(v.x - b.x, v.z - b.z); if (d < bd) { bd = d; b.villageId = v.id; } } }   // 归最近的村公所管
+  return entById.get(b.villageId);
+}
+const guardLocked = b => { const v = guardHall(b); return !!v && villageGuarded(v); };
 function villageTick() {
   for (const b of buildings) {
     if (!b.alive || !b.def.village) continue;
@@ -5472,7 +5658,7 @@ function engineerTick(u) {
     const b = o.target;
     const valid = b.alive && (b.type === 'bridge' ? b.broken : b.def.derrick ? b.team !== u.team : (b.team === u.team && b.hp < b.maxHp));
     if (!valid) { u.order = { type: 'idle' }; u.path = null; return; }
-    if (b.def.village && villageGuarded(b)) {
+    if (guardLocked(b)) {
       if (rectDist(u.x, u.z, b) < 6 * TILE) {
         u.order = { type: 'idle' }; u.path = null;
         tnotify(u.team, '村庄还有守军，先把他们消灭', 'bad');
@@ -5492,7 +5678,7 @@ function engineerEnter(u, b) {
       b.bountyPaid = true;
       teams[u.team].credits += VILLAGE_BOUNTY; teams[u.team].stats.harvested += VILLAGE_BOUNTY;
       tnotify(u.team, `已攻下村庄，获得赏金 $${VILLAGE_BOUNTY}`, 'good', 'ready');
-    } else tnotify(u.team, b.def.village ? '已占领村庄' : '已占领油井', 'good', 'ready');
+    } else tnotify(u.team, b.def.village ? '已占领村庄' : '已占领' + b.def.name, 'good', 'ready');
   } else {
     b.hp = b.maxHp;
     tnotify(u.team, b.def.name + ' 已修复', 'good', 'ready');
@@ -5815,9 +6001,9 @@ function canPlace(team, type, tx, tz, spacing = 0) {
   let near = false;
   const reach = d.reach || (d.naval ? 8 : 4);
   for (const b of buildings) {
-    if (!b.alive || b.team !== team || b.def.derrick) continue;
+    if (!b.alive || b.team !== team || (b.def.derrick && !b.def.village)) continue;
     const gx = Math.max(0, b.tx - (tx + d.w), tx - (b.tx + b.w)), gz = Math.max(0, b.tz - (tz + d.h), tz - (b.tz + b.h));
-    if (Math.max(gx, gz) <= reach) { near = true; break; }
+    if (Math.max(gx, gz) <= Math.max(reach, b.def.anchor || 0)) { near = true; break; }   // 占领的村公所周围 6 格也能建
   }
   return near;
 }
@@ -6195,8 +6381,8 @@ class AIController {
   taskEngineer(u) {
     let best = null, bd = 1e9;
     for (const b of buildings) {
-      if (!b.alive || !b.def.derrick || b.team === this.team || (b.def.village && villageGuarded(b))) continue;
-      const d = Math.hypot(b.x - u.x, b.z - u.z) + (b.team >= 0 ? 30 : 0) - (b.def.village ? 25 : 0);
+      if (!b.alive || !b.def.derrick || b.team === this.team || guardLocked(b)) continue;
+      const d = Math.hypot(b.x - u.x, b.z - u.z) + (b.team >= 0 ? 30 : 0) - (b.def.village ? 25 : b.def.quarry ? 12 : 0);
       if (d < bd) { bd = d; best = b; }
     }
     if (best) commandEnter([u], best);
@@ -6977,6 +7163,7 @@ function syncMeshes(alpha, rdt, gdt) {
       if (p.spin && powered) pm.rotation.y += p.spin * gdt * (b.dmgT === 2 ? 0.25 : 1);
       if (p.spin && b.bm) pm.rotation.x = clamp(b.bm.U.uDmg.value - 1, 0, 1) * 0.35;   // 重伤时雷达盘歪掉、转得慢
       if (p.rock && b.team >= 0) pm.rotation.x = Math.sin(G.time * 2.2 + b.id) * 0.32;
+      if (p.swing) pm.rotation.y = b.team >= 0 ? Math.sin(G.time * 0.45 + b.id) * 1.1 : 0.4;   // 采矿场吊臂：占领后来回吊运石块
     }
     if (b.bm) bldWork(b, powered, gdt);
     if (b.type === 'silo') {
@@ -7691,7 +7878,7 @@ function updateSelPanel() {
   if (e.def.harvester) s += `　载货 ${Math.round(e.cargo)} / ${HARV_CAP}`;
   if (e.kind === 'b' && e.def.power) s += `　电力 ${e.def.power > 0 ? '+' : ''}${e.def.power}`;
   if (e.def.village && e.team === NEUTRAL) s += villageGuarded(e) ? '　有守军，先消灭守军' : '　派工程师占领' + (e.bountyPaid ? '' : `（赏金 $${VILLAGE_BOUNTY}）`);
-  else if (e.def.derrick) s += e.team === NEUTRAL ? '　派工程师占领' : `　收入 +${e.def.income}/秒`;
+  else if (e.def.derrick) s += e.team === NEUTRAL ? (guardLocked(e) ? '　村庄还有守军，先消灭守军' : '　派工程师占领') : `　收入 +${e.def.income}/秒`;
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
   if (e.def.garrison) s += `　进驻 ${garrisonCount(e)}/${e.def.garrison}`;
@@ -7838,7 +8025,8 @@ const GUIDE = [
         <li>每车最多装 <b>$${HARV_CAP}</b>。<b>宝石矿</b>（青色晶体，在地图中央）每次采到的价值是普通矿的两倍。</li>
         <li>每座精炼厂附送 1 辆采矿车。<b>一座精炼厂配 2 辆采矿车</b>效率最高，可以在战车工厂里补造采矿车（$${UNITS.harvester.cost}）。</li>
         <li>矿石会慢慢长回来，但速度很慢，矿区迟早会被采光。中后期要把精炼厂建到新矿区旁边，并派兵保护采矿车。</li>
-        <li><b>村庄</b>：每个小镇有一座村公所，由老兵民兵、反坦克组、武装皮卡和两辆轻型坦克把守，开局的小部队打不下来。消灭守军后派<b>工程师</b>占领：第一次攻下奖励 $${VILLAGE_BOUNTY}，之后每秒 $${BUILDINGS.village.income}。村公所被打爆会变回中立；没人占领 ${VILLAGE_RESPAWN} 秒后守军会回来。</li>
+        <li><b>村庄</b>：每个小镇有一座村公所，由老兵民兵、反坦克组、武装皮卡和两辆轻型坦克把守，开局的小部队打不下来。消灭守军后派<b>工程师</b>占领：第一次攻下奖励 $${VILLAGE_BOUNTY}，之后每秒 $${BUILDINGS.village.income}。村公所被打爆会变回中立；没人占领 ${VILLAGE_RESPAWN} 秒后守军会回来。<b>占领后村公所就是你的前线据点</b>：周围 ${BUILDINGS.village.anchor} 格内可以建造兵营、炮塔等建筑。</li>
+        <li><b>采矿场</b>：每个小镇旁边有一座采石矿场，不需要矿区。等村庄守军被消灭后，派<b>工程师</b>占领，每秒提供 $${BUILDINGS.quarry.income}。被打爆会变回中立，可以再占领。</li>
         <li><b>油井</b>：地图上有 4 座中立油井。派<b>工程师</b>右键点击油井即可占领，之后每秒稳定提供 $${BUILDINGS.derrick.income}，不用采矿。油井被打爆会变回中立，可以再占领。</li>
         <li>选中采矿车后右键点矿区可以指定去哪里采矿；右键点精炼厂可以让它立刻回去卸货。</li>
       </ul>
@@ -8368,6 +8556,12 @@ function startGame(cfg) {
       let ok = true;
       for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
       if (ok) spawnMilitia(createBuilding('village', NEUTRAL, s.tx, s.tz, { instant: true }));
+    }
+    // 采矿场（归最近的村公所管，那里的守军没清完就占不了）
+    for (const s of quarrySites) {
+      let ok = true;
+      for (let z = s.tz; z < s.tz + 2; z++) for (let x = s.tx; x < s.tx + 2; x++) if (!walkable(x, z)) ok = false;
+      if (ok) createBuilding('quarry', NEUTRAL, s.tx, s.tz, { instant: true });
     }
     for (const u of units) { u.guardX = u.x; u.guardZ = u.z; }
   }
