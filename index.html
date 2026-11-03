@@ -427,7 +427,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.4';
+const GAME_VERSION = 'iron-4.5';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -8248,7 +8248,8 @@ function renderSelect() {
     $('btnStart').textContent = Net.isHost ? `开始游戏（${n} 方）` : '等待房主开始…';
     const triBad = L.mapType === 'tri' && n !== 3;
     $('btnStart').disabled = !Net.isHost || n < 2 || triBad;
-    $('selNote').textContent = Net.isHost ? (n < 2 ? '至少需要 2 方：等朋友加入，或把空位切换为电脑' : triBad ? '三国鼎立需要正好 3 方：把多余的位置关闭，或补一个电脑' : '没人加入的空位在开始时会被忽略')
+    $('selNote').textContent = Net.isHost && Net.sigDown ? '和联机服务器的连接断了，正在自动重连…（已经进来的朋友不受影响，新朋友要等重连好才能进）'
+      : Net.isHost ? (n < 2 ? '至少需要 2 方：等朋友加入，或把空位切换为电脑' : triBad ? '三国鼎立需要正好 3 方：把多余的位置关闭，或补一个电脑' : '没人加入的空位在开始时会被忽略')
       : '选好国家后等待房主开始；可以和别人选同一个国家';
   }
   $('selOpts').innerHTML = h;
@@ -8455,6 +8456,12 @@ function executeCommand(team, c) {
 // 联机（PeerJS / WebRTC，房主权威）
 // =====================================================================
 const PEER_PREFIX = 'ironfront-v2-';
+// 打洞服务器：PeerJS 默认只有谷歌的 STUN 和它自己的中继，中继已经连不上了，谷歌在部分网络（比如国内）也连不上。
+// 多放几家：任何一家能连上，双方就能拿到自己的公网地址来打洞
+const PEER_OPTS = { debug: 1, config: { iceServers: [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+  { urls: ['stun:stun.miwifi.com:3478', 'stun:stun.chat.bilibili.com:3478'] },
+] } };
 const UNIT_TYPES = Object.keys(UNITS), BLD_TYPES = Object.keys(BUILDINGS);
 const UNIT_IDX = Object.fromEntries(UNIT_TYPES.map((k, i) => [k, i])), BLD_IDX = Object.fromEntries(BLD_TYPES.map((k, i) => [k, i]));
 const wrapA = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
@@ -8489,21 +8496,37 @@ const Net = {
     this.status('正在创建房间…');
     try { await this.load(); } catch (e) { this.status(e.message, true); return; }
     const code = this.genCode();
-    const peer = new Peer(PEER_PREFIX + code, { debug: 1 });
+    const peer = new Peer(PEER_PREFIX + code, PEER_OPTS);
     this.peer = peer;
     peer.on('open', () => {
       if (this.peer !== peer) return;
-      this.mode = 'host'; this.code = code; this.mySlot = 0;
+      // 断线重连成功也会再触发 open：房间和已连上的朋友都保留，只清掉“重连中”
+      if (this.mode === 'host') { clearTimeout(this.sigTimer); this.sigDown = false; if (G.state !== 'playing') renderSelect(); return; }
+      this.mode = 'host'; this.code = code; this.mySlot = 0; this.sigDown = false;
       this.lobby = { slots: [{ kind: 'human', name: this.myName(), pick: 'random' }, { kind: 'open' }, { kind: 'open' }, { kind: 'open' }], difficulty: 'normal', mapType: 'land', env: 1, size: 'small', pace: 'fast' };
       this.status('');
       openSelect();
     });
     peer.on('connection', conn => this.onConn(conn));
     peer.on('error', (err) => {
-      if (err.type === 'unavailable-id') { this.host(); return; }
+      if (this.peer !== peer) return;
+      // 房间码被占用：只在刚建房时换一个码重来；房间已开好时这类错误交给下面的重连处理，不能把房间拆掉
+      if (this.mode !== 'host') { if (err.type === 'unavailable-id') this.host(); else this.status('联机出错：' + this.errText(err), true); return; }
+      if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected', 'unavailable-id'].includes(err.type)) return;
       if (G.state !== 'playing') this.status('联机出错：' + this.errText(err), true);
     });
-    peer.on('disconnected', () => { if (this.peer === peer && this.mode === 'host') try { peer.reconnect(); } catch (e) { /* 忽略 */ } });
+    // 和联机服务器的连接断了（已经连上的朋友不受影响，但新朋友找不到房间）：一直重试，直到恢复
+    peer.on('disconnected', () => { if (this.peer === peer && this.mode === 'host' && !this.sigDown) this.reconnectSig(peer, 0); });
+  },
+  reconnectSig(peer, n) {
+    clearTimeout(this.sigTimer);
+    this.sigDown = true;
+    if (G.state !== 'playing') renderSelect();
+    this.sigTimer = setTimeout(() => {
+      if (this.peer !== peer || this.mode !== 'host' || peer.open || peer.destroyed) return;
+      if (peer.disconnected) try { peer.reconnect(); } catch (e) { /* 忽略 */ }
+      this.reconnectSig(peer, n + 1);
+    }, n ? Math.min(8000, 1500 * n) : 300);
   },
   onConn(conn) {
     conn.on('data', m => this.onHostMsg(conn, m));
@@ -8570,21 +8593,49 @@ const Net = {
     this.leave();
     this.status('正在连接房间 ' + code + '…');
     try { await this.load(); } catch (e) { this.status(e.message, true); return; }
-    const peer = new Peer({ debug: 1 });
+    const peer = new Peer(PEER_OPTS);
     this.peer = peer;
-    peer.on('open', () => {
-      if (this.peer !== peer) return;
+    this.joinTry = 0;
+    // 房主已经回应（开始打洞）就不能再重试，否则房主那边会多出一个连接
+    const answered = () => { const pc = this.hostConn && this.hostConn.peerConnection; return !!(pc && pc.remoteDescription); };
+    const connect = () => {
+      if (this.peer !== peer || this.mode === 'client') return;
       const conn = peer.connect(PEER_PREFIX + code, { reliable: true });
       this.hostConn = conn;
       conn.on('open', () => conn.send({ t: 'hello', name: this.myName(), ver: GAME_VERSION }));
       conn.on('data', m => this.onClientMsg(m));
-      conn.on('close', () => this.onHostLost());
+      conn.on('close', () => { if (this.hostConn === conn) this.onHostLost(); });
+      // 服务器对短时间内重复的查询有时不回“找不到”，没回音也按找不到处理
+      clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => { if (this.hostConn === conn && !conn.open && !answered()) retry(); }, 6000);
+    };
+    // 房主可能正在和服务器重连（比如刚切出去发房间码），先别放弃，隔几秒再找几次
+    const retry = () => {
+      if (this.peer !== peer || this.mode === 'client') return;
+      if (this.joinTry >= 4) { this.status(`找不到房间 ${code}：请确认房间码，并让房主停在房间页面上`, true); this.leave(); return; }
+      this.joinTry++;
+      this.status(`暂时找不到房间 ${code}，正在重试（${this.joinTry}/4）…`);
+      const old = this.hostConn; this.hostConn = null;
+      if (old) try { old.close(); } catch (e) { /* 忽略 */ }
+      clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(connect, 2500);
+    };
+    peer.on('open', () => {
+      if (this.peer !== peer || this.hostConn) return;
+      connect();
       clearTimeout(this.joinTimer);
       this.joinTimer = setTimeout(() => {
-        if (this.mode !== 'client' && this.peer === peer) { this.status('连接超时：请确认房间码，或换一个网络再试', true); this.leave(); }
-      }, 15000);
+        if (this.mode !== 'client' && this.peer === peer) {
+          this.status(answered() ? '连接超时：找到了房间，但双方网络没能打通。可以让其中一方换个网络（比如手机热点）再试' : '连接超时：请确认房间码，或换一个网络再试', true);
+          this.leave();
+        }
+      }, 45000);
     });
-    peer.on('error', (err) => { if (this.mode !== 'client' || G.state !== 'playing') this.status('联机出错：' + this.errText(err), true); });
+    peer.on('error', (err) => {
+      if (this.peer !== peer) return;
+      if (err.type === 'peer-unavailable' && this.mode !== 'client') { if (!answered()) retry(); return; }
+      if (this.mode !== 'client' || G.state !== 'playing') this.status('联机出错：' + this.errText(err), true);
+    });
   },
   onClientMsg(m) {
     if (!m || typeof m !== 'object') return;
@@ -8635,7 +8686,7 @@ const Net = {
     } else { showMenuPanel('onlineMenu'); this.status('与房主的连接已断开', true); }
   },
   leave() {
-    clearTimeout(this.joinTimer);
+    clearTimeout(this.joinTimer); clearTimeout(this.sigTimer); clearTimeout(this.retryTimer); this.sigDown = false;
     const p = this.peer;
     this.peer = null; this.mode = 'off'; this.conns = []; this.hostConn = null;
     if (p) try { p.destroy(); } catch (e) { /* 忽略 */ }
@@ -8643,15 +8694,15 @@ const Net = {
   send(m) { if (this.hostConn && this.hostConn.open) this.hostConn.send(m); },
   broadcast(m) { for (const c of this.conns) if (c.open) c.send(m); },
   event(e) { if (this.isHost) this.events.push(e); },
-  // 心跳：浏览器突然关闭时 WebRTC 不一定会马上通知断开，用心跳兜底（10 秒没消息就算掉线）
+  // 心跳：浏览器突然关闭时 WebRTC 不一定会马上通知断开，用心跳兜底（20 秒没消息就算掉线，手机网络偶尔卡十几秒）
   heartbeat() {
     const now = performance.now();
     if (this.isHost) {
       this.broadcast({ t: 'ping' });
-      for (const c of this.conns.slice()) if (now - (c.lastSeen || now) > 10000) { this.onDisconnect(c); try { c.close(); } catch (e) { /* 忽略 */ } }
+      for (const c of this.conns.slice()) if (now - (c.lastSeen || now) > 20000) { this.onDisconnect(c); try { c.close(); } catch (e) { /* 忽略 */ } }
     } else if (this.isClient) {
       this.send({ t: 'ping' });
-      if (this.lastHostMsg && now - this.lastHostMsg > 12000) this.onHostLost();
+      if (this.lastHostMsg && now - this.lastHostMsg > 20000) this.onHostLost();
     }
   },
   // 状态快照：单位 / 建筑用定长整数数组打包，队伍数据、矿石变化和事件用普通对象
@@ -8686,7 +8737,6 @@ const Net = {
     this.oreChanges.clear();
   },
 };
-setInterval(() => Net.heartbeat(), 2000);
 window.addEventListener('beforeunload', () => Net.leave());
 const asI32 = b => (b instanceof ArrayBuffer ? new Int32Array(b) : new Int32Array(b.buffer || b));
 const asI16 = b => (b instanceof ArrayBuffer ? new Int16Array(b) : new Int16Array(b.buffer || b));
@@ -8795,16 +8845,8 @@ function frame(now) {
     updateDelayed(gdt);
     if (uiFrameN % 6 === 0) updateFog();
     if (uiFrameN % 30 === 0) { units = units.filter(u => u.alive); buildings = buildings.filter(b => b.alive); for (const [id, e] of entById) if (!e.alive) entById.delete(id); }
-  } else if (!G.paused) {
-    acc += rdt * G.speed;
-    let n = 0;
-    while (acc >= TICK && n < 8) { gameTick(); acc -= TICK; n++; }
-    if (n >= 8) acc = 0;
-    gdt = rdt * G.speed;
-    updateProjectiles(gdt);
-    pFire.update(gdt); pSmoke.update(gdt); tracers.update(gdt);
-    updateDelayed(gdt);
-  } else if (Net.isHost && now - Net.lastPauseSnap > 500) { Net.lastPauseSnap = now; Net.sendSnapshot(); }
+  } else if (!G.paused) gdt = simulate(rdt);
+  else if (Net.isHost && now - Net.lastPauseSnap > 500) { Net.lastPauseSnap = now; Net.sendSnapshot(); }
   if (alpha === undefined) alpha = G.paused ? 1 : acc / TICK;
   updateCamera(rdt);
   updateEnvironment(rdt);
@@ -8815,6 +8857,35 @@ function frame(now) {
   renderer.render(scene, camera);
   drawOverlay();
   uiFrame();
+}
+function simulate(rdt) {
+  acc += rdt * G.speed;
+  let n = 0;
+  while (acc >= TICK && n < 8) { gameTick(); acc -= TICK; n++; }
+  if (n >= 8) acc = 0;
+  const gdt = rdt * G.speed;
+  updateProjectiles(gdt);
+  pFire.update(gdt); pSmoke.update(gdt); tracers.update(gdt);
+  updateDelayed(gdt);
+  return gdt;
+}
+// 后台计时：标签页切到后台（或最小化）时浏览器会停掉 requestAnimationFrame、放慢 setInterval，
+// 房主这边的模拟和快照就停了，朋友那边画面冻住、随后判定掉线。Worker 里的计时器不受影响，用它驱动心跳和后台模拟
+{
+  let hb = 0;
+  const bgTick = () => {
+    const now = performance.now();
+    if (now - hb >= 2000) { hb = now; Net.heartbeat(); }
+    if (!document.hidden || !Net.isHost || G.state !== 'playing') return;
+    const rdt = Math.min(0.1, (now - lastT) / 1000);
+    lastT = now;
+    if (!G.paused) simulate(rdt);
+    else if (now - Net.lastPauseSnap > 500) { Net.lastPauseSnap = now; Net.sendSnapshot(); }
+  };
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50);'], { type: 'text/javascript' })));
+    w.onmessage = bgTick;
+  } catch (e) { setInterval(bgTick, 50); }
 }
 
 // 启动
