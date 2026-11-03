@@ -169,6 +169,20 @@ button { font-family: inherit; }
   font-size: 12px; color: var(--ui-dim); background: rgba(10, 12, 9, 0.7); padding: 3px 10px; pointer-events: none;
 }
 
+#chatLog { position: fixed; right: 270px; bottom: 34px; z-index: 6; width: 340px; max-width: calc(100% - 290px); display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+#chatLog.open { bottom: 104px; }
+#chatLog .cl { background: rgba(10, 12, 9, 0.75); padding: 3px 9px; font-size: 13px; transition: opacity 0.8s; word-break: break-all; }
+#chatLog .cl b { font-weight: normal; }
+#chatLog .cl.ping { cursor: pointer; pointer-events: auto; }
+#chatLog:not(.open) .cl:nth-last-child(n+7) { display: none; }
+#chatLog.open .cl { opacity: 1 !important; }
+#chatBox { position: fixed; right: 270px; bottom: 8px; z-index: 7; width: 340px; display: none; }   /* 放在画面右下角，避开左下角的选中面板 */
+#chatBox.open { display: block; }
+#chatQuick { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
+#chatQuick button { background: #1f261a; color: var(--ui-text); border: 1px solid var(--ui-border); padding: 2px 7px; font-size: 12px; cursor: pointer; }
+#chatQuick button:hover { background: #2d3824; }
+#chatInput { width: 100%; box-sizing: border-box; background: rgba(10, 12, 9, 0.92); color: var(--ui-text); border: 1px solid var(--ui-accent); padding: 5px 8px; font-size: 13px; font-family: inherit; outline: none; }
+
 /* 菜单 */
 .screen {
   position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
@@ -312,6 +326,7 @@ button { font-family: inherit; }
   <div class="tb-item" id="speedBtns">
     <button class="tbtn active" data-speed="1">1x</button><button class="tbtn" data-speed="2">2x</button><button class="tbtn" data-speed="3">3x</button>
   </div>
+  <button class="tbtn" id="btnChat" title="聊天和快捷短句 (Enter)" style="display:none">聊天</button>
   <button class="tbtn help-btn" id="btnHelp" title="游戏指南 (F1)">?</button>
   <button class="tbtn" id="btnPause">暂停 (Esc)</button>
 </div>
@@ -333,6 +348,8 @@ button { font-family: inherit; }
 <div id="messages"></div>
 <div id="tooltip"></div>
 <div id="hint"></div>
+<div id="chatLog"></div>
+<div id="chatBox"><div id="chatQuick"></div><input id="chatInput" maxlength="60" placeholder="输入文字，Enter 发送，Esc 关闭" autocomplete="off"></div>
 
 <div id="menu" class="screen">
   <div class="panel" id="mainMenu">
@@ -427,7 +444,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.7';
+const GAME_VERSION = 'iron-4.8';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -6895,6 +6912,12 @@ gameEl.addEventListener('mousedown', (e) => {
     return;
   }
   if (e.button !== 0) return;
+  if ((e.altKey && Chat.on) || mode === 'signal') {
+    const g = screenToPlane(sx, sy, 0);
+    if (g) Chat.send({ ping: { k: mode === 'signal' ? sigKind : 0, x: g.x, z: g.z } });
+    if (mode === 'signal') setMode(null);
+    return;
+  }
   if (placing) { tryPlace(); return; }
   if (mode === 'nuke' || mode === 'ability') {
     const g = screenToPlane(sx, sy, 0);
@@ -6966,13 +6989,14 @@ function setMode(m) {
   mode = m;
   document.getElementById('btnRepair').classList.toggle('active', m === 'repair');
   document.getElementById('btnSell').classList.toggle('active', m === 'sell');
-  gameEl.style.cursor = m === 'attackMove' || m === 'nuke' || m === 'ability' ? 'crosshair' : m === 'sell' || m === 'repair' ? 'cell' : 'default';
+  gameEl.style.cursor = m === 'attackMove' || m === 'nuke' || m === 'ability' || m === 'signal' ? 'crosshair' : m === 'sell' || m === 'repair' ? 'cell' : 'default';
   updateHint();
 }
 function updateHint() {
   const h = document.getElementById('hint');
   const txt = placing ? '左键放置 ' + defOf(placing.type, PLAYER).name + '，右键取消' :
     mode === 'attackMove' ? '攻击移动：左键选择目标地点，右键取消' :
+      mode === 'signal' ? '发信号「' + SIGNALS[sigKind].name + '」：左键点地面或小地图，再按 G 换种类，右键取消' :
       mode === 'nuke' ? '选择战略导弹打击目标，右键取消' :
         mode === 'ability' ? '国家技能「' + ABILITIES[NATIONS[teams[PLAYER].nation].ability].name + '」：左键选择地点，右键取消' :
         mode === 'sell' ? '出售模式：点击己方建筑，右键退出' :
@@ -6980,6 +7004,7 @@ function updateHint() {
   h.textContent = txt; h.style.display = txt ? 'block' : 'none';
 }
 window.addEventListener('keydown', (e) => {
+  if (document.activeElement === $('chatInput')) return;   // 正在打字：快捷键全部不响应
   if (e.key === 'F1') { e.preventDefault(); toggleGuide(); return; }
   if (guideOpen()) { if (e.key === 'Escape') toggleGuide(false); return; }
   if (G.state !== 'playing') return;
@@ -6991,12 +7016,18 @@ window.addEventListener('keydown', (e) => {
     if (mode) { setMode(null); return; }
     togglePauseMenu(); return;
   }
+  if (k === 'Enter') { e.preventDefault(); Chat.open(); return; }
   if (G.over) return;
   if (k === ' ') { if (Net.isClient) notify('联机时只有房主可以暂停'); else setPaused(!G.paused); return; }
   if (k === 'F9') { revealAll = !revealAll; updateFog(); notify(revealAll ? '调试：全图可见' : '调试：恢复迷雾'); return; }
   if (k === 'F10') { if (!Net.isClient) { teams[PLAYER].credits += 10000; notify('调试：资金 +10000'); } return; }
   const lk = k.toLowerCase();
   if (lk === 'q' && !e.ctrlKey && ownUnitsSelected().length) { setMode('attackMove'); return; }
+  if (lk === 'g' && !e.ctrlKey) {
+    if (!Chat.on) { notify('信号和聊天只在联机时可用'); return; }
+    sigKind = mode === 'signal' ? (sigKind + 1) % SIGNALS.length : 0;   // 再按 G 换种类
+    setMode('signal'); return;
+  }
   if (lk === 'x' && !e.ctrlKey) { const own = ownUnitsSelected(); if (own.length) issueCommand({ c: 'stop', ids: idsOf(own) }); return; }
   if (lk === 'h') { const hq = buildings.find(b => b.alive && b.team === PLAYER && b.type === 'hq') || buildings.find(b => b.alive && b.team === PLAYER); if (hq) centerOn(hq.x, hq.z); return; }
   if (/^[1-9]$/.test(k) || /^Digit[1-9]$/.test(e.code)) {
@@ -7498,6 +7529,33 @@ function drawOverlay() {
       octx.fillText('导弹打击目标', p.x, p.y - 10); octx.textAlign = 'left';
     }
   }
+  // 联机信号：发送者颜色的两圈扩散圆环 + 旗杆小旗 + 文字，5 秒后消失
+  for (let i = signals.length - 1; i >= 0; i--) {
+    const sg = signals[i];
+    sg.t += 1 / 60;
+    if (sg.t > 5) { signals.splice(i, 1); continue; }
+    const a = sg.t > 4 ? 5 - sg.t : 1;
+    octx.save();
+    octx.strokeStyle = sg.col; octx.lineWidth = 2.5;
+    for (const ph of [0, 0.5]) {
+      const f = (sg.t + ph) % 1, r = 0.6 + f * 3.2;
+      octx.globalAlpha = a * (1 - f);
+      octx.beginPath();
+      for (let k = 0; k <= 24; k++) {
+        const an = k / 24 * Math.PI * 2, p = worldToScreen(sg.x + Math.cos(an) * r, 0.1, sg.z + Math.sin(an) * r);
+        if (k === 0) octx.moveTo(p.x, p.y); else octx.lineTo(p.x, p.y);
+      }
+      octx.stroke();
+    }
+    octx.globalAlpha = a;
+    const b = worldToScreen(sg.x, 0.1, sg.z), t = worldToScreen(sg.x, 4.5, sg.z);
+    octx.beginPath(); octx.moveTo(b.x, b.y); octx.lineTo(t.x, t.y); octx.stroke();
+    octx.fillStyle = SIGNALS[sg.k].css; octx.beginPath(); octx.moveTo(t.x, t.y); octx.lineTo(t.x + 18, t.y + 6); octx.lineTo(t.x, t.y + 12); octx.closePath(); octx.fill();
+    const label = SIGNALS[sg.k].name + ' · ' + sg.name;
+    octx.font = 'bold 13px sans-serif'; octx.textAlign = 'center'; octx.lineWidth = 3; octx.strokeStyle = 'rgba(0,0,0,0.8)';
+    octx.strokeText(label, t.x, t.y - 7); octx.fillStyle = '#fff'; octx.fillText(label, t.x, t.y - 7);
+    octx.restore();
+  }
   if (mouse.down && mouse.drag) {
     octx.strokeStyle = '#80ff70'; octx.lineWidth = 1;
     octx.fillStyle = 'rgba(120,255,100,0.08)';
@@ -7565,8 +7623,9 @@ function drawMinimap() {
   for (let i = pings.length - 1; i >= 0; i--) {
     const p = pings[i]; p.t += 0.1;
     if (p.t > 3) { pings.splice(i, 1); continue; }
-    mctx.strokeStyle = `rgba(255,80,60,${1 - p.t / 3})`; mctx.lineWidth = 2;
+    mctx.globalAlpha = 1 - p.t / 3; mctx.strokeStyle = p.color || 'rgb(255,80,60)'; mctx.lineWidth = 2;
     mctx.beginPath(); mctx.arc(mx(p.x), mx(p.z), 4 + (p.t % 1) * 14, 0, Math.PI * 2); mctx.stroke();
+    mctx.globalAlpha = 1;
   }
 }
 let mmDrag = false;
@@ -7579,6 +7638,11 @@ mm.addEventListener('contextmenu', e => e.preventDefault());
 mm.addEventListener('mousedown', (e) => {
   if (G.state !== 'playing' || !minimapOnline()) return;
   const w = minimapWorld(e);
+  if (e.button === 0 && ((e.altKey && Chat.on) || mode === 'signal')) {
+    Chat.send({ ping: { k: mode === 'signal' ? sigKind : 0, x: w.x, z: w.z } });
+    if (mode === 'signal') setMode(null);
+    return;
+  }
   if (e.button === 0) { mmDrag = true; centerOn(w.x, w.z); }
   else if (e.button === 2) { const own = ownUnitsSelected(); if (own.length) { issueCommand({ c: 'move', ids: idsOf(own), x: w.x, z: w.z }); Sound.play('ack'); } }
 });
@@ -8314,6 +8378,14 @@ const GUIDE = [
         <li>有玩家中途掉线，他的部队会自动交给电脑接管。</li>
         <li>只有房主可以暂停和调整游戏速度。</li>
         <li>被淘汰后会进入观战模式，可以看到全地图。</li>
+      </ul>
+      <h3>信号和聊天</h3>
+      <ul>
+        <li><b>Alt + 左键</b>点地面或小地图：发出「看这里」信号，所有玩家的画面和小地图上都会出现你颜色的标记。</li>
+        <li>按 <b>G</b> 进入信号模式，再按 G 换种类：看这里（黄）→ 进攻这里（红）→ 来这里防守（蓝），然后左键点位置发出。</li>
+        <li>按 <b>Enter</b>（或顶栏「聊天」按钮）打开聊天框：可以打字，也可以点快捷短句。打字时其它快捷键不起作用。</li>
+        <li>聊天记录里的信号行，点一下镜头就跳到那里。</li>
+        <li>现在是混战模式，消息所有玩家都看得到，包括对手。</li>
       </ul>`,
   },
 ];
@@ -8508,6 +8580,8 @@ function beginGame(cfg) {
 
 function startGame(cfg) {
   Sound.init();
+  $('btnChat').style.display = Net.mode !== 'off' ? '' : 'none';
+  Chat.close(); $('chatLog').innerHTML = ''; signals = [];
   G.seed = cfg.seed; G.difficulty = cfg.difficulty; G.mapType = cfg.mapType === 'sea' ? 'sea' : cfg.mapType === 'tri' && cfg.players.length === 3 ? 'tri' : 'land';
   G.size = cfg.size === 'small' ? 'small' : 'large'; G.pace = PACES[cfg.pace] || PACES.normal;
   envSchedule(G.seed, cfg.env !== false);
@@ -8664,6 +8738,91 @@ if (/[?&]relay\b/.test(location.search)) PEER_OPTS.config.iceTransportPolicy = '
 const UNIT_TYPES = Object.keys(UNITS), BLD_TYPES = Object.keys(BUILDINGS);
 const UNIT_IDX = Object.fromEntries(UNIT_TYPES.map((k, i) => [k, i])), BLD_IDX = Object.fromEntries(BLD_TYPES.map((k, i) => [k, i]));
 const wrapA = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
+// =====================================================================
+// 联机交流：地图信号 + 快捷短句 + 打字聊天（都先发给房主，由房主校验后转发给所有玩家）
+// =====================================================================
+const SIGNALS = [{ name: '看这里', css: '#ffd040' }, { name: '进攻这里', css: '#ff5040' }, { name: '来这里防守', css: '#50a0ff' }];
+const QUICK_CHAT = ['需要支援！', '一起进攻！', '我去进攻', '小心，敌人来了', '我去占村庄', '撤退！', '好的', '谢谢'];
+let signals = [], sigKind = 0;
+const Chat = {
+  get on() { return Net.mode !== 'off' && G.state === 'playing'; },
+  isOpen() { return $('chatBox').classList.contains('open'); },
+  open() {
+    if (!this.on) { notify('信号和聊天只在联机时可用'); return; }
+    for (const k in keys) keys[k] = false;
+    $('chatBox').classList.add('open'); $('chatLog').classList.add('open');
+    $('chatInput').focus();
+  },
+  close() {
+    $('chatBox').classList.remove('open'); $('chatLog').classList.remove('open');
+    $('chatInput').value = ''; $('chatInput').blur();
+  },
+  // 发出：房主直接转发，朋友交给房主
+  send(m) {
+    if (!this.on) { notify('信号和聊天只在联机时可用'); return; }
+    if (Net.isHost) this.relay(PLAYER, m, null); else Net.send({ t: 'chat', ...m });
+  },
+  // 房主：校验、限流（每人 0.5 秒 1 句，3 秒最多 3 个信号），再广播并在自己这边显示
+  relay(team, m, conn) {
+    const T = teams[team];
+    if (!T || !m) return;
+    const now = performance.now(), rl = conn || this, out = { t: 'chat', team, name: T.name };
+    if (m.ping && typeof m.ping === 'object') {
+      const k = m.ping.k | 0, x = +m.ping.x, z = +m.ping.z;
+      if (k < 0 || k >= SIGNALS.length || !isFinite(x) || !isFinite(z)) return;
+      rl.pingT = (rl.pingT || []).filter(t => now - t < 3000);
+      if (rl.pingT.length >= 3) { if (!conn) notify('信号发得太快了'); return; }
+      rl.pingT.push(now);
+      out.ping = { k, x: clamp(x, 0, WORLD), z: clamp(z, 0, WORLD) };
+    } else {
+      const text = String(m.text || '').trim().slice(0, 60);
+      if (!text) return;
+      if (now - (rl.chatT || 0) < 500) { if (!conn) notify('发得太快了'); return; }
+      rl.chatT = now; out.text = text;
+    }
+    Net.broadcast(out);
+    this.show(out);
+  },
+  // 显示一条：聊天记录里一行（信号行点一下镜头跳过去），信号还要画在地面和小地图上
+  show(m) {
+    const col = teamColor(m.team), log = $('chatLog');
+    const el = document.createElement('div'), nm = document.createElement('b');
+    el.className = 'cl'; nm.style.color = col; nm.textContent = String(m.name || '玩家') + '：';
+    el.appendChild(nm);
+    if (m.ping && SIGNALS[m.ping.k]) {
+      const sg = SIGNALS[m.ping.k], x = +m.ping.x, z = +m.ping.z;
+      const tx = document.createElement('span'); tx.style.color = sg.css; tx.textContent = sg.name;
+      el.appendChild(tx); el.classList.add('ping'); el.title = '点击查看位置';
+      el.addEventListener('mousedown', (e) => { e.preventDefault(); centerOn(x, z); });
+      signals.push({ x, z, k: m.ping.k, col, name: String(m.name || ''), t: 0 });
+      pings.push({ x, z, t: 0, color: col });
+      Sound.play('ack');
+    } else {
+      el.appendChild(document.createTextNode(String(m.text || '')));
+      Sound.play('click');
+    }
+    log.appendChild(el);
+    while (log.children.length > 10) log.removeChild(log.firstChild);
+    setTimeout(() => { el.style.opacity = '0'; }, 10000);
+  },
+  init() {
+    const q = $('chatQuick');
+    for (const t of QUICK_CHAT) {
+      const b = document.createElement('button'); b.textContent = t;
+      b.addEventListener('mousedown', (e) => e.preventDefault());   // 不抢输入框的焦点
+      b.addEventListener('click', () => { this.send({ text: t }); this.close(); });
+      q.appendChild(b);
+    }
+    $('chatInput').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { const t = e.target.value.trim(); if (t) this.send({ text: t }); this.close(); }
+      else if (e.key === 'Escape') this.close();
+    });
+    $('btnChat').addEventListener('click', () => this.isOpen() ? this.close() : this.open());
+  },
+};
+Chat.init();
+
 const Net = {
   mode: 'off', peer: null, conns: [], hostConn: null, code: '', mySlot: 0, lobby: null,
   events: [], oreChanges: new Set(), lastSnapAt: 0, snapInt: 100, joinTimer: 0, lastPauseSnap: 0,
@@ -8753,6 +8912,9 @@ const Net = {
     } else if (m.t === 'cmd') {
       const T = teams.find(T => T.netSlot === conn.slot);
       if (T && G.state === 'playing' && m.c && typeof m.c === 'object') executeCommand(T.id, m.c);
+    } else if (m.t === 'chat') {
+      const T = teams.find(T => T.netSlot === conn.slot);
+      if (T && G.state === 'playing') Chat.relay(T.id, m, conn);
     }
   },
   pushLobby() {
@@ -8852,6 +9014,7 @@ const Net = {
       case 'lobby': this.lobby = m.lobby; renderSelect(); break;
       case 'start': beginGame(m.cfg); break;
       case 'snap': if (G.state === 'playing') applySnapshot(m); break;
+      case 'chat': if (G.state === 'playing') Chat.show(m); break;
       case 'end':
         if (Array.isArray(m.stats)) m.stats.forEach((st, i) => { if (teams[i]) teams[i].stats = st; });
         endGame(m.winner);
