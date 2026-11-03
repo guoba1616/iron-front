@@ -427,7 +427,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.5';
+const GAME_VERSION = 'iron-4.6';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -8461,7 +8461,12 @@ const PEER_PREFIX = 'ironfront-v2-';
 const PEER_OPTS = { debug: 1, config: { iceServers: [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
   { urls: ['stun:stun.miwifi.com:3478', 'stun:stun.chat.bilibili.com:3478'] },
+  // 中转（ExpressTURN 免费版）：双方都打不通洞时（比如两边都是手机流量），数据走这台服务器转发。
+  { urls: ['turn:free.expressturn.com:3478?transport=udp', 'turn:free.expressturn.com:3478?transport=tcp'],
+    username: '000000002109143264', credential: 'bsibmOuqkIYQmZuzSV7LN1Zi5wA=' },
 ] } };
+// 网址带 ?relay 时强制只走中转，用来测试中转能不能用
+if (/[?&]relay\b/.test(location.search)) PEER_OPTS.config.iceTransportPolicy = 'relay';
 const UNIT_TYPES = Object.keys(UNITS), BLD_TYPES = Object.keys(BUILDINGS);
 const UNIT_IDX = Object.fromEntries(UNIT_TYPES.map((k, i) => [k, i])), BLD_IDX = Object.fromEntries(BLD_TYPES.map((k, i) => [k, i]));
 const wrapA = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
