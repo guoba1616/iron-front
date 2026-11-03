@@ -444,7 +444,7 @@ const AIR_Y = 6.5, PLANE_Y = 9;
 const NEUTRAL = -1, MILITIA = -2;   // MILITIA：村庄守军，跟所有玩家敌对
 const VILLAGE_BOUNTY = 1500, VILLAGE_RESPAWN = 120;   // 首次攻下的赏金；村庄无人占领多少秒后守军刷回
 let PLAYER = 0;   // 本机控制的队伍（联机时由房主分配）
-const GAME_VERSION = 'iron-4.8';
+const GAME_VERSION = 'iron-4.9';
 // 老兵等级：0 新兵 / 1 老兵 / 2 精英
 const RANKS = [
   { name: '', hp: 1, dmg: 1, rof: 1 },
@@ -560,6 +560,7 @@ const UNITS = {
   n_at:      { name: '火箭筒兵', cat: 'infantry', role: 'at', nation: 'north', cost: 220, time: 7, hp: 130, armor: 'inf', speed: 2.2, sight: 7, weapon: 'rpg', radius: 0.35, inf: true, req: [], desc: '火箭筒近距离打装甲伤害很高，但射程短（5.5 格），不能打飞机。' },
   n_spec:    { name: '喷火兵', cat: 'infantry', role: 'spec', nation: 'north', cost: 300, time: 8, hp: 180, armor: 'inf', speed: 2.3, sight: 6, weapon: 'flamer', radius: 0.35, inf: true, req: ['radar'], desc: '3 格内喷火，范围伤害。能直接烧伤碉堡和民房里的步兵。' },
   n_scout:   { name: '履带装甲侦察车', cat: 'vehicle', role: 'scout', nation: 'north', cost: 550, time: 8, hp: 320, armor: 'light', speed: 5.8, sight: 10, weapon: 'hmg', radius: 1.0, turret: true, turn: 4.5, req: ['factory'], desc: '比轮式侦察车慢，但装甲更厚，重机枪对步兵很凶。' },
+  n_apc:     { name: '履带装甲运兵车', cat: 'vehicle', role: 'apc', nation: 'north', cost: 700, time: 10, hp: 480, armor: 'heavy', speed: 4.4, sight: 8, weapon: 'hmg', garrison: 6, radius: 1.2, turret: true, turn: 3, req: ['factory'], desc: '能装 6 名步兵（选中步兵右键点车）。装甲厚，车里的步兵不会被打到；车被摧毁时步兵弹出并受伤。' },
   n_mbt:     { name: '“冻原”重型坦克', cat: 'vehicle', role: 'mbt', nation: 'north', cost: 900, time: 13, hp: 650, armor: 'heavy', speed: 3.6, sight: 8, weapon: 'gun125', radius: 1.25, turret: true, turn: 2.3, req: ['factory'], desc: '北岭主力。装甲厚、火炮重，但速度慢。' },
   n_aa:      { name: '四联装自行高炮', cat: 'vehicle', role: 'aa', nation: 'north', cost: 650, time: 10, hp: 340, armor: 'light', speed: 4.4, sight: 9, weapon: 'quadFlak', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '四门速射炮，射程近（7 格）但火力密集，能打飞机，也能扫地面步兵。' },
   n_arty:    { name: '152 毫米自行榴弹炮', cat: 'vehicle', role: 'arty', nation: 'north', cost: 1150, time: 16, hp: 300, armor: 'light', speed: 3.0, sight: 7, weapon: 'how152', radius: 1.3, turret: true, turn: 2, req: ['factory', 'radar'], desc: '射速慢，但每一发都有大范围杀伤。近处 3 格打不到。' },
@@ -579,6 +580,7 @@ const UNITS = {
   s_spec:    { name: '狙击手', cat: 'infantry', role: 'spec', nation: 'south', cost: 600, time: 12, hp: 100, armor: 'inf', speed: 2.4, sight: 11, weapon: 'sniper', radius: 0.35, inf: true, camo: true, req: ['radar'], desc: '9 格外一枪打死普通步兵，对车辆和建筑几乎无效。静止 3 秒后伪装隐蔽。' },
   s_scout:   { name: '武装皮卡', cat: 'vehicle', role: 'scout', nation: 'south', cost: 400, time: 6, hp: 200, armor: 'light', speed: 7.6, sight: 9, weapon: 'dshk', radius: 1.0, turret: true, turn: 5.5, req: ['factory'], desc: '民用皮卡装上重机枪，便宜又快，适合骚扰采矿车和步兵。' },
   s_scout2:  { name: '突击摩托兵', cat: 'vehicle', role: 'scout2', nation: 'south', cost: 350, time: 6, hp: 170, armor: 'light', speed: 8.5, sight: 9, weapon: 'motoMg', radius: 0.8, turn: 6, req: ['factory'], desc: '便宜、极快的机枪摩托，适合骚扰和侦察。' },
+  s_apc:     { name: '轮式运兵车', cat: 'vehicle', role: 'apc', nation: 'south', cost: 500, time: 8, hp: 280, armor: 'light', speed: 7.0, sight: 8, weapon: 'dshk', garrison: 5, radius: 1.1, turret: true, turn: 4.5, req: ['factory'], desc: '能装 5 名步兵（选中步兵右键点车），又快又便宜，装甲薄。车被摧毁时步兵弹出并受伤。' },
   s_mbt:     { name: '轻型坦克', cat: 'vehicle', role: 'mbt', nation: 'south', cost: 650, time: 10, hp: 380, armor: 'heavy', speed: 5.4, sight: 8, weapon: 'gun90', radius: 1.1, turret: true, turn: 3.2, req: ['factory'], desc: '速度快、便宜，装甲薄，适合成群包抄。' },
   s_aa:      { name: '车载防空导弹', cat: 'vehicle', role: 'aa', nation: 'south', cost: 700, time: 10, hp: 260, armor: 'light', speed: 5.2, sight: 10, weapon: 'samShort', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '双联防空导弹，一次齐射伤害高，装填慢。只能打飞机。' },
   s_arty:    { name: '“沙暴”火箭炮', cat: 'vehicle', role: 'arty', nation: 'south', cost: 1300, time: 18, hp: 320, armor: 'light', speed: 4.5, sight: 8, weapon: 'salvo', radius: 1.3, turret: true, turn: 2.6, req: ['factory', 'radar'], desc: '远程火箭齐射，一次 6 枚，覆盖一大片。' },
@@ -597,6 +599,7 @@ const UNITS = {
   g_at:      { name: '反坦克兵', cat: 'infantry', role: 'at', nation: 'gold', cost: 250, time: 8, hp: 130, armor: 'inf', speed: 2.3, sight: 8, weapon: 'atRocket', radius: 0.35, inf: true, garBonus: 1.4, req: [], desc: '肩扛火箭筒，克制装甲和直升机。' },
   g_spec:    { name: '迫击炮组', cat: 'infantry', role: 'spec', nation: 'gold', cost: 400, time: 10, hp: 120, armor: 'inf', speed: 2.2, sight: 8, weapon: 'mortar', radius: 0.35, inf: true, req: ['radar'], desc: '步兵携带的迫击炮，射程 9 格、范围伤害，近处 2 格打不到。' },
   g_scout:   { name: '8×8 轮式装甲车', cat: 'vehicle', role: 'scout', nation: 'gold', cost: 650, time: 9, hp: 340, armor: 'light', speed: 6.5, sight: 10, weapon: 'autoCannon', radius: 1.1, turret: true, turn: 4.5, req: ['factory'], desc: '30 毫米机关炮，能打步兵、轻装甲和直升机。' },
+  g_apc:     { name: '履带步兵战车', cat: 'vehicle', role: 'apc', nation: 'gold', cost: 800, time: 11, hp: 400, armor: 'light', speed: 5.0, sight: 8, weapon: 'autoCannon', garrison: 5, fireOut: 0.8, radius: 1.2, turret: true, turn: 3.2, req: ['factory'], desc: '能装 5 名步兵（选中步兵右键点车）。车上的步兵能从射击孔向外开火（伤害 80%）。车被摧毁时步兵弹出并受伤。' },
   g_mbt:     { name: '主战坦克', cat: 'vehicle', role: 'mbt', nation: 'gold', cost: 950, time: 13, hp: 550, armor: 'heavy', speed: 4.1, sight: 8, weapon: 'tankGun', radius: 1.2, turret: true, turn: 2.6, req: ['factory'], desc: '攻守均衡、偏耐打的主力坦克。' },
   g_aa:      { name: '弹炮合一防空车', cat: 'vehicle', role: 'aa', nation: 'gold', cost: 750, time: 11, hp: 320, armor: 'light', speed: 4.8, sight: 10, weapon: 'gunMissile', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '机炮加防空导弹，射程 10 格，只能打飞机。' },
   g_arty:    { name: '自行加榴炮', cat: 'vehicle', role: 'arty', nation: 'gold', cost: 1200, time: 15, hp: 260, armor: 'light', speed: 3.3, sight: 7, weapon: 'gunHow', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '射程最远的火炮（14.5 格），近处 3 格打不到。' },
@@ -616,6 +619,7 @@ const UNITS = {
   h_spec:    { name: '特种侦察兵', cat: 'infantry', role: 'spec', nation: 'hawk', cost: 500, time: 10, hp: 140, armor: 'inf', speed: 3.0, sight: 12, weapon: 'suppressed', radius: 0.35, inf: true, stealth: true, req: ['radar'], desc: '一直隐蔽，敌人 4 格以内才能发现（开火后暴露 2 秒）。视野 12 格，适合侦察。' },
   h_scout:   { name: '侦察车', cat: 'vehicle', role: 'scout', nation: 'hawk', cost: 500, time: 8, hp: 230, armor: 'light', speed: 7.0, sight: 11, weapon: 'scoutMg', radius: 1.0, turret: true, turn: 5, req: ['factory'], desc: '高速轮式车辆，视野开阔。' },
   h_scout2:  { name: '侦察无人机', cat: 'air', role: 'scout2', nation: 'hawk', cost: 400, time: 7, hp: 120, armor: 'air', speed: 10, sight: 14, radius: 0.9, air: true, turn: 4, pop: 1, req: ['helipad'], desc: '没有武器，视野 14 格，便宜。跟着部队飞，给火炮看清目标。' },
+  h_apc:     { name: '装甲救护运兵车', cat: 'vehicle', role: 'apc', nation: 'hawk', cost: 750, time: 10, hp: 380, armor: 'light', speed: 6.2, sight: 9, weapon: 'scoutMg', garrison: 5, medic: 0.04, radius: 1.2, turret: true, turn: 4, req: ['factory'], desc: '能装 5 名步兵（选中步兵右键点车）。车里的步兵每秒回复 4% 生命。车被摧毁时步兵弹出并受伤。' },
   h_mbt:     { name: '中型坦克', cat: 'vehicle', role: 'mbt', nation: 'hawk', cost: 1000, time: 13, hp: 560, armor: 'heavy', speed: 4.5, sight: 9, weapon: 'precGun', radius: 1.2, turret: true, turn: 2.8, req: ['factory'], desc: '火控先进，射程 7 格（别国坦克 6~6.5 格），速度快，价格高。' },
   h_aa:      { name: '远程防空导弹车', cat: 'vehicle', role: 'aa', nation: 'hawk', cost: 900, time: 12, hp: 280, armor: 'light', speed: 4.6, sight: 11, weapon: 'samLong', radius: 1.1, turret: true, turn: 3, req: ['factory', 'radar'], desc: '射程 13 格的防空导弹，只能打飞机。' },
   h_arty:    { name: '精确制导炮', cat: 'vehicle', role: 'arty', nation: 'hawk', cost: 1200, time: 16, hp: 250, armor: 'light', speed: 3.6, sight: 8, weapon: 'precArty', radius: 1.2, turret: true, turn: 2.2, req: ['factory', 'radar'], desc: '制导炮弹不散布，伤害集中在目标上，溅射范围小。近处 3 格打不到。' },
@@ -665,7 +669,7 @@ for (const k in UNITS) UNITS[k].type = k;
 // 人口：单位占用 / 建筑提供（总上限 POP_MAX）
 const POP_MAX = 150;
 const ROLE_POP = {
-  inf: 1, at: 1, spec: 1, engineer: 1, scout: 2, scout2: 2, harvester: 0, mbt: 3, aa: 3, arty: 3, elite: 4,
+  inf: 1, at: 1, spec: 1, engineer: 1, scout: 2, scout2: 2, apc: 2, harvester: 0, mbt: 3, aa: 3, arty: 3, elite: 4,
   heli: 3, heli2: 4, fighter: 3, striker: 3, bomber: 5, boat: 2, destroyer: 4, sub: 3, cruiser: 5,
 };
 for (const k in UNITS) UNITS[k].pop = UNITS[k].pop ?? ROLE_POP[UNITS[k].role] ?? 2;
@@ -1845,6 +1849,17 @@ function styledUnit(type, team, N, p, L, T, m) {
       m.muzzle = { y: 1.05, z: 0.9 };
       break;
     }
+    case 'n_apc': {
+      // 履带装甲运兵车：高箱形车体 + 大后门 + 顶部舱盖 + 圆顶机枪塔
+      tracks(L, 2.6, 1.72, 0.3, 6, { wr: 0.18 });
+      L.push(hullGeo(1.3, 0.78, 2.55, 0.75, 0.06, 0.1, bs, 0, 0.42, 0), B(1.74, 0.05, 2.6, dk, 0, 0.53, 0), B(1.1, 0.08, 0.2, acc, 0, 1.24, -1.0));
+      L.push(B(0.8, 0.58, 0.06, dk, 0, 0.82, -1.29), B(0.06, 0.06, 0.12, C.steel, 0.3, 0.86, -1.34), B(0.7, 0.03, 0.03, C.steel, 0, 1.0, -1.33));
+      for (const s of [-1, 1]) L.push(CY(0.2, 0.2, 0.05, dk, s * 0.3, 1.22, -0.55, 10), CY(0.16, 0.16, 0.65, 0x4a5236, s * 0.62, 1.0, -1.05, 10, Math.PI / 2));
+      L.push(B(0.35, 0.12, 0.25, C.glass, -0.3, 1.0, 0.68, 0, -0.6));
+      T.push(SP(0.3, bs, 0.25, 1.2, 0.2, 10, 6, 0.6, Math.PI / 2), barrel(0.04, 0.75, 0.25, 1.3, 0.4, 0, C.dark), B(0.12, 0.1, 0.22, dk, 0.42, 1.32, 0.1));
+      m.muzzle = { y: 1.3, z: 1.15 };
+      break;
+    }
     case 'n_mbt': {
       // “冻原”重型坦克：铸造圆炮塔、反应装甲块、抽烟装置、车尾油桶
       tracks(L, 2.75, 1.78, 0.34, 6, { wr: 0.21 });
@@ -1913,6 +1928,17 @@ function styledUnit(type, team, N, p, L, T, m) {
       m.muzzle = { y: 0.92, z: 1.0 };
       break;
     }
+    case 's_apc': {
+      // 轮式运兵车：四个大越野轮 + 侧面观察窗 + 车顶帆布行李架 + 带护盾的机枪
+      wheelsAt(L, 0.64, 0.34, [0.82, -0.75], 0.34, 0.24);
+      L.push(B(1.15, 0.2, 2.4, C.dark, 0, 0.5, 0), hullGeo(1.22, 0.68, 2.4, 0.6, 0.15, 0.1, bs, 0, 0.58, 0), B(1.0, 0.24, 0.05, C.glass, 0, 1.02, 0.82, 0, -0.75));
+      for (const s of [-1, 1]) for (const z of [0.2, -0.25, -0.7]) L.push(B(0.04, 0.13, 0.24, C.glass, s * 0.575, 0.98, z));
+      L.push(B(0.85, 0.12, 0.95, 0xbca67c, 0, 1.33, -0.55), B(0.9, 0.04, 1.0, C.dark, 0, 1.27, -0.55), B(1.24, 0.08, 0.14, acc, 0, 1.24, 0.2), B(1.25, 0.1, 0.12, C.steel, 0, 0.6, 1.24));
+      L.push(B(0.6, 0.5, 0.05, dk, 0, 0.88, -1.21), CY(0.12, 0.12, 0.3, 0x5a6a3a, 0.48, 0.78, -1.3, 8));
+      T.push(CY(0.02, 0.02, 0.3, C.dark, 0, 1.35, 0.15, 4), B(0.13, 0.13, 0.42, C.dark, 0, 1.52, 0.15), barrel(0.04, 0.7, 0, 1.54, 0.35, 0.05, C.dark), B(0.42, 0.26, 0.04, dk, 0, 1.58, 0.36));
+      m.muzzle = { y: 1.55, z: 1.05 };
+      break;
+    }
     case 's_mbt': {
       // 轻型坦克：大负重轮、低矮车体、小炮塔、帆布和杂物箱
       tracks(L, 2.2, 1.45, 0.3, 4, { wr: 0.24 });
@@ -1966,6 +1992,16 @@ function styledUnit(type, team, N, p, L, T, m) {
       L.push(hullGeo(1.3, 0.62, 2.6, 0.6, 0.15, 0.12, bs, 0, 0.38, 0), B(1.32, 0.06, 2.4, dk, 0, 0.56, -0.05), B(0.9, 0.07, 0.22, acc, 0, 1.0, -0.95), B(0.3, 0.14, 0.04, C.glass, -0.3, 0.88, 0.85, 0, -0.6));
       T.push(hullGeo(0.95, 0.32, 1.0, 0.3, 0.1, 0.12, bs, 0, 1.0, -0.1), barrel(0.045, 1.15, 0, 1.15, 0.35, 0.05, C.dark), B(0.14, 0.14, 0.14, C.glass, 0.3, 1.38, 0.0), B(0.2, 0.12, 0.25, dk, -0.32, 1.2, 0.1));
       m.muzzle = { y: 1.16, z: 1.5 };
+      break;
+    }
+    case 'g_apc': {
+      // 履带步兵战车：楔形车体 + 侧裙 + 两侧射击孔 + 尾部跳板门 + 偏置机关炮塔
+      tracks(L, 2.7, 1.76, 0.3, 6, { wr: 0.19, skirt: dk, skirtH: 0.32, stripe: acc });
+      L.push(hullGeo(1.32, 0.62, 2.7, 0.85, 0.05, 0.08, bs, 0, 0.45, 0), B(1.8, 0.05, 2.7, dk, 0, 0.55, 0));
+      for (const s of [-1, 1]) for (const z of [-0.15, -0.55, -0.95]) L.push(B(0.05, 0.09, 0.09, C.dark, s * 0.63, 0.84, z), CY(0.035, 0.035, 0.08, C.steel, s * 0.67, 0.84, z, 6, 0, Math.PI / 2));
+      L.push(B(1.0, 0.52, 0.06, dk, 0, 0.75, -1.37), B(0.9, 0.03, 0.03, C.yellow, 0, 0.99, -1.4), B(0.3, 0.1, 0.25, C.glass, -0.35, 1.04, 0.45, 0, -0.6));
+      T.push(hullGeo(0.82, 0.32, 0.95, 0.25, 0.05, 0.12, bs, 0.12, 1.07, -0.1), B(0.84, 0.05, 0.22, acc, 0.12, 1.36, -0.45), barrel(0.04, 1.1, 0.12, 1.24, 0.35, 0, C.dark), B(0.18, 0.14, 0.34, dk, 0.5, 1.3, -0.2), CY(0.1, 0.1, 0.1, C.glass, -0.15, 1.44, -0.2, 8));
+      m.muzzle = { y: 1.24, z: 1.45 };
       break;
     }
     case 'g_mbt': {
@@ -2031,6 +2067,17 @@ function styledUnit(type, team, N, p, L, T, m) {
       m.rotor = rotorGeo(1.3, 2, 0.1); m.rotorY = 0.3; m.rotorZ = 0.05;
       m.tailRotor = tailRotorGeo(0.18); m.tailPos = [0.05, 0.12, -1.42];
       m.muzzle = { y: -0.25, z: 0.3 };
+      break;
+    }
+    case 'h_apc': {
+      // 装甲救护运兵车：8 轮车 + 车顶红十字白板 + 遥控武器站 + 天线
+      wheelsAt(L, 0.66, 0.3, [0.95, 0.35, -0.3, -0.9], 0.28, 0.2);
+      L.push(B(1.15, 0.18, 2.6, C.dark, 0, 0.42, 0), hullGeo(1.32, 0.62, 2.6, 0.8, 0.1, 0.12, bs, 0, 0.46, 0), B(1.0, 0.2, 0.05, C.glass, 0, 0.88, 0.72, 0, -0.85));
+      L.push(B(0.8, 0.03, 0.8, P_HAWK_WHITE, 0, 1.09, -0.6), B(0.5, 0.035, 0.13, 0xc02020, 0, 1.11, -0.6), B(0.13, 0.035, 0.5, 0xc02020, 0, 1.11, -0.6));
+      L.push(B(0.7, 0.5, 0.05, dk, 0, 0.8, -1.26), B(0.3, 0.3, 0.02, P_HAWK_WHITE, 0, 0.82, -1.29), B(0.2, 0.06, 0.025, 0xc02020, 0, 0.82, -1.3), B(0.06, 0.2, 0.025, 0xc02020, 0, 0.82, -1.3));
+      L.push(CY(0.012, 0.012, 0.9, C.dark, -0.5, 1.5, -1.0, 4), B(0.95, 0.06, 0.18, acc, 0, 1.1, 0.15));
+      T.push(B(0.3, 0.2, 0.4, 0x4c5860, 0, 1.18, 0.2), barrel(0.03, 0.6, 0, 1.2, 0.4, 0, C.dark), B(0.12, 0.1, 0.1, C.glass, 0.17, 1.24, 0.3));
+      m.muzzle = { y: 1.2, z: 1.0 };
       break;
     }
     case 'h_mbt': {
@@ -4677,6 +4724,12 @@ function recalcTeam(t) {
   if (T.human && T.lowPower && !was && G.state === 'playing') tnotify(T.id, '电力不足！', 'bad', 'alert');
 }
 const dockPos = b => ({ x: b.x, z: b.z + b.h * TILE / 2 + 1.0 });
+// 运兵车下车位置：车尾后面最近的可走格
+function exitPosVehicle(v) {
+  const bx = v.x - Math.sin(v.angle) * 3, bz = v.z - Math.cos(v.angle) * 3;
+  const n = nearestWalkable(tileOf(bx), tileOf(bz), 6, tileOf(bx), tileOf(bz));
+  return n ? { x: tc(n.x), z: tc(n.z) } : { x: v.x, z: v.z };
+}
 function exitPos(b) {
   const n = nearestWalkable(tileOf(b.x), b.tz + b.h, 8, tileOf(b.x), b.tz + b.h + 2);
   return n ? { x: tc(n.x), z: tc(n.z) } : { x: b.x, z: b.z + b.h * TILE / 2 + 1 };
@@ -4962,9 +5015,9 @@ function followPath(u) {
 }
 function separation() {
   for (const u of units) {
-    if (!u.alive || u.def.air) continue;
+    if (!u.alive || u.def.air || u.inside) continue;
     queryHash(u.x, u.z, u.radius + 1.6, (o) => {
-      if (o.id <= u.id || !o.alive || o.def.air) return;
+      if (o.id <= u.id || !o.alive || o.def.air || o.inside) return;
       const dx = o.x - u.x, dz = o.z - u.z, rr = u.radius + o.radius;
       const d2 = dx * dx + dz * dz;
       if (d2 >= rr * rr) return;
@@ -5111,7 +5164,7 @@ function fireWeapon(s, t) {
   const w = s.weapon;
   if (Net.isHost) Net.event({ k: 'f', s: s.id, t: t.id });
   let dmgMul = natOf(s.team).dmgMul * RANKS[rankOf(s)].dmg;
-  if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? s.def.garBonus || 1.2 : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
+  if (s.kind === 'u' && s.def.inf) dmgMul *= (s.inside ? (s.inside.kind === 'u' ? s.inside.def.fireOut || 1 : s.def.garBonus || 1.2) : 1) * (hasUpg(s.team, 'upAP') ? 1.2 : 1);
   if (s.kind === 'u' && s.def.ambush && !s.inside && terrainAt(s.x, s.z) === T_TREE) dmgMul *= 1.25;   // 民兵林地伏击
   if (s.kind === 'u' && s.def.cat === 'vehicle' && w.wh !== 'he' && hasUpg(s.team, 'upFire')) dmgMul *= 1.15;
   if (s.kind === 'u' && (s.def.air || w.wh === 'he') && hasUpg(s.team, 'upGuide')) dmgMul *= 1.2;
@@ -5405,7 +5458,7 @@ function unitTick(u) {
   if (u.inside) return garrisonTick(u);
   if (u.def.plane) return planeTick(u);
   if (u.def.harvester) return harvesterTick(u);
-  if (u.def.engineer) return engineerTick(u);
+  if (u.def.engineer && u.order.type !== 'garrison') return engineerTick(u);
   combatTick(u);
 }
 function combatTick(u) {
@@ -5413,7 +5466,7 @@ function combatTick(u) {
   if (o.type === 'garrison') {
     const b = o.target;
     if (!b.alive || !canHold(b, u.team) || garrisonCount(b) >= b.def.garrison) { u.order = { type: 'idle' }; u.guardX = u.x; u.guardZ = u.z; u.path = null; return; }
-    if (rectDist(u.x, u.z, b) < 1.7) { garrisonEnter(u, b); return; }
+    if (distTo(u, b) < 1.7) { garrisonEnter(u, b); return; }
     chase(u, b);
     return;
   }
@@ -5815,17 +5868,18 @@ function commandEnter(list, b) {
 }
 
 // ---------------------------------------------------------------------
-// 步兵碉堡：进驻 / 在里面开火 / 撤出
+// 步兵碉堡 / 运兵车：进驻 / 在里面开火 / 撤出
 // ---------------------------------------------------------------------
-const canGarrison = u => u.alive && u.def.inf && u.weapon && !u.inside && !u.chute;
+// 碉堡和民房只进有武器的步兵；运兵车（b 是单位）工程师也能上
+const canGarrison = (u, b) => u.alive && u.def.inf && (u.weapon || (b && b.kind === 'u')) && !u.inside && !u.chute;
 const garrisonCount = b => { let n = 0; for (const u of units) if (u.alive && u.inside === b) n++; return n; };
-// 能否进驻：自己的碉堡，或者空着 / 自己人占着的中立民房
-const canHold = (b, team) => b.alive && !!b.def.garrison && (b.team === team || (b.team < 0 && ((b.garTeam ?? -1) < 0 || b.garTeam === team)));
+// 能否进驻：自己的碉堡 / 运兵车，或者空着 / 自己人占着的中立民房
+const canHold = (b, team) => b.alive && !!b.def.garrison && (b.team === team || (b.kind === 'b' && b.team < 0 && ((b.garTeam ?? -1) < 0 || b.garTeam === team)));
 function commandGarrison(list, b) {
   let free = b.def.garrison - garrisonCount(b);
   for (const u of list) {
-    if (!canGarrison(u) || !canHold(b, u.team)) continue;
-    if (free-- <= 0) { u.order = { type: 'move', x: b.x, z: b.z + b.h * TILE / 2 + 2 }; requestPath(u, u.order.x, u.order.z); continue; }
+    if (!canGarrison(u, b) || !canHold(b, u.team)) continue;
+    if (free-- <= 0) { u.order = { type: 'move', x: b.x, z: b.z + (b.kind === 'u' ? 3 : b.h * TILE / 2 + 2) }; requestPath(u, u.order.x, u.order.z); continue; }
     u.order = { type: 'garrison', target: b }; u.target = null; u.chaseT = null; u.nextRepath = 0;
   }
 }
@@ -5841,7 +5895,7 @@ function ejectUnit(u, hurt = false) {
   const b = u.inside;
   u.inside = null;
   if (b.team < 0 && !garrisonCount(b)) b.garTeam = -1;   // 民房空了就恢复中立
-  const e = exitPos(b);
+  const e = b.kind === 'u' ? exitPosVehicle(b) : exitPos(b);
   u.x = u.px = e.x + rnd(-0.6, 0.6); u.z = u.pz = e.z + rnd(-0.6, 0.6);
   u.guardX = u.x; u.guardZ = u.z; u.order = { type: 'idle' }; u.target = null; u.path = null;
   if (hurt) { u.hp -= u.maxHp * 0.5; if (u.hp <= 0) { u.hp = 1; kill(u, null); } }
@@ -5850,7 +5904,13 @@ function garrisonTick(u) {
   const b = u.inside;
   if (!b.alive || !canHold(b, u.team)) { ejectUnit(u, b.hp <= 0); return; }   // 碉堡被摧毁才会受伤，出售则安全撤出
   u.moving = false;
-  const range = (u.weapon.range + 1) * TILE + b.radius * 0.5;
+  if (b.kind === 'u') {
+    // 运兵车：跟着车走；救护车每秒回血；只有带射击孔的车里的步兵能开火
+    u.x = b.x; u.z = b.z; u.angle = b.angle;
+    if (b.def.medic && u.hp < u.maxHp && (G.tick + u.id) % TPS === 0) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * b.def.medic);
+    if (!b.def.fireOut || !u.weapon) { u.target = null; return; }
+  }
+  const range = (u.weapon.range + (b.kind === 'u' ? 0 : 1)) * TILE + b.radius * 0.5;
   if (u.target && (!u.target.alive || u.target.inside || u.target.team === u.team || distTo(u, u.target) > range)) u.target = null;
   if (!u.target && (G.tick + u.id) % 5 === 0) u.target = findTarget(u, range);
   if (u.target && u.cd <= 0) {
@@ -6565,9 +6625,9 @@ class AIController {
     const army = all.filter(u => !u.def.plane && !u.def.naval);
     // 按定位写配比，再换成本国的单位；各国按性格加权
     const roleW = time < 420 ? { inf: 4, at: 2, scout: 2, scout2: 1, mbt: 3 }
-      : time < 960 ? { inf: 2, at: 3, spec: 1, scout: 1, scout2: 1, mbt: 5, aa: 1, arty: 1, elite: 1, heli: 1, boat: 2, destroyer: 3, sub: 2, fighter: 1, striker: 2 }
-        : { inf: 2, at: 2, spec: 1, mbt: 5, aa: 1, arty: 2, elite: 2, heli: 2, heli2: 2, scout2: 1, boat: 1, destroyer: 3, sub: 2, cruiser: 2, fighter: 1, striker: 2, bomber: 1 };
-    const NAT_W = { north: { mbt: 1.4, elite: 1.3, inf: 1.3, scout2: 0 }, south: { scout: 1.6, scout2: 2, mbt: 1.2, arty: 1.3, heli: 1.2 },
+      : time < 960 ? { inf: 2, at: 3, spec: 1, scout: 1, scout2: 1, apc: 2, mbt: 5, aa: 1, arty: 1, elite: 1, heli: 1, boat: 2, destroyer: 3, sub: 2, fighter: 1, striker: 2 }
+        : { inf: 2, at: 2, spec: 1, apc: 1, mbt: 5, aa: 1, arty: 2, elite: 2, heli: 2, heli2: 2, scout2: 1, boat: 1, destroyer: 3, sub: 2, cruiser: 2, fighter: 1, striker: 2, bomber: 1 };
+    const NAT_W = { north: { mbt: 1.4, elite: 1.3, inf: 1.3, scout2: 0, apc: 1.2 }, south: { scout: 1.6, scout2: 2, apc: 1.3, mbt: 1.2, arty: 1.3, heli: 1.2 },
       gold: { arty: 1.5, spec: 1.3, aa: 1.2 }, hawk: { heli: 2, heli2: 1.5, striker: 1.4, fighter: 1.3, scout2: 1, inf: 0.7 } }[T.nation];
     const comp = {};
     for (const r in roleW) { const k = unitFor(T.nation, r); if (k) comp[k] = (comp[k] || 0) + roleW[r] * (NAT_W[r] ?? 1); }
@@ -6613,6 +6673,24 @@ class AIController {
     } else {
       const r = this.rally();
       for (const u of home) if (u.order.type === 'idle' && !u.target && Math.hypot(u.x - r.x, u.z - r.z) > 24) commandMove([u], r.x + rnd(-6, 6), r.z + rnd(-6, 6));
+    }
+    // --- 运兵车：在家时装上附近闲着的步兵；碰到敌人或出征时受重伤就全部下车 ---
+    const foeNear = (v, R) => units.some(o => o.alive && !o.inside && !o.def.air && (this.isEnemy(o.team) || o.team === MILITIA) && Math.hypot(o.x - v.x, o.z - v.z) < R) ||
+      buildings.some(b => b.alive && this.isEnemy(b.team) && rectDist(v.x, v.z, b) < R);
+    for (const v of army) {
+      if (!v.def.garrison) continue;
+      const n = garrisonCount(v);
+      if (n && (v.target || (v.wave && v.hp < v.maxHp * 0.5) || foeNear(v, 10 * TILE))) {
+        for (const u of units) if (u.alive && u.inside === v) { ejectUnit(u); if (v.wave) u.wave = v.wave; }
+        continue;
+      }
+      // 出征后还没追上车的步兵不再追
+      if (v.wave) { for (const o of units) if (o.alive && o.order.type === 'garrison' && o.order.target === v) { o.order = { type: 'idle' }; o.guardX = o.x; o.guardZ = o.z; o.path = null; } continue; }
+      if (baseThreat || v.hp < v.maxHp * 0.5) continue;
+      const free = v.def.garrison - n - units.filter(o => o.alive && o.order.type === 'garrison' && o.order.target === v).length;
+      if (free <= 0) continue;
+      const inf = home.filter(u => u.def.inf && canGarrison(u, v) && u.order.type === 'idle' && !u.target && Math.hypot(u.x - v.x, u.z - v.z) < 10 * TILE);
+      if (inf.length) commandGarrison(inf.slice(0, free), v);
     }
     // --- 清村庄守军：家里兵够了就去打最近的有守军的村庄 ---
     if (time > 150 && G.tick - (this.lastVillageCmd || 0) > 25 * TPS) {
@@ -6847,12 +6925,17 @@ function contextCommand(sx, sy) {
     addMarker(t.x, t.z, '#60c0ff', 0.6);
     return;
   }
-  // 右键己方碉堡：步兵进驻，其余单位移动到碉堡旁边
-  const grunts = own.filter(canGarrison);
-  if (t && t.kind === 'b' && canHold(t, PLAYER) && grunts.length) {
-    if (garrisonCount(t) >= t.def.garrison) { notify('碉堡已满（最多 ' + t.def.garrison + ' 人）', 'bad'); return; }
+  // 右键运兵车自己：全部下车
+  if (t && t.kind === 'u' && t.team === PLAYER && t.def.garrison && own.length === 1 && own[0] === t) {
+    if (garrisonCount(t)) { issueCommand({ c: 'unload', bid: t.id }); addMarker(t.x, t.z, '#60c0ff', 0.6); }
+    return;
+  }
+  // 右键己方碉堡 / 运兵车：步兵进驻，其余单位移动到旁边
+  const grunts = own.filter(u => t && canGarrison(u, t));
+  if (t && canHold(t, PLAYER) && grunts.length) {
+    if (garrisonCount(t) >= t.def.garrison) { notify((t.kind === 'u' ? '运兵车' : '碉堡') + '已满（最多 ' + t.def.garrison + ' 人）', 'bad'); return; }
     issueCommand({ c: 'garrison', ids: idsOf(grunts), bid: t.id });
-    const rest = own.filter(u => !grunts.includes(u));
+    const rest = own.filter(u => !grunts.includes(u) && u !== t);
     if (rest.length) issueCommand({ c: 'move', ids: idsOf(rest), x: t.x, z: t.z + 5 });
     addMarker(t.x, t.z, '#60c0ff', 0.6);
     return;
@@ -7898,7 +7981,7 @@ function renderSelPanel() {
     const e = selection[0], d = e.def;
     const teamName = e.team === PLAYER ? '' : e.team >= 0 ? `<span style="color:${teamColor(e.team)}">（${teams[e.team].name}·${NATIONS[teams[e.team].nation].short}）</span>` : e.team === MILITIA ? '<span style="color:#b05a48">（村庄守军）</span>' : '<span style="color:#aaa">（中立）</span>';
     let cmds = '';
-    if (e.team === PLAYER && e.kind === 'u') cmds = `<button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>`;
+    if (e.team === PLAYER && e.kind === 'u') cmds = `<button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>` + (d.garrison ? `<button data-c="unload">全部下车</button>` : '');
     if (e.team === PLAYER && e.kind === 'b') {
       if (e.type !== 'hq' && !d.derrick) cmds += `<button data-c="sell">出售</button>`;
       if (!d.derrick) cmds += `<button data-c="repair">${e.repairing ? '停止维修' : '维修'}</button>`;
@@ -7915,7 +7998,7 @@ function renderSelPanel() {
     let html = '<div class="multi">';
     for (const t in counts) html += `<div class="mi" data-t="${t}" title="${defOf(t, PLAYER).name}"><img src="${ICONS[t] || ''}"><span>${counts[t]}</span></div>`;
     html += `</div><div class="sub" style="margin-top:4px">已选择 ${selection.length} 个单位（点击图标只选该类）</div>`;
-    html += `<div class="cmds"><button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button></div>`;
+    html += `<div class="cmds"><button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>${ownUnitsSelected().some(u => u.def.garrison) ? '<button data-c="unload">全部下车</button>' : ''}</div>`;
     p.innerHTML = html;
     p.querySelectorAll('.mi').forEach(el => el.addEventListener('click', () => setSelection(selection.filter(e => e.type === el.dataset.t))));
   }
@@ -7926,7 +8009,11 @@ function renderSelPanel() {
     if (c === 'sell' && e) issueCommand({ c: 'sell', bid: e.id });
     if (c === 'repair' && e) { e.repairing = !e.repairing; issueCommand({ c: 'repair', bid: e.id, on: e.repairing }); renderSelPanel(); }
     if (c === 'primary' && e) { issueCommand({ c: 'primary', bid: e.id }); notify(e.def.name + ' 已设为主建筑'); }
-    if (c === 'unload' && e) issueCommand({ c: 'unload', bid: e.id });
+    if (c === 'unload' && e) {
+      const carriers = ownUnitsSelected().filter(u => u.def.garrison);
+      if (carriers.length) for (const v of carriers) issueCommand({ c: 'unload', bid: v.id });
+      else issueCommand({ c: 'unload', bid: e.id });
+    }
     Sound.play('click');
   }));
   updateSelPanel();
@@ -7945,7 +8032,7 @@ function updateSelPanel() {
   else if (e.def.derrick) s += e.team === NEUTRAL ? (guardLocked(e) ? '　村庄还有守军，先消灭守军' : '　派工程师占领') : `　收入 +${e.def.income}/秒`;
   if (e.type === 'silo' && e.team === PLAYER) { const T = teams[PLAYER]; s += T.superReady ? '　导弹就绪' : `　充能 ${Math.floor(T.superCharge / superMax() * 100)}%`; }
   if (e.type === 'abm') s += e.abmReady ? `　拦截弹就绪　保护 ${ABM_R} 格` : e.team === PLAYER && !Net.isClient ? `　装填 ${Math.floor(e.abmCharge / abmMax() * 100)}%` : '　装填中';
-  if (e.def.garrison) s += `　进驻 ${garrisonCount(e)}/${e.def.garrison}`;
+  if (e.def.garrison) s += `　${e.kind === 'u' ? '载员' : '进驻'} ${garrisonCount(e)}/${e.def.garrison}`;
   if (e.kind === 'b' && e.def.popCap) s += `　人口 +${e.def.popCap}`;
   if (e.weapon) s += `　射程 ${e.weapon.range} 格`;
   if (e.def.plane) s += `　弹药 ${e.ammo}/${e.def.ammo}${e.parked ? '（停机）' : ''}`;
@@ -8019,7 +8106,7 @@ const ARMOR_NAME = { inf: '步兵', light: '轻甲', heavy: '重甲', bld: '建�
 const WARHEAD_NAME = { small: '机枪', ap: '穿甲炮弹', he: '高爆炮弹', rocket: '火箭/导弹', flak: '高射炮', torpedo: '鱼雷', aam: '防空导弹', bomb: '航空炸弹', fire: '火焰', sniper: '狙击' };
 // 指南里的“我的国家”（没开局时按北岭显示）
 const gNat = () => (teams[PLAYER] && teams[PLAYER].nation) || 'north';
-const ROLE_NAME = { inf: '基础步兵', at: '反坦克步兵', spec: '特种步兵', scout: '侦察车', scout2: '侦察（二）', mbt: '主战坦克', aa: '防空', arty: '火炮', elite: '科技中心单位',
+const ROLE_NAME = { inf: '基础步兵', at: '反坦克步兵', spec: '特种步兵', scout: '侦察车', scout2: '侦察（二）', apc: '运兵车', mbt: '主战坦克', aa: '防空', arty: '火炮', elite: '科技中心单位',
   heli: '直升机', heli2: '王牌直升机', fighter: '截击机', striker: '攻击机', bomber: '轰炸机', boat: '小艇', destroyer: '驱逐舰', sub: '潜艇', cruiser: '巡洋舰' };
 // 一个单位的擅长目标说明
 function unitGood(d) {
@@ -8163,7 +8250,7 @@ const GUIDE = [
   {
     id: 'unit', title: '单位一览', html: () => {
       const me = gNat();
-      let h = '<p>四个国家的单位定位相同、性格不同。先看对照表，再看各国的详细数值。</p><h3>陆军对照</h3>' + roleTable(['inf', 'at', 'spec', 'scout', 'scout2', 'mbt', 'aa', 'arty', 'elite']);
+      let h = '<p>四个国家的单位定位相同、性格不同。先看对照表，再看各国的详细数值。</p><h3>陆军对照</h3>' + roleTable(['inf', 'at', 'spec', 'scout', 'scout2', 'apc', 'mbt', 'aa', 'arty', 'elite']);
       for (const n of [me, ...NATION_KEYS.filter(k => k !== me)]) {
         h += `<h3>${NATIONS[n].name}${n === me && teams[PLAYER] ? '（你的国家）' : ''}</h3><div class="gcards">`;
         for (const k in UNITS) { const d = UNITS[k]; if (d.nation === n && !d.naval) h += unitCard(k, d); }
@@ -8173,6 +8260,8 @@ const GUIDE = [
       for (const k of ['engineer', 'harvester']) h += unitCard(k, UNITS[k]);
       h += `<p style="color:var(--ui-dim)">工程师和采矿车每国都有，名字和数值略有不同（例如北岭的重型采矿车更耐打、赤砂的轻型采矿车更快更便宜）。</p>`;
       h += `</div><h3>步兵生存</h3><p>步兵会卧倒，只受 <b>60%</b> 的爆炸溅射伤害。把步兵放进<b>步兵碉堡</b>（选中步兵，右键点自己的碉堡）：最多 5 人，射程 +1 格、伤害 +20%（金穗 +40%），敌人只能先拆碉堡——但<b>喷火兵</b>的火焰能直接烧到里面的人。</p>
+        <h3>运兵车</h3><p>每国都能在战车工厂造运兵车，把步兵快速送到前线。<b>上车</b>：选中步兵（工程师也行），右键点自己的运兵车，步兵会跑过去上车（车开着也会追上去）。<b>下车</b>：选中运兵车点「全部下车」，或者只选中运兵车时右键点它自己，步兵从车尾下来。车里的步兵不会被打到；车被摧毁时步兵弹出，生命掉一半。</p>
+        <ul><li><b>北岭</b>履带装甲运兵车：最耐打，能装 6 人。</li><li><b>赤砂</b>轮式运兵车：最快最便宜，装甲薄。</li><li><b>金穗</b>履带步兵战车：车上的步兵能从射击孔向外开火（伤害 80%）。</li><li><b>灰鹰</b>装甲救护运兵车：车里的步兵每秒回复 4% 生命。</li></ul>
         <h3>特殊能力</h3><ul>
           <li><b>伪装</b>（赤砂狙击手、反坦克导弹组）：静止 3 秒后隐蔽，敌人 4 格以内才能发现，开火后暴露 2 秒。</li>
           <li><b>隐蔽</b>（灰鹰特种侦察兵）：移动中也隐蔽，敌人 4 格以内才能发现。研究<b>热成像</b>后，发现距离变成 8 格。</li>
@@ -9078,7 +9167,7 @@ const Net = {
       ud[o + 2] = Math.round(u.x * 50); ud[o + 3] = Math.round(u.z * 50); ud[o + 4] = Math.round(u.y * 50);
       ud[o + 5] = Math.round(wrapA(u.angle) * 10000); ud[o + 6] = Math.round(wrapA(u.turretAngle) * 10000);
       // flags：bit0 移动 / bit1 伞降 / bit2-3 军衔 / bit4 停在机场
-      ud[o + 7] = Math.ceil(Math.max(0, u.hp)); ud[o + 8] = (u.moving ? 1 : 0) | (u.chute ? 2 : 0) | (u.rank << 2) | (u.parked ? 16 : 0) | (u.inside ? 32 : 0);
+      ud[o + 7] = Math.ceil(Math.max(0, u.hp)); ud[o + 8] = (u.moving ? 1 : 0) | (u.chute ? 2 : 0) | (u.rank << 2) | (u.parked ? 16 : 0) | (u.inside ? 32 : 0) | (u.inside && u.inside.kind === 'u' ? 64 : 0);
       ud[o + 9] = u.def.plane ? u.ammo : Math.round((u.cargo || 0) / HARV_CAP * 100);
     });
     const bid = new Int32Array(bs.length), bd = new Int16Array(bs.length * 7);
@@ -9124,7 +9213,7 @@ function applySnapshot(m) {
     seenB.add(id);
   }
   // 单位
-  const uid = asI32(m.uid), ud = asI16(m.ud), seenU = new Set();
+  const uid = asI32(m.uid), ud = asI16(m.ud), seenU = new Set(), riders = [];
   for (let i = 0; i < uid.length; i++) {
     const o = i * 10, id = uid[i], x = ud[o + 2] / 50, z = ud[o + 3] / 50;
     let u = entById.get(id);
@@ -9138,12 +9227,19 @@ function applySnapshot(m) {
     const fl = ud[o + 8], rk = (fl >> 2) & 3;
     if (rk !== u.rank) { u.maxHp *= RANKS[rk].hp / RANKS[u.rank].hp; u.rank = rk; }
     u.hp = ud[o + 7]; u.moving = !!(fl & 1); if (u.moving) u.movedT = G.tick; u.chute = !!(fl & 2); u.parked = !!(fl & 16);
-    const inB = (fl & 32) ? entById.get(bldGrid[tileOf(z) * MAP + tileOf(x)]) : null;
+    // 在运兵车里的步兵等所有单位位置更新完再找车；否则按格子找所在的建筑
+    if (fl & 64) riders.push(u);
+    const inB = (fl & 64) ? u.inside : (fl & 32) ? entById.get(bldGrid[tileOf(z) * MAP + tileOf(x)]) : null;
     if (inB && !u.inside) { const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); } }
     u.inside = inB || null;
     if (u.def.plane) u.ammo = ud[o + 9]; else u.cargo = ud[o + 9] / 100 * HARV_CAP;
     if (u.cargoMesh) { u.cargoMesh.visible = u.cargo > 0; u.cargoMesh.scale.y = Math.max(0.05, u.cargo / HARV_CAP); }
     seenU.add(id);
+  }
+  for (const u of riders) {
+    const v = carrierAt(u.team, u.x, u.z);
+    if (v && !u.inside) { const si = selection.indexOf(u); if (si >= 0) { selection.splice(si, 1); selectionChanged(); } }
+    u.inside = v;
   }
   // 队伍数据
   (m.teams || []).forEach((d, i) => {
@@ -9175,6 +9271,11 @@ function applySnapshot(m) {
   // 删除消失的实体
   for (const b of buildings) if (b.alive && !seenB.has(b.id)) removeClientEntity(b, dead.has(b.id));
   for (const u of units) if (u.alive && !seenU.has(u.id)) removeClientEntity(u, dead.has(u.id));
+}
+function carrierAt(team, x, z) {
+  let best = null, bd = 1;
+  for (const v of units) if (v.alive && v.team === team && v.def.garrison) { const d = Math.hypot(v.x - x, v.z - z); if (d < bd) { bd = d; best = v; } }
+  return best;
 }
 function removeClientEntity(e, died) {
   e.alive = false;
