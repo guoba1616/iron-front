@@ -2,8 +2,21 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#181c14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>钢铁前线</title>
+<script>
+// Choose the phone interface before the first paint; Android stays mobile with a mouse attached.
+window.ironUseMobileUI = () => new URLSearchParams(location.search).get('platform') === 'android' ||
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  matchMedia('(hover: none) and (pointer: coarse), (max-width: 900px)').matches;
+document.documentElement.classList.toggle('mobile-ui', window.ironUseMobileUI());
+try { if (localStorage.getItem('ironLanguage') === 'en') document.documentElement.classList.add('english-ui'); } catch {}
+</script>
 <style>
 :root {
   --ui-bg: rgba(20, 24, 18, 0.94);
@@ -23,7 +36,7 @@
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #12160f; border-left: 1px solid #2a3322; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #4a5a3a, #5e7046); border: 1px solid #2a3322; }
-::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #6a7c4e, #c8b46a); }
+@media (hover: hover) and (pointer: fine) { ::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #6a7c4e, #c8b46a); } }
 ::-webkit-scrollbar-button { display: none; }
 ::-webkit-scrollbar-corner { background: #12160f; }
 * { box-sizing: border-box; }
@@ -60,7 +73,7 @@ button { font-family: inherit; }
   background: #222a1c; color: var(--ui-text); border: 1px solid var(--ui-border); padding: 3px 9px;
   cursor: pointer; font-size: 12px;
 }
-.tbtn:hover { background: #2f3a26; }
+@media (hover: hover) and (pointer: fine) { .tbtn:hover { background: #2f3a26; } }
 .tbtn.active { background: var(--ui-accent); color: #111; }
 
 /* 侧栏 */
@@ -82,7 +95,7 @@ button { font-family: inherit; }
   flex: 1; background: #1f261a; color: var(--ui-text); border: 1px solid var(--ui-border); padding: 5px 0;
   cursor: pointer; font-size: 12px;
 }
-.sbtn:hover:not(:disabled) { background: #2d3824; }
+@media (hover: hover) and (pointer: fine) { .sbtn:hover:not(:disabled) { background: #2d3824; } }
 .sbtn.active { background: var(--ui-accent); color: #111; }
 .sbtn:disabled { opacity: 0.4; cursor: default; }
 #btnSuper.ready { background: #8a2a1e; border-color: #e05a40; animation: pulse 1s infinite; }
@@ -107,7 +120,7 @@ button { font-family: inherit; }
   position: relative; height: 84px; background: var(--ui-bg2); border: 1px solid var(--ui-border2); cursor: pointer;
   overflow: hidden;
 }
-.bitem:hover { border-color: var(--ui-accent); }
+@media (hover: hover) and (pointer: fine) { .bitem:hover { border-color: var(--ui-accent); } }
 .bitem img { width: 100%; height: 62px; object-fit: cover; display: block; background: #20261a; }
 .bitem .nm { font-size: 12px; padding: 2px 4px; white-space: nowrap; overflow: hidden; }
 .bitem .cost { position: absolute; right: 3px; top: 2px; font-size: 11px; color: #f0dc80; text-shadow: 0 0 3px #000, 0 0 2px #000; }
@@ -118,7 +131,7 @@ button { font-family: inherit; }
 }
 .bitem .cnt {
   position: absolute; left: 3px; top: 2px; background: var(--ui-accent); color: #000; font-size: 11px;
-  padding: 0 4px; border-radius: 2px; font-weight: bold;
+  padding: 0 4px; border-radius: 0; font-weight: bold;
 }
 .bitem.disabled { cursor: not-allowed; }
 .bitem.disabled img, .bitem.disabled .nm { opacity: 0.3; filter: grayscale(1); }
@@ -146,7 +159,7 @@ button { font-family: inherit; }
 #selPanel .cmds button {
   background: #1f261a; color: var(--ui-text); border: 1px solid var(--ui-border); padding: 3px 8px; font-size: 12px; cursor: pointer;
 }
-#selPanel .cmds button:hover { background: #2d3824; }
+@media (hover: hover) and (pointer: fine) { #selPanel .cmds button:hover { background: #2d3824; } }
 
 #messages {
   position: fixed; top: 48px; left: calc((100% - 260px) / 2); transform: translateX(-50%); z-index: 6;
@@ -180,7 +193,7 @@ button { font-family: inherit; }
 #chatBox.open { display: block; }
 #chatQuick { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
 #chatQuick button { background: #1f261a; color: var(--ui-text); border: 1px solid var(--ui-border); padding: 2px 7px; font-size: 12px; cursor: pointer; }
-#chatQuick button:hover { background: #2d3824; }
+@media (hover: hover) and (pointer: fine) { #chatQuick button:hover { background: #2d3824; } }
 #chatInput { width: 100%; box-sizing: border-box; background: rgba(10, 12, 9, 0.92); color: var(--ui-text); border: 1px solid var(--ui-accent); padding: 5px 8px; font-size: 13px; font-family: inherit; outline: none; }
 
 /* 菜单 */
@@ -219,7 +232,7 @@ button { font-family: inherit; }
   display: block; width: 100%; margin-top: 18px; padding: 12px; font-size: 18px; letter-spacing: 6px; cursor: pointer;
   background: linear-gradient(#7a6a30, #5a4c20); color: #fff4c8; border: 1px solid #c8b46a;
 }
-.bigbtn:hover { background: linear-gradient(#8a7a3a, #6a5a28); }
+@media (hover: hover) and (pointer: fine) { .bigbtn:hover { background: linear-gradient(#8a7a3a, #6a5a28); } }
 .bigbtn.sec { background: #1f261a; color: var(--ui-text); border-color: var(--ui-border); font-size: 15px; padding: 9px; margin-top: 8px; }
 .help { font-size: 12px; color: var(--ui-dim); line-height: 1.7; margin-top: 14px; border-top: 1px solid var(--ui-border2); padding-top: 10px; }
 .help kbd { background: #2a3122; border: 1px solid #4a5a3a; padding: 0 4px; color: var(--ui-text); font-family: Consolas, monospace; font-size: 11px; }
@@ -244,7 +257,7 @@ button { font-family: inherit; }
 #natCards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 @media (max-width: 860px) { #natCards { grid-template-columns: repeat(2, 1fr); } }
 .ncard { display: flex; flex-direction: column; border: 1px solid var(--ui-border); background: #12160f; cursor: pointer; transition: transform 0.12s; }
-.ncard:hover { border-color: var(--ui-accent); transform: translateY(-2px); }
+@media (hover: hover) and (pointer: fine) { .ncard:hover { border-color: var(--ui-accent); transform: translateY(-2px); } }
 .ncard.active { border-color: var(--ui-accent); box-shadow: 0 0 0 2px var(--ui-accent), 0 0 24px rgba(200, 180, 106, 0.25); }
 .ncard .nh { padding: 9px 10px; border-bottom: 1px solid var(--ui-border); }
 .ncard .nh .nn { font-size: 18px; font-weight: bold; letter-spacing: 2px; }
@@ -260,7 +273,7 @@ button { font-family: inherit; }
   font-size: 12px; flex-wrap: wrap; padding: 0 6px;
 }
 .ncard.active .nb { background: repeating-linear-gradient(-45deg, rgba(200, 180, 106, 0.55) 0 6px, rgba(200, 180, 106, 0.15) 6px 12px); color: #111; font-weight: bold; }
-.ncard .nb .pn { padding: 1px 6px; border-radius: 2px; color: #111; font-weight: bold; }
+.ncard .nb .pn { padding: 1px 6px; border-radius: 0; color: #111; font-weight: bold; }
 #selOpts { margin-top: 12px; }
 #selOpts .opt { margin: 8px 0; }
 .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 4px 0 8px; }
@@ -274,7 +287,7 @@ button { font-family: inherit; }
 #btnAbility.ready { background: #2a5a2a; border-color: #6fcf5a; animation: pulse2 1s infinite; }
 @keyframes pulse2 { 50% { background: #3f7f3a; } }
 /* 游戏指南 */
-.help-btn { font-weight: bold; width: 28px; padding: 3px 0; border-radius: 50%; }
+.help-btn { font-weight: bold; width: 28px; padding: 3px 0; border-radius: 0; }
 .panel.guide { width: min(940px, 95vw); height: min(660px, 92vh); max-width: none; padding: 18px 22px; display: flex; flex-direction: column; }
 .guide-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .guide-head h2 { margin: 0; }
@@ -304,22 +317,24 @@ button { font-family: inherit; }
 .gtip { background: #1a2015; border-left: 3px solid var(--ui-accent); padding: 6px 10px; margin: 8px 0; }
 .hidden { display: none !important; }
 </style>
+<link rel="stylesheet" href="mobile.css">
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three.module.js",
+    "three/addons/utils/BufferGeometryUtils.js": "./vendor/BufferGeometryUtils.js"
   }
 }
 </script>
 </head>
 <body>
+<script>document.body.classList.toggle('mobile-ui', window.ironUseMobileUI()); document.documentElement.classList.remove('mobile-ui');</script>
 <div id="topbar">
   <span class="logo">钢铁前线</span>
   <span class="faction" id="tbNation">北岭联邦</span>
   <div class="tb-item"><span class="tb-label">资金</span><span id="credits">$0</span></div>
-  <div class="tb-item"><span class="tb-label">电力</span><div id="powerBar"><div id="powerFill"></div><div id="powerUseMark"></div></div><span id="powerText">0/0</span></div>
-  <div class="tb-item" title="人口：单位占用 / 建筑提供（总部 40，副部 20，兵营、工厂等每座 10，上限 150）"><span style="color:var(--ui-dim);font-size:12px">人口</span><span id="popText" style="font-family:Consolas,monospace;font-size:12px">0/0</span></div>
+  <div class="tb-item"><span class="tb-label">电力</span><svg class="mobile-stat-icon power-icon" viewBox="0 0 24 24" aria-label="电力"><path d="M14 2 4 14h7l-1 8 10-13h-7z"/></svg><div id="powerBar"><div id="powerFill"></div><div id="powerUseMark"></div></div><span id="powerText">0/0</span></div>
+  <div class="tb-item" title="人口：单位占用 / 建筑提供（总部 40，副部 20，兵营、工厂等每座 10，上限 150）"><span id="popLabel" style="color:var(--ui-dim);font-size:12px">人口</span><svg class="mobile-stat-icon population-icon" viewBox="0 0 24 24" aria-label="人口"><circle cx="9" cy="7" r="3.2"/><circle cx="17" cy="8" r="2.6"/><path d="M2 21v-4a7 7 0 0 1 14 0v4zm15-8a5 5 0 0 1 5 5v3h-4v-4a9 9 0 0 0-1-4z"/></svg><span id="popText" style="font-family:Consolas,monospace;font-size:12px">0/0</span></div>
   <div class="spacer"></div>
   <div class="tb-item" id="envItem" title="战场时间与天气（只影响画面氛围）"><span id="envInfo" style="font-size:12px;white-space:nowrap"></span></div>
   <div class="tb-item"><span class="tb-label">时间</span><span id="timer">00:00</span></div>
@@ -349,12 +364,20 @@ button { font-family: inherit; }
 <div id="tooltip"></div>
 <div id="hint"></div>
 <div id="chatLog"></div>
-<div id="chatBox"><div id="chatQuick"></div><input id="chatInput" maxlength="60" placeholder="输入文字，Enter 发送，Esc 关闭" autocomplete="off"></div>
+<div id="chatBox"><div id="chatQuick"></div><input id="chatInput" maxlength="60" placeholder="输入文字，Enter 发送，Esc 关闭" autocomplete="off" enterkeyhint="send" autocapitalize="off" autocorrect="off"><div id="chatActions"><button id="chatSend" type="button">发送</button><button id="chatClose" type="button">关闭</button></div></div>
 
 <div id="menu" class="screen">
   <div class="panel" id="mainMenu">
+    <span id="gameVersion" aria-label="版本 0.9.1">0.9.1</span>
     <h1>钢铁前线</h1>
     <div class="subtitle">IRON FRONTLINE · 原创即时战略</div>
+    <div id="mobileMainMenu">
+      <div class="mm-brand">IRON FRONTLINE</div>
+      <div class="mm-brand-sub">钢铁前线 · 移动版</div>
+      <button class="bigbtn" id="mmStart">开始游戏</button>
+      <button class="bigbtn sec" id="mmMulti">多人游戏</button>
+      <button class="bigbtn sec" id="mmGuide">游戏指南</button>
+    </div>
     <button class="bigbtn" id="btnSingle">单人游戏</button>
     <button class="bigbtn" id="btnOnline">联机对战（最多 4 人）</button>
     <button class="bigbtn sec" id="btnGuideMenu">游戏指南（新手必看）</button>
@@ -368,17 +391,18 @@ button { font-family: inherit; }
     </div>
   </div>
   <div class="panel hidden" id="onlineMenu">
-    <h2>联机对战</h2>
-    <div class="opt"><label class="lbl">你的名字</label><input id="nameInput" maxlength="10" style="width:180px"></div>
-    <button class="bigbtn" id="btnHost">创建房间</button>
-    <div class="opt" style="margin-top:16px"><label class="lbl">房间码</label><input id="codeInput" maxlength="6" placeholder="6 位房间码" style="width:140px;text-transform:uppercase"><button class="tbtn" id="btnJoin" style="padding:6px 16px">加入房间</button></div>
-    <div id="netStatus" class="net-status"></div>
-    <div class="help">
-      一人点“创建房间”，把屏幕上的 <b>6 位房间码</b> 发给朋友；朋友打开<b>同一个游戏文件</b>，输入房间码加入。<br>
-      需要联网。房主的电脑负责运行整场战斗，建议让网络最好、电脑最快的人当房主。<br>
-      人数不足 4 人时，房主可以把空位设为电脑。
+    <div class="online-head"><h2 id="onlineTitle">联机对战</h2><button class="tbtn" id="btnBackMain">返回</button></div>
+    <div id="onlineChoices">
+      <button class="bigbtn" id="btnOpenHost">创建房间</button>
+      <button class="bigbtn sec" id="btnOpenJoin">加入游戏</button>
     </div>
-    <button class="bigbtn sec" id="btnBackMain">返回</button>
+    <form id="onlineForm" hidden>
+      <div class="online-field"><label for="nameInput">你的名字</label><input id="nameInput" maxlength="10" autocomplete="nickname" placeholder="输入名字"></div>
+      <div class="online-field" id="onlineCodeField" hidden><label for="codeInput">房间代码</label><input id="codeInput" maxlength="6" placeholder="6 位房间码" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+      <div class="online-submit"><button type="submit" class="bigbtn" id="btnHost">创建</button><button type="submit" class="bigbtn" id="btnJoin" hidden>加入</button></div>
+    </form>
+    <div id="netStatus" class="net-status" role="status" aria-live="polite"></div>
+    <p class="online-note">需要联网 · 最多 4 人对战</p>
   </div>
 </div>
 
@@ -387,12 +411,32 @@ button { font-family: inherit; }
     <div class="select-head">
       <h2 id="selTitle">选择国家</h2>
       <div id="roomInfo"></div>
+      <button class="tbtn" id="msetOpen">设置</button>
       <button class="tbtn" id="btnSelBack">返回</button>
     </div>
+    <div id="mobileSlots"></div>
     <div id="natCards"></div>
     <div id="selOpts"></div>
     <button class="bigbtn" id="btnStart">开始游戏</button>
     <div id="selNote" class="sel-note"></div>
+  </div>
+</div>
+
+<div id="mobileSetup" class="screen hidden">
+  <div class="mset-wrap">
+    <div class="mset-head"><h2>游戏设置</h2><span id="msetHint"></span></div>
+    <div id="msetRows"></div>
+    <div class="mset-foot">
+      <button class="bigbtn sec" id="msetBack">返回</button>
+      <button class="bigbtn" id="msetConfirm">确认</button>
+    </div>
+  </div>
+</div>
+
+<div id="nationSheet" class="hidden">
+  <div class="nsheet-panel">
+    <div class="nsheet-head"><strong id="nsheetTitle">选择国家</strong><button class="tbtn" id="nsheetClose">关闭</button></div>
+    <div id="nsheetCards"></div>
   </div>
 </div>
 
@@ -426,9 +470,13 @@ button { font-family: inherit; }
   </div>
 </div>
 
+<script src="./i18n.js"></script>
+<script src="./i18n-data.js"></script>
+<script src="./i18n-guide.js"></script>
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { setupMobile } from './mobile.js';
 
 // =====================================================================
 // 常量与数据表
@@ -863,9 +911,12 @@ function makeNoise(rng) {
 const gameEl = document.getElementById('game');
 const overlay = document.getElementById('overlay');
 const octx = overlay.getContext('2d');
+const mobileDevice = matchMedia('(any-pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-renderer.shadowMap.enabled = true;
+// High-density phones need a matching drawing buffer; a CSS-pixel buffer looked blurred
+// when stretched across the display. Keep desktop quality and budget phone fill-rate separately.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobileDevice ? 3 : 1.5));
+renderer.shadowMap.enabled = !mobileDevice;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
@@ -6815,22 +6866,30 @@ class AIController {
 // =====================================================================
 // 镜头
 // =====================================================================
-const cam = { x: 40, z: 200, h: 44 };
+const cameraStick = { x: 0, z: 0 };
+const cam = { x: 40, z: 200, h: mobileDevice ? 34 : 44 };
 let vw = 1, vh = 1;
 const keys = {};
 const mouse = { x: 0, y: 0, inGame: false, down: false, sx: 0, sy: 0, drag: false, mid: false, mx: -1, my: -1, inWindow: false };
 function resize() {
   vw = Math.max(1, gameEl.clientWidth); vh = Math.max(1, gameEl.clientHeight);
+  if (mobileDevice) {
+    const ratio = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(4000000 / (vw * vh)));
+    if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
+  }
   renderer.setSize(vw, vh);
   camera.aspect = vw / vh; camera.updateProjectionMatrix();
-  overlay.width = vw; overlay.height = vh;
+  const overlayRatio = mobileDevice ? renderer.getPixelRatio() : 1;
+  overlay.style.width = vw + 'px'; overlay.style.height = vh + 'px';
+  overlay.width = Math.floor(vw * overlayRatio); overlay.height = Math.floor(vh * overlayRatio);
+  octx.setTransform(overlayRatio, 0, 0, overlayRatio, 0, 0);
   const s = vh * renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   pFire.mat.uniforms.uScale.value = s; pSmoke.mat.uniforms.uScale.value = s; glowPts.material.uniforms.uScale.value = s;
 }
 window.addEventListener('resize', resize);
 function updateCamera(dt) {
   const sp = cam.h * 1.4 * dt;
-  let dx = 0, dz = 0;
+  let dx = cameraStick.x, dz = cameraStick.z;
   if (keys.ArrowLeft || keys.a || keys.A) dx -= 1; if (keys.ArrowRight || keys.d || keys.D) dx += 1; if (keys.ArrowUp || keys.w || keys.W) dz -= 1; if (keys.ArrowDown || keys.s || keys.S) dz += 1;   // 方向键或 WASD 移动视野
   if (mouse.inWindow && !mouse.mid && document.hasFocus()) {
     const ex = mouse.mx, ey = mouse.my, W = window.innerWidth, H = window.innerHeight;
@@ -6867,7 +6926,7 @@ function centerOn(x, z) { cam.x = x; cam.z = z; }
 // =====================================================================
 // 选择与指令输入
 // =====================================================================
-let mode = null, placing = null, hovered = null, lastClick = { t: 0, type: null };
+let mode = null, placing = null, hovered = null, lastPointerType = 'mouse', lastClick = { t: 0, type: null };
 function canSeeEntity(e) {
   if (e.inside) return false;   // 进驻碉堡的步兵不显示
   if (e.team === PLAYER) return true;
@@ -6882,7 +6941,7 @@ function pickAt(sx, sy) {
     if (!u.alive || !canSeeEntity(u)) continue;
     const mp = u.mesh.position;
     const p = worldToScreen(mp.x, mp.y + (u.def.inf ? 0.8 : 0.7), mp.z);
-    const r = (u.def.inf ? 13 : u.def.air ? 26 : 22) * zoomF;
+    const r = Math.max(mobileDevice ? 22 : 0, (u.def.inf ? 13 : u.def.air ? 26 : 22) * zoomF);
     const d = Math.hypot(p.x - sx, p.y - sy);
     if (d < r && d < bd) { bd = d; best = u; }
   }
@@ -6905,6 +6964,7 @@ function selectionChanged() {
   for (const b of buildings) if (b.ring) b.ring.visible = false;
   for (const e of selection) if (e.ring) e.ring.visible = true;
   renderSelPanel();
+  document.dispatchEvent(new Event('gameselectionchange'));
 }
 function setSelection(list) { selection = list.filter(e => e.alive); selectionChanged(); }
 function ownUnitsSelected() { return selection.filter(e => e.kind === 'u' && e.team === PLAYER && e.alive); }
@@ -7003,7 +7063,8 @@ function ghostTile() {
   return { tx: Math.round(g.x / TILE - d.w / 2), tz: Math.round(g.z / TILE - d.h / 2) };
 }
 gameEl.addEventListener('contextmenu', e => e.preventDefault());
-gameEl.addEventListener('mousedown', (e) => {
+function gamePointerDown(e) {
+  if (e.sourceCapabilities?.firesTouchEvents) return;
   if (G.state !== 'playing') return;
   Sound.init();
   const r = gameEl.getBoundingClientRect();
@@ -7050,8 +7111,13 @@ gameEl.addEventListener('mousedown', (e) => {
     setMode(null); return;
   }
   mouse.down = true; mouse.sx = sx; mouse.sy = sy; mouse.drag = false;
-});
+}
+gameEl.addEventListener('mousedown', gamePointerDown);
+// 触屏没有 hover：记录最近一次指针类型，避免抬手后血条一直挂在最后点到的单位上
+gameEl.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; }, true);
 window.addEventListener('mousemove', (e) => {
+  if (e.sourceCapabilities?.firesTouchEvents) return;
+  lastPointerType = 'mouse';
   mouse.mx = e.clientX; mouse.my = e.clientY; mouse.inWindow = true;
   const r = gameEl.getBoundingClientRect();
   mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
@@ -7064,7 +7130,8 @@ window.addEventListener('mousemove', (e) => {
   if (mouse.down && Math.hypot(mouse.x - mouse.sx, mouse.y - mouse.sy) > 6) mouse.drag = true;
 });
 document.addEventListener('mouseleave', () => { mouse.inWindow = false; });
-window.addEventListener('mouseup', (e) => {
+function gamePointerUp(e) {
+  if (e.sourceCapabilities?.firesTouchEvents) return;
   if (e.button === 1) { mouse.mid = false; return; }
   if (e.button !== 0 || !mouse.down) return;
   mouse.down = false;
@@ -7085,7 +7152,8 @@ window.addEventListener('mouseup', (e) => {
     } else setSelection([t]);
     if (t.team === PLAYER) Sound.play('click');
   } else if (!e.shiftKey) setSelection([]);
-});
+}
+window.addEventListener('mouseup', gamePointerUp);
 gameEl.addEventListener('wheel', (e) => {
   e.preventDefault();
   cam.h = clamp(cam.h * (e.deltaY > 0 ? 1.1 : 0.9), 20, 85);
@@ -7096,6 +7164,7 @@ function setMode(m) {
   document.getElementById('btnSell').classList.toggle('active', m === 'sell');
   gameEl.style.cursor = m === 'attackMove' || m === 'nuke' || m === 'ability' || m === 'signal' ? 'crosshair' : m === 'sell' || m === 'repair' ? 'cell' : 'default';
   updateHint();
+  document.dispatchEvent(new Event('commandmodechange'));
 }
 function updateHint() {
   const h = document.getElementById('hint');
@@ -7105,10 +7174,24 @@ function updateHint() {
       mode === 'nuke' ? '选择战略导弹打击目标，右键取消' :
         mode === 'ability' ? '国家技能「' + ABILITIES[NATIONS[teams[PLAYER].nation].ability].name + '」：左键选择地点，右键取消' :
         mode === 'sell' ? '出售模式：点击己方建筑，右键退出' :
-          mode === 'repair' ? '维修模式：点击己方受损建筑，右键退出' : '';
-  h.textContent = txt; h.style.display = txt ? 'block' : 'none';
+          mode === 'repair' ? '维修模式：点击己方受损建筑，右键退出' :
+            mode === 'rally' ? '集结点：点按地面选择新部队的集合位置，点「取消」退出' : '';
+  const mobile = document.body.classList.contains('mobile-ui');
+  if (window.ironI18n.language === 'en') {
+    const action = mobile ? 'Tap' : 'Click', cancel = mobile ? 'Cancel to exit' : 'Right-click to cancel';
+    h.textContent = placing ? `${action} to place ${window.ironI18n.t(defOf(placing.type, PLAYER).name)} · ${cancel}` :
+      mode === 'attackMove' ? `Attack Move: ${action.toLowerCase()} a destination · ${cancel}` :
+      mode === 'signal' ? `Ping: ${window.ironI18n.t(SIGNALS[sigKind].name)} · ${action} the map · ${cancel}` :
+      mode === 'nuke' ? `${action} a strategic missile target · ${cancel}` :
+      mode === 'ability' ? `${window.ironI18n.t(ABILITIES[NATIONS[teams[PLAYER].nation].ability].name)}: ${action.toLowerCase()} a location · ${cancel}` :
+      mode === 'sell' ? `Sell: ${action.toLowerCase()} a friendly building · ${cancel}` :
+      mode === 'repair' ? `Repair: ${action.toLowerCase()} a damaged friendly building · ${cancel}` :
+      mode === 'rally' ? `Rally: ${action.toLowerCase()} a destination for new units · ${cancel}` : '';
+  } else h.textContent = mobile ? txt.replace(/左键/g, '点按').replace(/右键取消|右键退出/g, '点「取消」').replace(/，再按 G 换种类/g, '') : txt;
+  h.style.display = txt ? 'block' : 'none';
 }
 window.addEventListener('keydown', (e) => {
+  if ($('itemDetails')?.open) return;
   if (document.activeElement === $('chatInput')) return;   // 正在打字：快捷键全部不响应
   if (e.key === 'F1') { e.preventDefault(); toggleGuide(); return; }
   if (guideOpen()) { if (e.key === 'Escape') toggleGuide(false); return; }
@@ -7167,6 +7250,7 @@ function setGhost(type) {
   while (ghostGroup.children.length) ghostGroup.remove(ghostGroup.children[0]);
   ghostGroup.visible = !!type;
   updateHint();
+  document.dispatchEvent(new Event('commandmodechange'));
   if (!type) return;
   const m = getBuildingModel(type, PLAYER);
   ghostGroup.add(new THREE.Mesh(m.body, ghostMat));
@@ -7631,7 +7715,7 @@ function drawOverlay() {
     if (!m.color) {
       const p = worldToScreen(m.x, 0.1, m.z);
       octx.fillStyle = 'rgba(255,60,40,0.9)'; octx.font = 'bold 13px sans-serif'; octx.textAlign = 'center';
-      octx.fillText('导弹打击目标', p.x, p.y - 10); octx.textAlign = 'left';
+      octx.fillText(window.ironI18n.t('导弹打击目标'), p.x, p.y - 10); octx.textAlign = 'left';
     }
   }
   // 联机信号：发送者颜色的两圈扩散圆环 + 旗杆小旗 + 文字，5 秒后消失
@@ -7656,7 +7740,7 @@ function drawOverlay() {
     const b = worldToScreen(sg.x, 0.1, sg.z), t = worldToScreen(sg.x, 4.5, sg.z);
     octx.beginPath(); octx.moveTo(b.x, b.y); octx.lineTo(t.x, t.y); octx.stroke();
     octx.fillStyle = SIGNALS[sg.k].css; octx.beginPath(); octx.moveTo(t.x, t.y); octx.lineTo(t.x + 18, t.y + 6); octx.lineTo(t.x, t.y + 12); octx.closePath(); octx.fill();
-    const label = SIGNALS[sg.k].name + ' · ' + sg.name;
+    const label = window.ironI18n.t(SIGNALS[sg.k].name) + ' · ' + sg.name;
     octx.font = 'bold 13px sans-serif'; octx.textAlign = 'center'; octx.lineWidth = 3; octx.strokeStyle = 'rgba(0,0,0,0.8)';
     octx.strokeText(label, t.x, t.y - 7); octx.fillStyle = '#fff'; octx.fillText(label, t.x, t.y - 7);
     octx.restore();
@@ -7670,7 +7754,7 @@ function drawOverlay() {
   if (G.paused && !G.over) {
     octx.fillStyle = 'rgba(0,0,0,0.35)'; octx.fillRect(0, 0, vw, vh);
     octx.fillStyle = '#e8dca0'; octx.font = 'bold 30px "Microsoft YaHei", sans-serif'; octx.textAlign = 'center';
-    octx.fillText('已暂停（空格继续）', vw / 2, vh / 2); octx.textAlign = 'left';
+    octx.fillText(window.ironI18n.t(document.body.classList.contains('mobile-ui') ? '已暂停' : '已暂停（空格继续）'), vw / 2, vh / 2); octx.textAlign = 'left';
   }
 }
 
@@ -7696,7 +7780,7 @@ function paintMinimapBase() {
 }
 function drawMinimap() {
   const T = teams[PLAYER];
-  const online = (T.counts.radar > 0 && !T.lowPower) || revealAll;
+  const online = minimapOnline();
   document.getElementById('radarOff').style.display = online ? 'none' : 'flex';
   if (!online) return;
   // 小地图只显示可玩区域
@@ -7738,10 +7822,10 @@ function minimapWorld(e) {
   const r = mm.getBoundingClientRect(), N = PLAY.hi - PLAY.lo;
   return { x: (PLAY.lo + (e.clientX - r.left) / r.width * N) * TILE, z: (PLAY.lo + (e.clientY - r.top) / r.height * N) * TILE };
 }
-function minimapOnline() { const T = teams[PLAYER]; return T && ((T.counts.radar > 0 && !T.lowPower) || revealAll); }
+function minimapOnline() { const T = teams[PLAYER]; return T && (window.ironUseMobileUI() || (T.counts.radar > 0 && !T.lowPower) || revealAll); }
 mm.addEventListener('contextmenu', e => e.preventDefault());
 mm.addEventListener('mousedown', (e) => {
-  if (G.state !== 'playing' || !minimapOnline()) return;
+  if (window.ironUseMobileUI() || G.state !== 'playing' || !minimapOnline()) return;
   const w = minimapWorld(e);
   if (e.button === 0 && ((e.altKey && Chat.on) || mode === 'signal')) {
     Chat.send({ ping: { k: mode === 'signal' ? sigKind : 0, x: w.x, z: w.z } });
@@ -7871,15 +7955,29 @@ function upgradeIcon(kind, W, H) {
 // 界面：顶栏、建造栏、选择面板、消息
 // =====================================================================
 const $ = id => document.getElementById(id);
-let curTab = 'building';
+let curTab = 'building', mobileProducer = null, mobileHudKey = '';
 let buildItems = [];
 const tooltip = $('tooltip');
+function setPlayerText(el, text) {
+  // Keep player-authored names intact while translating the surrounding message.
+  const names = [...new Set((window.DBG?.teams || []).filter(T => T.human).map(T => T.name).filter(Boolean))].sort((a, b) => b.length - a.length);
+  el.replaceChildren();
+  if (!names.length) { el.textContent = text; return; }
+  const pattern = new RegExp(names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    el.append(document.createTextNode(text.slice(offset, match.index)));
+    const name = document.createElement('span'); name.dataset.noTranslate = ''; name.textContent = match[0]; el.append(name);
+    offset = match.index + match[0].length;
+  }
+  el.append(document.createTextNode(text.slice(offset)));
+}
 function notify(text, kind) {
   const box = $('messages');
-  for (const el of box.children) if (el.textContent === text && performance.now() - el._t < 2500) return;
+  for (const el of box.children) if (el._source === text && performance.now() - el._t < 2500) return;
   const el = document.createElement('div');
   el.className = 'msg' + (kind ? ' ' + kind : '');
-  el.textContent = text; el._t = performance.now();
+  setPlayerText(el, text); el._source = text; el._t = performance.now();
   box.appendChild(el);
   while (box.children.length > 5) box.removeChild(box.firstChild);
   setTimeout(() => { el.style.opacity = '0'; }, 3800);
@@ -7891,7 +7989,8 @@ function renderTab() {
   buildItems = [];
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === curTab));
   const types = [];
-  const nat = teams[PLAYER].nation, mine = d => d.cat === curTab && (!d.nation || d.nation === nat) && (!d.naval || G.mapType === 'sea');
+  const nat = teams[PLAYER].nation, mine = d => d.cat === curTab && (!d.nation || d.nation === nat) && (!d.naval || G.mapType === 'sea') &&
+    (!document.body.classList.contains('mobile-ui') || !mobileProducer || curTab !== 'air' || (mobileProducer.type === 'airfield' ? !!d.plane : !d.plane));
   for (const k in BUILDINGS) if (mine(BUILDINGS[k])) types.push(k);
   for (const k in UNITS) if (mine(UNITS[k])) types.push(k);
   for (const k in UPGRADES) if (mine(UPGRADES[k])) types.push(k);
@@ -7899,6 +7998,7 @@ function renderTab() {
     const d = defOf(type, PLAYER);
     const el = document.createElement('div');
     el.className = 'bitem';
+    el.dataset.type = type;
     el.innerHTML = `<img src="${ICONS[type] || ''}"><div class="nm">${NATIONS[nat].uniques.includes(type) ? '★' : ''}${d.name}</div><div class="cost">$${costOf(PLAYER, type)}</div><div class="prog" style="height:0"></div><div class="st"></div><div class="cnt" style="display:none"></div>`;
     el.addEventListener('mousedown', (e) => { e.preventDefault(); onBuildClick(type, e); });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -7909,7 +8009,7 @@ function renderTab() {
   }
   updateBuildGrid();
 }
-function showTip(type, el) {
+function detailHTML(type) {
   const d = defOf(type, PLAYER), T = teams[PLAYER];
   const miss = T ? missingReq(T, type) : [];
   const cost = costOf(PLAYER, type);
@@ -7922,6 +8022,28 @@ function showTip(type, el) {
   if (d.popCap) html += `<br>提供人口 +${d.popCap}`;
   if (miss.length) html += `<br><span class="req">需要：${miss.join('、')}</span>`;
   if (d.max && T && (T.counts[type] || 0) >= d.max) html += `<br><span class="req">最多建造 ${d.max} 座</span>`;
+  return html;
+}
+function showDetails(type) {
+  let dialog = $('itemDetails');
+  if (!dialog) {
+    dialog = document.createElement('dialog'); dialog.id = 'itemDetails';
+    dialog.innerHTML = '<div class="detail-head"><h2>详情</h2><form method="dialog"><button class="tbtn" autofocus>关闭</button></form></div><div id="itemDetailBody"></div>';
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => { if (dialog.resumeAfterClose) G.paused = false; dialog.resumeAfterClose = false; });
+    dialog.addEventListener('click', e => { if (e.target === dialog) { const r = dialog.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close(); } });
+  }
+  $('itemDetailBody').innerHTML = detailHTML(type);
+  if (!dialog.open) {
+    dialog.resumeAfterClose = G.state === 'playing' && !G.paused && Net.mode === 'off';
+    if (dialog.resumeAfterClose) G.paused = true;
+    dialog.showModal();
+  }
+}
+window.ironDetailsBack = () => { const dialog = $('itemDetails'); if (!dialog?.open) return false; dialog.close(); return true; };
+function showTip(type, el) {
+  const d = defOf(type, PLAYER);
+  let html = detailHTML(type);
   html += `<br><span style="color:#8a9080">${d.isBuilding ? '左键建造/放置，右键取消' : d.upgrade ? '左键研究，右键取消' : '左键生产，Shift+左键 ×5，右键取消'}</span>`;
   tooltip.innerHTML = html;
   const r = el.getBoundingClientRect();
@@ -7941,7 +8063,7 @@ function onBuildClick(type, e) {
   }
   if (e.button !== 0) return;
   if (d.isBuilding) {
-    if (q.length && q[0].type === type && q[0].ready) { placing = { type }; setGhost(type); setMode(null); Sound.play('click'); return; }
+    if (q.length && q[0].type === type && q[0].ready) { placing = { type }; setGhost(type); setMode(null); Sound.play('click'); return true; }
     if (q.length) { notify(q[0].type === type ? '正在建造中' : '正在建造其他建筑', 'bad'); Sound.play('error'); return; }
   }
   if (d.upgrade && (T.upg[type] || q.some(i => i.type === type))) { Sound.play('error'); notify(T.upg[type] ? '已经研究过了' : '正在研究中', 'bad'); return; }
@@ -7949,6 +8071,7 @@ function onBuildClick(type, e) {
   issueCommand({ c: 'enqueue', type, n: e.shiftKey ? 5 : 1 });
   Sound.play('click');
   updateBuildGrid();
+  return true;
 }
 function updateBuildGrid() {
   const T = teams[PLAYER];
@@ -7977,6 +8100,8 @@ function updateBuildGrid() {
     b.classList.toggle('done', !!(q.length && q[0].ready));
     b.classList.toggle('busy', !!(q.length && !q[0].ready));
   });
+  const hudKey = ['building', 'defense'].map(c => T.queues[c][0]?.ready ? T.queues[c][0].type : '').join(':') + ':' + minimapOnline() + ':' + buildings.filter(b => b.alive && b.team === PLAYER && !b.def.derrick && b.hp < b.maxHp).map(b => b.id + ',' + Math.ceil(b.hp) + ',' + b.repairing).join(';');
+  if (hudKey !== mobileHudKey) { mobileHudKey = hudKey; document.dispatchEvent(new Event('mobilehudchange')); }
 }
 document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => { curTab = b.dataset.tab; renderTab(); Sound.play('click'); }));
 $('btnRepair').addEventListener('click', () => { setMode(mode === 'repair' ? null : 'repair'); placing = null; setGhost(null); });
@@ -8001,7 +8126,7 @@ function renderSelPanel() {
   p.style.display = 'block';
   if (selection.length === 1) {
     const e = selection[0], d = e.def;
-    const teamName = e.team === PLAYER ? '' : e.team >= 0 ? `<span style="color:${teamColor(e.team)}">（${teams[e.team].name}·${NATIONS[teams[e.team].nation].short}）</span>` : e.team === MILITIA ? '<span style="color:#b05a48">（村庄守军）</span>' : '<span style="color:#aaa">（中立）</span>';
+    const teamName = e.team === PLAYER ? '' : e.team >= 0 ? `<span style="color:${teamColor(e.team)}">（<span data-no-translate>${esc(teams[e.team].name)}</span>·${NATIONS[teams[e.team].nation].short}）</span>` : e.team === MILITIA ? '<span style="color:#b05a48">（村庄守军）</span>' : '<span style="color:#aaa">（中立）</span>';
     let cmds = '';
     if (e.team === PLAYER && e.kind === 'u') cmds = `<button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>` + (d.garrison ? `<button data-c="unload">全部下车</button>` : '');
     if (e.team === PLAYER && e.kind === 'b') {
@@ -8017,9 +8142,10 @@ function renderSelPanel() {
   } else {
     const counts = {};
     for (const e of selection) counts[e.type] = (counts[e.type] || 0) + 1;
-    let html = '<div class="multi">';
+    const compact = document.body.classList.contains('mobile-ui');
+    let html = '<div class="selection-summary"><div class="multi">';
     for (const t in counts) html += `<div class="mi" data-t="${t}" title="${defOf(t, PLAYER).name}"><img src="${ICONS[t] || ''}"><span>${counts[t]}</span></div>`;
-    html += `</div><div class="sub" style="margin-top:4px">已选择 ${selection.length} 个单位（点击图标只选该类）</div>`;
+    html += `</div>${compact ? '' : `<div class="sub selection-count">已选择 ${selection.length} 个单位（点击图标只选该类）</div>`}</div>`;
     html += `<div class="cmds"><button data-c="stop">停止 (X)</button><button data-c="amove">攻击移动 (Q)</button>${ownUnitsSelected().some(u => u.def.garrison) ? '<button data-c="unload">全部下车</button>' : ''}</div>`;
     p.innerHTML = html;
     p.querySelectorAll('.mi').forEach(el => el.addEventListener('click', () => setSelection(selection.filter(e => e.type === el.dataset.t))));
@@ -8029,7 +8155,7 @@ function renderSelPanel() {
     if (c === 'stop') issueCommand({ c: 'stop', ids: idsOf(ownUnitsSelected()) });
     if (c === 'amove') setMode('attackMove');
     if (c === 'sell' && e) issueCommand({ c: 'sell', bid: e.id });
-    if (c === 'repair' && e) { e.repairing = !e.repairing; issueCommand({ c: 'repair', bid: e.id, on: e.repairing }); renderSelPanel(); }
+    if (c === 'repair' && e) { e.repairing = !e.repairing; issueCommand({ c: 'repair', bid: e.id, on: e.repairing }); renderSelPanel(); document.dispatchEvent(new Event('gameselectionchange')); }
     if (c === 'primary' && e) { issueCommand({ c: 'primary', bid: e.id }); notify(e.def.name + ' 已设为主建筑'); }
     if (c === 'unload' && e) {
       const carriers = ownUnitsSelected().filter(u => u.def.garrison);
@@ -8086,6 +8212,9 @@ function uiFrame() {
     $('powerFill').style.background = T.lowPower ? 'var(--red)' : T.powerProd - T.powerUse < 30 ? 'var(--warn)' : 'var(--good)';
     $('powerUseMark').style.left = (T.powerUse / max * 100) + '%';
     $('powerText').textContent = T.powerUse + '/' + T.powerProd;
+    $('powerBar').setAttribute('aria-label', '电力：使用 ' + T.powerUse + '，产出 ' + T.powerProd);
+    $('powerBar').title = '彩色条：发电量 ' + T.powerProd + '；竖线：用电需求 ' + T.powerUse;
+    $('powerUseMark').title = '用电需求：' + T.powerUse;
     $('powerText').style.color = T.lowPower ? '#ff8a70' : '';
     const pu = popUsed(T), pc = T.popCap || 0;
     $('popText').textContent = pu + '/' + pc;
@@ -8475,7 +8604,7 @@ const GUIDE = [
     id: 'online', title: '联机对战', html: () => `
       <h3>怎么和朋友一起玩</h3>
       <ol>
-        <li>所有人都需要<b>同一个游戏文件</b>（把 index.html 发给朋友，或放到同一个网址上）。</li>
+        <li>所有人都需要<b>相同版本的游戏</b>（把 index.html 发给朋友，或放到同一个网址上）。</li>
         <li>一个人当房主：主菜单 → 联机对战 → 输入名字 → <b>创建房间</b>，屏幕上会出现 6 位房间码。</li>
         <li>朋友：主菜单 → 联机对战 → 输入房间码 → <b>加入房间</b>。</li>
         <li>在房间里每个人点一张国家卡片选国家，也可以选“随机”；房主可以点“随机分配国家”一次性给所有人分配不重复的国家。</li>
@@ -8485,7 +8614,7 @@ const GUIDE = [
       <h3>注意事项</h3>
       <ul>
         <li>需要联网。连接通过浏览器点对点完成，不需要自己架服务器。少数公司或校园网络可能连不上，可以换个网络（比如手机热点）试试。</li>
-        <li>整场战斗在<b>房主的电脑</b>上运行，建议让网络最好、电脑最快的人当房主；房主关闭页面游戏就会结束。</li>
+        <li>整场战斗在<b>房主的设备</b>上运行，建议让网络最好、设备性能最好的人当房主；房主退出游戏后对局就会结束。</li>
         <li>有玩家中途掉线，他的部队会自动交给电脑接管。</li>
         <li>只有房主可以暂停和调整游戏速度。</li>
         <li>被淘汰后会进入观战模式，可以看到全地图。</li>
@@ -8502,10 +8631,57 @@ const GUIDE = [
 ];
 let guideTab = 'start', guidePaused = false;
 const guideOpen = () => !$('guide').classList.contains('hidden');
+function mobileGuideHTML(section) {
+  if (section.id === 'ctrl') return `
+    <h3>镜头与选择</h3><ul>
+      <li>只有左下角摇杆移动视野，单指拖动框选，双指捏合缩放。菜单里的「回到总部」可以快速返回基地。</li>
+      <li>点己方单位选中；单指直接拖动框选；双击单位选中屏幕内同类部队。</li>
+      <li>选中后点地面移动，点敌人攻击。点「攻击移动」再点地面，部队会沿途迎战。</li>
+      <li>采矿车点矿区采矿、点精炼厂卸货；工程师点目标占领或维修；步兵点运兵车或碉堡进驻。</li>
+    </ul><h3>建造与生产</h3><ul>
+      <li>点右侧「建造」打开建筑和防御，点「军事」打开造兵分类，点「维修」查看受损建筑或一键修复。点卡片排队；长按卡片后松手，取消一项并退回费用。</li>
+      <li>建筑完成后点「就绪 · 放置」，再点绿色地面放下。点「取消」退出放置或指令模式。</li>
+      <li>卡片上的「详情」可查看属性、介绍和前置条件，不会开始生产；选中己方单位或建筑也可点「详情」。</li>
+      <li>选中生产建筑，点「集结点」再点地图，设置新部队集合位置。</li>
+      <li>选中建筑后可维修或出售；国家技能、导弹准备好后，点对应按钮，再点目标地点。</li>
+    </ul><h3>菜单与交流</h3><ul>
+      <li>顶栏「菜单」可暂停单人对局、打开指南、回到总部。顶栏速度按钮可切换速度。</li>
+      <li>联机时点「信号」再点地图发送标记；长按「信号」切换种类。「菜单 → 战场交流」打开聊天，点「发送」发消息。</li>
+      <li>联机只有房主能暂停和调速。查看详情只会自动暂停单人对局，联机战斗会继续。</li>
+    </ul>`;
+  if (section.id === 'online') return `
+    <h3>和朋友开一局</h3><ol>
+      <li>所有人安装相同版本的游戏，并连接网络。</li>
+      <li>房主：多人游戏 → 创建房间 → 填名字 → 创建。将显示的 6 位房间码发给朋友。</li>
+      <li>朋友：多人游戏 → 加入游戏 → 填名字和房间代码 → 加入。</li>
+      <li>每个人点自己的国家卡选择国家；房主可将其余位置设为玩家、电脑或关闭。至少 2 方才能开始。</li>
+      <li>房主点「开始游戏」。所有参战方互相为敌，攻陷敌方总部以取胜。</li>
+    </ol><h3>连接与掉线</h3><ul>
+      <li>房主设备负责运行战斗，请保持游戏在前台；房主退出游戏后对局结束。建议网络稳定、设备性能好的玩家创建房间。</li>
+      <li>加入失败时，确认版本和房间码，让房主停留在房间页；返回后重试，或切换 Wi-Fi、移动网络。</li>
+      <li>普通玩家掉线后由电脑接管。只有房主可暂停和调速；被淘汰后可以观战。</li>
+    </ul><h3>信号和聊天</h3><ul>
+      <li>点「信号」再点地图或小地图发送标记；长按「信号」切换看这里、进攻、防守。</li>
+      <li>菜单 → 战场交流：输入消息并点「发送」，或使用快捷短句；点「关闭」返回战场。</li>
+      <li>点聊天记录中的信号可跳到对应位置。消息所有玩家都能看到，包括对手。</li>
+    </ul>`;
+  const fragment = document.createElement('div'); fragment.innerHTML = section.html();
+  for (const li of fragment.querySelectorAll('li')) {
+    const text = li.textContent;
+    if (text.includes('右侧建造栏')) li.textContent = '点右侧「建造」或「军事」打开生产面板。灰色项目尚未满足建造条件，点「详情」查看需要什么。';
+    else if (text.includes('Shift+点击')) li.innerHTML = '<b>单位</b>：点一次排一个，重复点按可增加数量，造好后自动出厂。';
+    else if (text.includes('右键点击建造栏')) li.textContent = '长按生产卡片后松手可取消一项，已花的钱会退回。';
+    else if (text.includes('左键点选或拖框')) li.textContent = '点己方单位选中；单指直接拖动框选。选中后点地面移动、点敌人攻击。';
+    else if (li.querySelector('kbd')?.textContent === 'Q') li.textContent = '点「攻击移动」再点地面：沿途遇敌自动开火。';
+    else if (text.includes('Ctrl')) li.textContent = '双击单位，可选中屏幕内所有同类单位。';
+  }
+  return fragment.innerHTML.replace(/右键|左键/g, '点按');
+}
 function renderGuide() {
   $('guideNav').innerHTML = GUIDE.map(s => `<button data-g="${s.id}" class="${s.id === guideTab ? 'active' : ''}">${s.title}</button>`).join('');
   $('guideNav').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { guideTab = b.dataset.g; renderGuide(); }));
-  $('guideContent').innerHTML = GUIDE.find(s => s.id === guideTab).html();
+  const section = GUIDE.find(s => s.id === guideTab);
+  $('guideContent').innerHTML = window.ironI18n.language === 'en' ? window.ironI18n.guide(section, isMobileUI()) : isMobileUI() ? mobileGuideHTML(section) : section.html();
   $('guideContent').scrollTop = 0;
 }
 function toggleGuide(show = !guideOpen()) {
@@ -8518,6 +8694,7 @@ function toggleGuide(show = !guideOpen()) {
   } else if (guidePaused) { G.paused = false; guidePaused = false; }
 }
 $('btnHelp').addEventListener('click', () => toggleGuide(true));
+document.addEventListener('languagechange', () => { if (guideOpen()) renderGuide(); updateHint(); });
 $('btnGuideMenu').addEventListener('click', () => toggleGuide(true));
 $('guideClose').addEventListener('click', () => toggleGuide(false));
 $('guide').addEventListener('mousedown', (e) => { if (e.target.id === 'guide') toggleGuide(false); });
@@ -8527,44 +8704,287 @@ $('btnAgain').addEventListener('click', () => location.reload());
 // =====================================================================
 // 菜单：主菜单 / 联机 / 国家选择
 // =====================================================================
-const SEL = { myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', size: 'small', pace: 'fast', env: 1, seed: randSeed() };
+const SEL = {
+  myPick: 'north', aiCount: 1, difficulty: 'normal', mapType: 'land', size: 'small', pace: 'fast', env: 1, seed: randSeed(),
+  playerName: (() => { try { return localStorage.getItem('ironSoloName') || '指挥官'; } catch (e) { return '指挥官'; } })(),
+  // 手机端四个参战位置：0 号永远是本机玩家，1–3 号可以设为电脑或关闭
+  slots: [
+    { kind: 'human', pick: 'north' },
+    { kind: 'ai', pick: 'random' },
+    { kind: 'closed', pick: 'random' },
+    { kind: 'closed', pick: 'random' },
+  ],
+};
 const ENV_OPTS = [[1, '开'], [0, '关（永远晴天白天）']];
 function randSeed() { return Math.floor(Math.random() * 99999) + 1; }
 const hexCss = h => '#' + h.toString(16).padStart(6, '0');
 function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function isMobileUI() { return document.body.classList.contains('mobile-ui'); }
 function showMenuPanel(id) {
   $('menu').classList.remove('hidden');
   $('selectScreen').classList.add('hidden');
+  $('mobileSetup').classList.add('hidden');
   for (const p of ['mainMenu', 'onlineMenu']) $(p).classList.toggle('hidden', p !== id);
+  if (id === 'onlineMenu') setOnlineStep('choices');
 }
-$('btnSingle').addEventListener('click', () => { Sound.init(); openSelect(); });
+let onlineStep = 'choices';
+function setOnlineStep(step) {
+  onlineStep = step;
+  $('onlineTitle').textContent = { choices: '联机对战', host: '创建房间', join: '加入游戏' }[step];
+  $('onlineChoices').hidden = step !== 'choices';
+  $('onlineForm').hidden = step === 'choices';
+  $('onlineCodeField').hidden = step !== 'join';
+  $('btnHost').hidden = step !== 'host';
+  $('btnJoin').hidden = step !== 'join';
+  $('onlineMenu').dataset.step = step;
+}
+window.ironOnlineBack = () => {
+  if ($('menu').classList.contains('hidden') || $('onlineMenu').classList.contains('hidden')) return false;
+  $('btnBackMain').click(); return true;
+};
+$('btnOpenHost').addEventListener('click', () => { Net.status(''); setOnlineStep('host'); });
+$('btnOpenJoin').addEventListener('click', () => { Net.status(''); setOnlineStep('join'); });
+$('btnSingle').addEventListener('click', () => { Sound.init(); if (isMobileUI()) openSetup('menu'); else openSelect(); });
 $('btnOnline').addEventListener('click', () => { Sound.init(); Net.status(''); showMenuPanel('onlineMenu'); });
-$('btnBackMain').addEventListener('click', () => showMenuPanel('mainMenu'));
+$('btnBackMain').addEventListener('click', () => {
+  Net.leave(); Net.status('');
+  if (onlineStep === 'choices') showMenuPanel('mainMenu');
+  else setOnlineStep('choices');
+});
 $('btnSelBack').addEventListener('click', () => { const online = Net.mode !== 'off'; Net.leave(); showMenuPanel(online ? 'onlineMenu' : 'mainMenu'); });
-$('btnHost').addEventListener('click', () => Net.host());
-$('btnJoin').addEventListener('click', () => Net.join($('codeInput').value));
-$('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') Net.join($('codeInput').value); });
+$('onlineForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  document.activeElement?.blur();
+  if (onlineStep === 'host') Net.host();
+  else if (onlineStep === 'join') Net.join($('codeInput').value);
+});
 try { $('nameInput').value = localStorage.getItem('ironName') || ''; } catch (e) { /* 无痕模式下不可用 */ }
 if (!$('nameInput').value) $('nameInput').value = '指挥官' + Math.floor(Math.random() * 90 + 10);
+
+// =====================================================================
+// 手机端开局：主菜单 → 游戏设置表 → 选择国家（四个参战位置）
+// =====================================================================
+let setupFrom = 'menu', sheetSlot = 0;
+const MSET_ROWS = [
+  { key: 'ai', label: '电脑对手', opts: [[1, '1'], [2, '2'], [3, '3']] },
+  { key: 'difficulty', label: '电脑难度', opts: [['easy', '简单'], ['normal', '普通'], ['hard', '困难']] },
+  { key: 'mapType', label: '地图', opts: [['land', '大陆'], ['sea', '内海'], ['tri', '三国']] },
+  { key: 'env', label: '天气/昼夜', opts: [[1, '开启'], [0, '关闭']] },
+  { key: 'size', label: '地图大小', opts: [['small', '小'], ['large', '大']] },
+  { key: 'pace', label: '节奏', opts: [['fast', '快速'], ['normal', '标准']] },
+];
+$('mmStart').addEventListener('click', () => { Sound.init(); openSetup('menu'); });
+$('mmMulti').addEventListener('click', () => { Sound.init(); Net.status(''); showMenuPanel('onlineMenu'); });
+$('mmGuide').addEventListener('click', () => toggleGuide(true));
+
+function syncSoloSlots() {
+  SEL.slots[0].kind = 'human';
+  SEL.slots[0].pick = SEL.myPick;
+  const n = SEL.mapType === 'tri' ? 2 : clamp(SEL.aiCount, 1, 3);
+  SEL.slots.forEach((s, i) => { if (i > 0) s.kind = i <= n ? 'ai' : 'closed'; });
+}
+function openSetup(from) {
+  setupFrom = from || 'menu';
+  if (setupFrom === 'menu') SEL.seed = randSeed();
+  $('menu').classList.add('hidden');
+  $('selectScreen').classList.add('hidden');
+  $('nationSheet').classList.add('hidden');
+  $('mobileSetup').classList.remove('hidden');
+  renderSetup();
+}
+function closeSetup(openNations) {
+  $('mobileSetup').classList.add('hidden');
+  if (openNations) { openSelect(); return; }
+  if (setupFrom === 'select') { $('selectScreen').classList.remove('hidden'); renderSelect(); }
+  else showMenuPanel('mainMenu');
+}
+function setupState() {
+  const online = Net.mode !== 'off', L = online ? Net.lobby : SEL;
+  return { online, mapType: L.mapType || 'land', difficulty: L.difficulty || 'normal',
+    env: L.env ?? 1, size: L.size || 'small', pace: L.pace || 'fast',
+    ai: online ? (L.slots || []).filter(s => s.kind === 'ai').length : SEL.aiCount };
+}
+function renderSetup() {
+  if ($('mobileSetup').classList.contains('hidden')) return;
+  const st = setupState();
+  $('msetHint').textContent = st.online ? '联机房间 · 房主修改后同步' : '单机对战 · 确认后选择国家';
+  $('msetRows').innerHTML = MSET_ROWS.filter(r => !(st.online && r.key === 'ai')).map(r => {
+    const cur = r.key === 'ai' ? (st.mapType === 'tri' ? 2 : st.ai) : st[r.key];
+    const off = (r.key === 'ai' && st.mapType === 'tri') || (st.online && !Net.isHost);
+    return `<div class="mset-row${off ? ' dim' : ''}" data-key="${r.key}"><div class="ml">${r.label}</div>
+      <div class="mseg">${r.opts.map(([v, l]) => `<button data-v="${v}" class="${String(v) === String(cur) ? 'active' : ''}"${off ? ' disabled' : ''}>${l}</button>`).join('')}</div></div>`;
+  }).join('');
+}
+$('msetRows').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-v]');
+  if (!b || b.disabled) return;
+  Sound.play('click');
+  const key = b.closest('.mset-row').dataset.key, val = b.dataset.v;
+  if (Net.mode !== 'off') {
+    if (!Net.isHost || !Net.lobby) return;
+    const L = Net.lobby;
+    if (key === 'difficulty') L.difficulty = val;
+    else if (key === 'env') L.env = +val;
+    else L[key] = val;
+    Net.pushLobby();
+    renderSetup();
+    return;
+  }
+  if (key === 'ai') SEL.aiCount = +val;
+  else if (key === 'difficulty') SEL.difficulty = val;
+  else if (key === 'mapType') { SEL.mapType = val; if (val === 'tri') SEL.aiCount = 2; }
+  else if (key === 'env') SEL.env = +val;
+  else SEL[key] = val;
+  syncSoloSlots();
+  renderSetup();
+});
+$('msetBack').addEventListener('click', () => closeSetup(false));
+$('msetConfirm').addEventListener('click', () => closeSetup(true));
+$('msetOpen').addEventListener('click', () => { if (Net.mode === 'off' || (Net.isHost && Net.lobby)) openSetup('select'); });
+
+function slotPick(i) {
+  if (Net.mode === 'off') return (SEL.slots[i] || {}).pick || 'random';
+  return (Net.lobby && Net.lobby.slots[i] || {}).pick || 'random';
+}
+function slotKind(i) {
+  if (Net.mode === 'off') return (SEL.slots[i] || {}).kind || 'closed';
+  return (Net.lobby && Net.lobby.slots[i] || {}).kind || 'closed';
+}
+function setSlotKind(i, kind) {
+  if (Net.mode === 'off') {
+    if (i === 0 || SEL.mapType === 'tri') return;
+    const s = SEL.slots[i];
+    s.kind = kind === 'ai' ? 'ai' : 'closed';
+    SEL.aiCount = SEL.slots.filter(x => x.kind === 'ai').length;
+    renderSelect();
+  } else if (Net.isHost && i > 0) Net.setSlot(i, kind);
+}
+function setSlotPick(i, k) {
+  if (Net.mode === 'off') {
+    if (i === 0) { SEL.myPick = k; SEL.slots[0].pick = k; }
+    else { const s = SEL.slots[i]; if (!s || s.kind !== 'ai') return; s.pick = k; }
+    renderSelect();
+  } else if (i === Net.mySlot) setPick(k);
+  else if (Net.isHost && Net.lobby) {
+    const s = Net.lobby.slots[i];
+    if (!s || s.kind !== 'ai') return;
+    s.pick = k; Net.pushLobby();
+  }
+}
+function openNationSheet(i) {
+  sheetSlot = i;
+  const cur = slotPick(i);
+  const own = i === Net.mySlot || (Net.mode === 'off' && i === 0);
+  $('nsheetTitle').textContent = own ? '你的国家' : '位置 ' + (i + 1) + ' 的国家';
+  $('nsheetCards').innerHTML = NATION_KEYS.map(k => {
+    const n = NATIONS[k];
+    return `<button class="nsheet-card${k === cur ? ' active' : ''}" data-n="${k}">
+      <img src="${CARD_IMG[k] || ICONS[n.unique] || ''}" alt="">
+      <div class="sc-body"><div class="mc-n">${n.name}</div><div class="mc-tag">${n.tag}</div>
+      <div class="mc-tr">${n.traits[0] || ''}</div><div class="mc-tr">技能：${ABILITIES[n.ability].name}</div></div></button>`;
+  }).join('') + `<button class="nsheet-card${cur === 'random' ? ' active' : ''}" data-n="random">
+    <div class="sc-body sc-random"><div class="mc-n">随机国家</div><div class="mc-tag">开局揭晓</div>
+    <div class="mc-tr">不会和其他位置重复</div></div></button>`;
+  $('nationSheet').classList.remove('hidden');
+}
+$('nsheetCards').addEventListener('click', (e) => {
+  const b = e.target.closest('.nsheet-card');
+  if (!b) return;
+  Sound.play('click');
+  setSlotPick(sheetSlot, b.dataset.n);
+  $('nationSheet').classList.add('hidden');
+});
+$('nsheetClose').addEventListener('click', () => $('nationSheet').classList.add('hidden'));
+$('nationSheet').addEventListener('click', (e) => { if (e.target.id === 'nationSheet') $('nationSheet').classList.add('hidden'); });
+$('mobileSlots').addEventListener('click', (e) => {
+  const kb = e.target.closest('.mkind button[data-kind]');
+  if (kb) { Sound.play('click'); setSlotKind(+kb.dataset.slot, kb.dataset.kind); return; }
+  const cb = e.target.closest('.mcard');
+  if (cb && !cb.disabled) { Sound.play('click'); openNationSheet(+cb.dataset.pickSlot); }
+});
+$('mobileSlots').addEventListener('input', (e) => {
+  if (e.target.id !== 'mNameInput') return;
+  SEL.playerName = e.target.value.slice(0, 10);
+  try { localStorage.setItem('ironSoloName', SEL.playerName); } catch (err) { /* 忽略 */ }
+});
 
 function openSelect() {
   $('menu').classList.add('hidden');
   $('selectScreen').classList.remove('hidden');
+  $('mobileSetup').classList.add('hidden');
   renderSelect();
 }
 function myPick() { return Net.mode === 'off' ? SEL.myPick : (Net.lobby.slots[Net.mySlot] || {}).pick; }
 function setPick(k) {
-  if (Net.mode === 'off') SEL.myPick = k;
+  if (Net.mode === 'off') { SEL.myPick = k; SEL.slots[0].pick = k; }
   else if (Net.isHost) { Net.lobby.slots[0].pick = k; Net.pushLobby(); return; }
   else { Net.lobby.slots[Net.mySlot].pick = k; Net.send({ t: 'pick', nation: k }); }
   renderSelect();
+}
+
+function renderMobileSelect(online) {
+  const L = online ? Net.lobby : null;
+  const slots = online ? (L ? L.slots : []) : SEL.slots;
+  const tri = !online && SEL.mapType === 'tri';
+  $('msetOpen').hidden = online && !Net.isHost;
+  $('roomInfo').innerHTML = online
+    ? `房间码<b>${Net.code}</b>把房间码发给朋友，让他们用相同版本的游戏加入`
+    : '单机对战 · 每个参战位置都可以单独选国家';
+  let h = '';
+  for (let i = 0; i < 4; i++) {
+    const s = slots[i] || { kind: 'closed' };
+    const kind = s.kind || 'closed', closed = kind === 'closed', human = kind === 'human';
+    const isMe = online ? i === Net.mySlot && human : i === 0;
+    const kindLocked = online ? (!Net.isHost || i === 0 || human) : (i === 0 || tri);
+    const nameBox = i === 0
+      ? (online ? `<div class="mslot-who"><span data-no-translate>${esc(s.name || '玩家')}</span>${i === Net.mySlot ? '（你）' : ''} · 房主</div>`
+                : `<div class="mslot-who">玩家名</div><input id="mNameInput" class="mslot-name" maxlength="10" value="${esc(SEL.playerName)}" placeholder="玩家名" aria-label="玩家名">`)
+      : `<div class="mslot-who">位置 ${i + 1}</div>`;
+    const kinds = i === 0 ? '' : `<div class="mkind">
+      <button data-slot="${i}" data-kind="open" class="${kind === 'open' ? 'active' : ''}" ${kindLocked || !online ? 'disabled' : ''}>玩家</button>
+      <button data-slot="${i}" data-kind="ai" class="${kind === 'ai' ? 'active' : ''}" ${kindLocked ? 'disabled' : ''}>电脑</button>
+      <button data-slot="${i}" data-kind="closed" class="${kind === 'closed' ? 'active' : ''}" ${kindLocked ? 'disabled' : ''}>关闭</button></div>`;
+    const k = s.pick || 'random', nn = k === 'random' ? null : NATIONS[k];
+    const img = nn ? (CARD_IMG[k] || ICONS[nn.unique] || '') : '';
+    const canPickN = online ? (i === Net.mySlot || (Net.isHost && kind === 'ai')) : (i === 0 || kind === 'ai');
+    const title = closed ? '已关闭' : kind === 'open' ? '等待玩家加入'
+      : human ? (nn ? nn.name : '随机国家')
+      : (nn ? nn.name : '随机国家');
+    const tag = closed ? '这个位置不参战' : kind === 'open' ? '分享房间码邀请朋友'
+      : human ? (nn ? nn.name + ' · ' + nn.tag : '随机国家') : (nn ? nn.tag : '开局时随机分配');
+    const tr = closed || kind === 'open' ? '' : nn ? (nn.traits[0] || '') : '点按选择国家';
+    h += `<div class="mslot${closed ? ' closed' : ''}">
+      <div class="mslot-side">${nameBox}${kinds}</div>
+      <button class="mcard${isMe ? ' active' : ''}${closed ? ' closed' : ''}" data-pick-slot="${i}" ${canPickN && !closed && kind !== 'open' ? '' : 'disabled'}>
+        ${img ? `<img src="${img}" alt="">` : '<span class="mc-noimg">?</span>'}
+        <span class="mc-txt"><span class="mc-n">${esc(title)}</span><span class="mc-tag">${esc(tag)}</span><span class="mc-tr">${esc(tr)}</span></span>
+      </button></div>`;
+  }
+  $('mobileSlots').innerHTML = h;
+  if (online) {
+    const n = slots.filter(s => s.kind === 'human' || s.kind === 'ai').length;
+    const triBad = L && L.mapType === 'tri' && n !== 3;
+    $('btnStart').textContent = Net.isHost ? `开始游戏（${n} 方）` : '等待房主开始…';
+    $('btnStart').disabled = !Net.isHost || n < 2 || !!triBad;
+    $('selNote').textContent = Net.isHost && Net.sigDown ? '和联机服务器的连接断了，正在自动重连…'
+      : Net.isHost ? (n < 2 ? '至少需要 2 方：等朋友加入，或把位置设为电脑'
+        : triBad ? '三国鼎立需要正好 3 方：关闭多余位置，或补一个电脑'
+        : '点位置上的“玩家 / 电脑 / 关闭”调整参战方') : '选好国家后等待房主开始';
+  } else {
+    const aiN = slots.filter(s => s.kind === 'ai').length, n = aiN + 1;
+    $('btnStart').textContent = '开始游戏';
+    $('btnStart').disabled = aiN < 1 || (tri && n !== 3);
+    $('selNote').textContent = tri ? '三国鼎立固定 3 方：你和 2 个电脑'
+      : aiN < 1 ? '至少保留 1 个电脑对手' : `共 ${n} 方参战 · 点国家卡可以更换`;
+  }
 }
 // 按草图：四张竖卡（名字 / 图片 / 强项介绍 / 选中条），下面是开始按钮
 function renderSelect() {
   if ($('selectScreen').classList.contains('hidden')) return;
   const online = Net.mode !== 'off';
   $('selTitle').textContent = online ? '联机房间' : '选择国家';
-  $('roomInfo').innerHTML = online ? `房间码<b>${Net.code}</b>把房间码发给朋友，让他们用同一个游戏文件加入` : '单人对战电脑 · 选择你的国家';
+  $('roomInfo').innerHTML = online ? `房间码<b>${Net.code}</b>把房间码发给朋友，让他们用相同版本的游戏加入` : '单人对战电脑 · 选择你的国家';
+  if (isMobileUI()) { renderMobileSelect(online); return; }
   const pick = myPick();
   const pickers = {};
   if (online) Net.lobby.slots.forEach((s, i) => {
@@ -8572,7 +8992,7 @@ function renderSelect() {
   });
   $('natCards').innerHTML = NATION_KEYS.map(k => {
     const n = NATIONS[k], ab = ABILITIES[n.ability];
-    const names = (pickers[k] || []).map(p => `<span class="pn" style="background:${p.color}">${esc(p.name)}</span>`).join('');
+    const names = (pickers[k] || []).map(p => `<span class="pn" data-no-translate style="background:${p.color}">${esc(p.name)}</span>`).join('');
     return `<div class="ncard${pick === k ? ' active' : ''}" data-n="${k}">
       <div class="nh"><div class="nn"><span class="sw" style="background:${hexCss(n.camo.base)}"></span>${n.name}</div><div class="tag">${n.tag}</div></div>
       <img src="${CARD_IMG[k] || ICONS[n.unique] || ''}" alt="">
@@ -8677,10 +9097,24 @@ function resolveNations(picks) {
 function startSingle() {
   const si = $('seedInput');
   if (si) SEL.seed = parseInt(si.value, 10) || randSeed();
-  const nats = resolveNations([SEL.myPick, ...Array(SEL.mapType === 'tri' ? 2 : SEL.aiCount).fill('random')]);
+  const useSlots = isMobileUI() && Array.isArray(SEL.slots) && SEL.slots.length === 4;
+  let players;
+  if (useSlots) {
+    const active = SEL.slots.map((s, i) => ({ ...s, i })).filter(s => s.kind === 'human' || s.kind === 'ai');
+    if (active.length < 2) { notify('至少需要 1 个电脑对手'); renderSelect(); return; }
+    if (SEL.mapType === 'tri' && active.length !== 3) { notify('三国鼎立需要正好 3 方'); renderSelect(); return; }
+    const picks = resolveNations(active.map(s => s.pick || 'random'));
+    let aiN = 0;
+    players = active.map((s, k) => ({
+      name: s.kind === 'ai' ? '电脑 ' + (++aiN) : (SEL.playerName.trim() || '指挥官'),
+      nation: picks[k], ai: s.kind === 'ai', slot: k, netSlot: -1,
+    }));
+  } else {
+    const nats = resolveNations([SEL.myPick, ...Array(SEL.mapType === 'tri' ? 2 : SEL.aiCount).fill('random')]);
+    players = nats.map((n, i) => ({ name: i === 0 ? '你' : '电脑 ' + i, nation: n, ai: i > 0, slot: i, netSlot: -1 }));
+  }
   beginGame({
-    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, env: !!SEL.env, size: SEL.size, pace: SEL.pace, local: 0,
-    players: nats.map((n, i) => ({ name: i === 0 ? '你' : '电脑 ' + i, nation: n, ai: i > 0, slot: i, netSlot: -1 })),
+    seed: SEL.seed, difficulty: SEL.difficulty, mapType: SEL.mapType, env: !!SEL.env, size: SEL.size, pace: SEL.pace, local: 0, players,
   });
 }
 function beginGame(cfg) {
@@ -8757,12 +9191,14 @@ function startGame(cfg) {
   G.state = 'playing';
   $('menu').classList.add('hidden');
   $('selectScreen').classList.add('hidden');
+  $('mobileSetup').classList.add('hidden');
+  $('nationSheet').classList.add('hidden');
   document.querySelectorAll('#speedBtns button').forEach(b => { b.disabled = Net.isClient; });
   resize();
   renderTab();
   notify('作战开始：建造发电站和精炼厂发展经济', 'good');
   notify('参战：' + teams.map(T => `${T.name}（${NATIONS[T.nation].short}）`).join('、'));
-  if (Net.isHost) notify('你是房主：整场战斗在你的电脑上运行，请不要关闭页面');
+  if (Net.isHost) notify('你是房主：整场战斗在你的设备上运行，请保持游戏在前台');
 }
 function endGame(winner) {
   if (G.endShown) return;
@@ -8776,7 +9212,7 @@ function endGame(winner) {
     $('endTitle').style.color = win ? 'var(--ui-accent)' : 'var(--red)';
     $('endSub').textContent = `作战时间 ${fmtTime(G.time)} · 难度 ${DIFFS[G.difficulty].name} · ${MAP_NAMES[G.mapType]}地图（${G.size === 'small' ? '小' : '大'}）#${G.seed} · ${G.pace.name}节奏` + (wt && !win ? ` · 胜者：${wt.name}` : '');
     const row = (label, f) => `<tr><td>${label}</td>${teams.map(T => `<td>${f(T.stats)}</td>`).join('')}</tr>`;
-    $('endStats').innerHTML = `<tr><th></th>${teams.map(T => `<th style="color:${SLOT_COLORS[T.slot].css}">${esc(T.name)}${T.id === PLAYER ? '（你）' : ''}<br><small>${NATIONS[T.nation].short}${T.id === winner ? ' · 胜' : ''}</small></th>`).join('')}</tr>` +
+    $('endStats').innerHTML = `<tr><th></th>${teams.map(T => `<th style="color:${SLOT_COLORS[T.slot].css}"><span data-no-translate>${esc(T.name)}</span>${T.id === PLAYER ? '（你）' : ''}<br><small>${NATIONS[T.nation].short}${T.id === winner ? ' · 胜' : ''}</small></th>`).join('')}</tr>` +
       row('击毁单位', s => s.kills) + row('摧毁建筑', s => s.bKills) + row('损失单位', s => s.losses) +
       row('损失建筑', s => s.bLosses) + row('生产单位', s => s.unitsBuilt) + row('建造建筑', s => s.bBuilt) +
       row('总收入', s => '$' + Math.round(s.harvested));
@@ -8930,6 +9366,12 @@ const Chat = {
       else if (e.key === 'Escape') this.close();
     });
     $('btnChat').addEventListener('click', () => this.isOpen() ? this.close() : this.open());
+    $('chatSend').addEventListener('click', () => {
+      const t = $('chatInput').value.trim();
+      if (t) this.send({ text: t });
+      this.close();
+    });
+    $('chatClose').addEventListener('click', () => this.close());
   },
 };
 Chat.init();
@@ -8944,7 +9386,7 @@ const Net = {
     if (window.Peer) return Promise.resolve();
     return new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+      s.src = './vendor/peerjs.min.js';
       s.onload = () => res();
       s.onerror = () => rej(new Error('无法加载联机组件，请检查网络连接'));
       document.head.appendChild(s);
@@ -8957,8 +9399,8 @@ const Net = {
   },
   genCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[(Math.random() * A.length) | 0]; return s; },
   errText(err) {
-    return { 'peer-unavailable': '找不到这个房间，请确认房间码', network: '网络连接失败', 'server-error': '联机服务器暂时不可用，请稍后再试',
-      'browser-incompatible': '这个浏览器不支持联机，请使用新版 Chrome / Edge', 'socket-error': '联机服务器连接失败' }[err.type] || err.type || String(err);
+    return { 'peer-unavailable': '找不到这个房间，请确认房间码', network: '网络连接失败，请检查网络后重试', 'server-error': '联机服务器暂时不可用，请稍后再试',
+      'browser-incompatible': '当前设备的联机组件不可用，请更新游戏及 Android System WebView 后重试', 'socket-error': '联机服务器连接失败，请稍后重试或切换网络' }[err.type] || '连接未能建立，请返回后重试，或切换网络';
   },
   async host() {
     this.leave();
@@ -9007,7 +9449,7 @@ const Net = {
     conn.lastSeen = performance.now();
     if (m.t === 'hello') {
       const reject = (r) => { conn.send({ t: 'reject', reason: r }); setTimeout(() => conn.close(), 800); };
-      if (m.ver !== GAME_VERSION) return reject('游戏版本不一致：请使用和房主相同的游戏文件');
+      if (m.ver !== GAME_VERSION) return reject('游戏版本不一致：请使用和房主相同的游戏版本');
       if (G.state === 'playing') return reject('这局游戏已经开始了');
       const i = this.lobby.slots.findIndex(s => s.kind === 'open');
       if (i < 0) return reject('房间已满');
@@ -9038,6 +9480,16 @@ const Net = {
     if (!s || s.kind === 'human') return;
     const order = ['open', 'ai', 'closed'], k = order[(order.indexOf(s.kind) + 1) % 3];
     this.lobby.slots[i] = k === 'ai' ? { kind: 'ai', name: '电脑', pick: 'random' } : { kind: k };
+    this.pushLobby();
+  },
+  // 手机端直接指定位置类型：open = 等玩家加入，ai = 电脑，closed = 关闭
+  setSlot(i, k) {
+    const s = this.lobby && this.lobby.slots[i];
+    if (!s || s.kind === 'human' || !['open', 'ai', 'closed'].includes(k)) return;
+    if (k === 'ai' && s.kind === 'open' && this.conns.some(c => c.slot === i)) return;
+    this.lobby.slots[i] = k === 'ai'
+      ? { kind: 'ai', name: '电脑', pick: s.pick && s.pick !== 'random' ? s.pick : 'random' }
+      : { kind: k };
     this.pushLobby();
   },
   assignRandom() {
@@ -9338,7 +9790,7 @@ function frame(now) {
   updateEnvironment(rdt);
   syncMeshes(alpha, rdt, gdt);
   if (oreDirty) { oreMesh.instanceMatrix.needsUpdate = true; oreDirty = false; }
-  hovered = mouse.inGame && !mouse.down ? pickAt(mouse.x, mouse.y) : null;
+  hovered = lastPointerType === 'mouse' && mouse.inGame && !mouse.down ? pickAt(mouse.x, mouse.y) : null;
   updateGhost();
   renderer.render(scene, camera);
   drawOverlay();
@@ -9375,8 +9827,54 @@ function simulate(rdt) {
 }
 
 // 启动
-window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, cam, hgt, groundH, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, startGame, NAT_OVERRIDE, sellBuilding, kill, damage, get ruins() { return ruins; }, get bldFx() { return bldFx; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
+window.DBG = { UNITS, BUILDINGS, WEAPONS, NATIONS, NAT_DEFS, defOf, natDef, unitFor, isUnlocked, enqueue, costOf, ICONS, GUIDE, camoHidden, jamTick, walkable, G, SEL, openSelect, renderSelect, cam, hgt, groundH, concealed, hiddenFrom, tileCost, get bridgeSites() { return bridgeSites; }, get houseSites() { return houseSites; }, reveal(v = true) { revealAll = v; }, scene, renderer, camera, fogData, vis, explored, terrain, passable, navigable, astar, generateMap, AIController, PLAY, ENV, timeOfDay, weatherAt, sightMul, flashLights, renderer: renderer, gainXp, findPad, detectedBy, createBuilding, BASES, get units() { return units; }, get buildings() { return buildings; }, get teams() { return teams; }, Net, executeCommand, worldToScreen, canPlace, pickAt, ore, createUnit, get selection() { return selection; }, get hovered() { return hovered; }, startGame, NAT_OVERRIDE, sellBuilding, kill, damage, get ruins() { return ruins; }, get bldFx() { return bldFx; }, renderOnce() { updateCamera(0.016); syncMeshes(1, 0.016, 0.016); updateGhost(); renderer.render(scene, camera); drawOverlay(); uiFrame(); const c = document.createElement("canvas"); c.width = vw; c.height = vh; const x = c.getContext("2d"); x.drawImage(renderer.domElement, 0, 0, vw, vh); x.drawImage(overlay, 0, 0, vw, vh); return c.toDataURL("image/png"); }, step(n) { for (let i = 0; i < n && !G.over; i++) { gameTick(); updateProjectiles(TICK); updateDelayed(TICK); } } };
 
+// 手机/桌面布局切换时，已经打开的开局界面要按新布局重画
+document.addEventListener('mobilelayoutchange', () => {
+  if (!$('selectScreen').classList.contains('hidden')) renderSelect();
+  if (!$('mobileSetup').classList.contains('hidden')) renderSetup();
+});
+
+setupMobile({ gameEl, mouse, cam, cameraStick, resize, pickAt, contextCommand, boxSelect, setSelection,
+  gamePointerDown, gamePointerUp, onBuildClick, setMode, notify, Sound, showDetails,
+  active: () => G.state === 'playing' && !G.over && !guideOpen() && !$('itemDetails')?.open && $('pauseMenu').classList.contains('hidden'),
+  getMode: () => mode, isPlacing: () => !!placing,
+  canCommand: () => ownUnitsSelected().length > 0,
+  getSelection: () => selection,
+  refreshSelection: renderSelPanel,
+  damagedBuildings: () => buildings.filter(b => b.alive && b.team === PLAYER && !b.def.derrick && b.hp < b.maxHp).map(b => ({ id: b.id, name: b.def.name, hp: b.hp, maxHp: b.maxHp, repairing: b.repairing, icon: ICONS[b.type] || '' })),
+  repairBuilding(id, on) { const b = buildings.find(b => b.id === id && b.alive && b.team === PLAYER && !b.def.derrick); if (b) issueCommand({ c: 'repair', bid: id, on }); },
+  repairAll() { for (const b of buildings) if (b.alive && b.team === PLAYER && !b.def.derrick && b.hp < b.maxHp && !b.repairing) issueCommand({ c: 'repair', bid: b.id, on: true }); },
+  canRally: b => PROD_TYPES.includes(b.type),
+  chatAvailable: () => Chat.on,
+  signalAvailable: () => Chat.on,
+  signalLabel: () => SIGNALS[sigKind].name,
+  cycleSignalKind() { sigKind = (sigKind + 1) % SIGNALS.length; return SIGNALS[sigKind].name; },
+  readyBuilding() { const T = teams[PLAYER]; if (!T) return null; for (const c of ['building', 'defense']) { const i = T.queues[c][0]; if (i?.ready) return { type: i.type, def: defOf(i.type, PLAYER) }; } return null; },
+  productionFor(b, tab) { mobileProducer = b; if (tab) curTab = tab; if (teams[PLAYER]) renderTab(); },
+  friendlyCommand(t) {
+    if (!t || t.team !== PLAYER) return false;
+    const own = ownUnitsSelected();
+    return own.some(u => (canHold(t, PLAYER) && canGarrison(u, t)) || (u.def.engineer && t.kind === 'b' && !t.def.derrick && t.hp < t.maxHp) ||
+      (u.def.harvester && t.type === 'refinery') || (u.def.plane && t.type === 'airfield')) ||
+      (own.length === 1 && own[0] === t && t.def.garrison && garrisonCount(t) > 0);
+  },
+  isOwn: e => e && e.team === PLAYER,
+  cancel() { const busy = placing || mode; placing = null; setGhost(null); setMode(null); if (!busy) setSelection([]); },
+  home() { const hq = buildings.find(b => b.alive && b.team === PLAYER && b.type === 'hq'); if (hq) centerOn(hq.x, hq.z); },
+  stop() { const own = ownUnitsSelected(); if (own.length) issueCommand({ c: 'stop', ids: idsOf(own) }); },
+  minimapOnline, minimapWorld, centerOn,
+  selectArmy() { const list = units.filter(u => u.alive && u.team === PLAYER && u.weapon && !u.inside && !u.def.harvester && !u.def.engineer); setSelection(list); if (list.length) Sound.play('ack'); return list.length; },
+  mapCommand(w) {
+    const own = ownUnitsSelected(), b = selection.length === 1 ? selection[0] : null;
+    if (own.length) issueCommand({ c: 'move', ids: idsOf(own), x: w.x, z: w.z });
+    else if (b && b.team === PLAYER && PROD_TYPES.includes(b.type)) {
+      teams[PLAYER].rally[b.id] = { x: w.x, z: w.z };
+      issueCommand({ c: 'rally', bid: b.id, x: w.x, z: w.z }); notify('集结点已设置');
+    }
+  },
+  signalMap(w) { Chat.send({ ping: { k: sigKind, x: w.x, z: w.z } }); setMode(null); },
+});
 resize();
 try {
   makeIcons('north');
